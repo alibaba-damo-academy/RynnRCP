@@ -1,0 +1,11 @@
+<mujoco model="so101">
+  <include file="../urdf/so101base.xml"/>
+
+  <keyframe>
+    <key name="home" qpos="0 -1.57 1.57 1.57 -1.57 0" ctrl="0 -1.57 1.57 1.57 -1.57 0"/>
+    <key name="middle" qpos="0 -1.57079 1.57079 0 0 0" ctrl="0 -1.57079 1.57079 0 0 0"/>
+    <key name="zero" qpos="0 0 0 0 0 0" ctrl="0 0 0 0 0 0"/>
+    <key name="rotated" qpos="-1.57079 -1.57079 1.57079 1.57079 -1.57079 1.57079" ctrl="-1.57079 -1.57079 1.57079 1.57079 -1.57079 1.57079"/>
+    <key name="rest" qpos="0 -3.32 3.11 1.18 0 -0.174" ctrl="0 -3.32 3.11 1.18 0 -0.174"/>
+  </keyframe>
+</mujoco>

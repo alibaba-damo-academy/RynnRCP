@@ -1,0 +1,30 @@
+// package definition between RobotServer and RCPServer in an embodied system
+
+syntax = "proto3";
+
+package RobotServer;
+
+// potentially support Java language
+option java_multiple_files = true;
+option java_package = "com.alibaba.damo.robot.transport";
+
+enum PackageType {
+  RESV = 0;
+  IMAGE_DATA = 1;
+  STATE_DATA = 2;
+  ACTION_DATA = 3;
+  REQ_IMAGE = 4;
+  REQ_STATE = 5;
+  ACTION_FINISH = 6;
+}
+
+message CommonPartAttr {
+  int64 timestamp = 1;
+  int32 id = 2;
+  int32 type = 3;
+}
+
+message DataPacket {
+  CommonPartAttr common_part_attr = 1;
+  bytes data = 2;
+}

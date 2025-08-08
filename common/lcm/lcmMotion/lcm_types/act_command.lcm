@@ -1,0 +1,28 @@
+package lcmMotion;
+
+struct act_command {
+  int32_t sec;
+  int32_t nanosec;
+  int64_t utime;
+  int32_t seq;
+
+  int8_t chunkSize;               // Number of action commands in this chunk
+  
+  int32_t numJoint;
+  int32_t totalNumJoint;          // chunkSize * numJoint (computed beforehand)
+  float jointPos[totalNumJoint];  // Flattened: [chunk0_joint0, chunk0_joint1, ..., chunk1_joint0, ...]
+  float jointVel[totalNumJoint];  // Same flattening pattern
+
+  int8_t numGripper;
+  int32_t totalNumGripper;        // chunkSize * numGripper (computed beforehand)
+  float gripperPos[totalNumGripper]; // Flattened gripper positions
+
+  int32_t totalEePos;         // chunkSize * 3 (computed beforehand)
+  float eePos[totalEePos];    // Flattened end-effector positions [chunk0_x, chunk0_y, chunk0_z, chunk1_x, ...]
+  
+  int32_t totalEeQuat;        // chunkSize * 4 (computed beforehand)
+  float eeQuat[totalEeQuat];  // Flattened end-effector quaternions [chunk0_w, chunk0_x, chunk0_y, chunk0_z, chunk1_w, ...]
+
+  int8_t workMode;
+  
+}

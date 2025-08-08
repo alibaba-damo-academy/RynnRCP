@@ -1,0 +1,15 @@
+cameras:
+- name: observation.images.front
+  device: /dev/videoXXX
+  brand: Brand Name
+  format: YUYV
+  width: 640
+  height: 480
+  framerate: 30
+- name: observation.images.wrist
+  device: /dev/videoXXX
+  brand: Brand Name
+  format: YUYV
+  width: 640
+  height: 480
+  framerate: 30

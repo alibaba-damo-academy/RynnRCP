@@ -1,0 +1,11 @@
+// data definition request Model Inference Service in an embodied system
+
+syntax = "proto3";
+
+package RobotServer;
+
+message CombineDataPacket{
+  string prompt = 1;
+  bytes image = 2;
+  bytes state = 3;
+}

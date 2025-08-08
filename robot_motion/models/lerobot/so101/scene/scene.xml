@@ -1,0 +1,7 @@
+<mujoco model="so101 scene">
+
+  <include file="../urdf/so101.xml"/>
+
+  <include file="../scene/scene_base.xml"/>
+
+</mujoco>

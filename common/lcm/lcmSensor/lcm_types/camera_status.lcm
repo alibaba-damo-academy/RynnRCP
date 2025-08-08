@@ -1,0 +1,12 @@
+package lcmSensor;
+
+struct camera_status {
+    int32_t seq;              // Sequence number
+    int64_t stamp;            // Timestamp in nanoseconds (ROS2 style)
+    int32_t id;               // Camera ID
+    int32_t fps;              // Camera frame rate
+    int32_t width;            // Camera image width
+    int32_t height;           // Camera image height
+    string format;            // Camera image format (e.g., "YUYV", "MJPG")
+    int32_t status;           // Camera status
+}

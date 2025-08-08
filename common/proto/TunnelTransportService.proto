@@ -1,0 +1,27 @@
+// Interface IDL between device <-> tele-ops <-> backend server
+
+syntax = "proto3";
+
+import public "RobotServerTransportPacket.proto";
+
+package RobotServer;
+
+// Potentially support Java language
+option java_multiple_files = true;
+option java_package = "com.alibaba.damo.robot.tele.ops.api.inner";
+
+service TunnelTransportService {
+  /*
+  Establish a bidirectional stream between the device and the Relay server.
+  Device <--WebSocket--> RelayServer <--StreamRPC(this service)--> Invoker
+  Set the IP address and device information to connect using the following code:
+  UserSpecifiedAddressUtil.setAddress(new Address(relayIp, 0));
+  RpcContext.getClientAttachment().setAttachment("deviceId", deviceId);
+  RpcContext.getClientAttachment().setAttachment("productKey", productKey);
+  RpcContext.getClientAttachment().setAttachment("deviceName", deviceName);
+
+  @param responseObserver Response callback {@link com.alibaba.damo.robot.transport.DataPacket}
+  @return Request callback {@link com.alibaba.damo.robot.transport.DataPacket}
+   */
+  rpc biTransDevice(stream DataPacket) returns (stream DataPacket);
+}

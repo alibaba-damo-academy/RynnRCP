@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lerobot"
+version = "0.1.1"
+description = "RynnMotion lerobot/lekiwi Motion Control and Communication"
+readme = "README.md"
+requires-python = ">=3.8"
+
+[tool.setuptools.packages.find]
+where = ["../../..", "."]
+include = ["common*", "robots.lerobot*"]
+
+[tool.setuptools.package-data]
+"common.lcm" = ["*.lcm"]
+"common.lcm.lcm_types" = ["*.lcm"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

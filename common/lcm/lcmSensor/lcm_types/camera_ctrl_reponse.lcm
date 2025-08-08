@@ -1,0 +1,9 @@
+package lcmSensor;
+
+struct camera_ctrl_response {
+    int32_t seq;              // Sequence number
+    int64_t stamp;            // Timestamp in nanoseconds (ROS2 style)
+    int32_t id;               // Camera ID
+    int32_t response;         // Response code
+    string response_msg;      // Response message
+}

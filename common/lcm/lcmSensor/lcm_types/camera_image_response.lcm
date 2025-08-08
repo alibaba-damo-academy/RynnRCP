@@ -1,0 +1,7 @@
+package lcmSensor;
+
+struct camera_image_response {
+    int32_t seq;                     // Sequence number
+    int32_t camera_count;            // Number of devices responding
+    image_data images[camera_count]; // Array of images
+}

@@ -1,0 +1,85 @@
+// data definition between RobotServer and RCPServer in an embodied system
+ 
+syntax = "proto3";
+ 
+package RobotServer;
+ 
+enum DataType {
+  UNKNOWN = 0;
+  UINT8 = 1;
+  INT8 = 2;
+  UINT16 = 3;
+  INT16 = 4;
+  INT32 = 5;
+  FLOAT32 = 6;
+  FLOAT64 = 7;
+}
+ 
+enum ActionType {
+  EEF_POS = 0;                // End Effector XYZ + roll-pitch-yaw + gripper open/close
+  EEF_POS_BIMANUAL = 1;       // 2 x [End Effector XYZ + roll-pitch-yaw + gripper open/close]
+  JOINT_POS = 2;              // n x joint position + gripper open/close
+  JOINT_POS_BIMANUAL = 3;     // 2 x [n x joint pos + gripper]
+  JOINT_POS_NAV = 4;          // n x joint pos + gripper + linear base vel + angular base vel
+  JOINT_POS_BIMANUAL_NAV = 5; // 2 x [n x joint pos + gripper] + linear base vel + angular base vel
+  NAV_2D = 6;                 // [x, y] waypoint
+}
+ 
+ 
+message Array {
+  bytes data = 1;           // Raw binary data
+  repeated int32 shape = 2; // Represents various data configurations: image dimensions (height, width, channels), robotic arm status (joint and gripper dimensions), and action structure (2-dimensional; first dimension: chunk size, second dimension: size)
+  DataType dtype = 3;       // Data type for image (UINT8), robotic arm status (FLOAT32), and robotic arm action (FLOAT32)
+}
+ 
+// for ActionServer
+message Action{
+  ActionType action_type = 1; // Indicates action type
+  Array action_data = 2;      // Action data
+  int32 action_rate = 3;      // Indicates action execution speed, e.g. 30 Hz
+}
+ 
+message MultiAction{
+  repeated Action action_list = 1;
+}
+ 
+message MultiState{
+  repeated Array state_list = 1; // Collection of states for multiple robotic arms
+}
+ 
+//for SensorServer
+message Image{
+  int32 id = 1;         // Camera id
+  string name = 2;      // Camera name
+  string format = 3;    // Image format (e.g., RGB888, BGR888, YUV420, NV12, NV21)
+  Array image_data = 4; // Raw image data
+}
+ 
+message MultiImage{
+  repeated Image image_list = 1;
+}
+ 
+message ReqImage{
+  repeated Camera camera = 1;
+}
+ 
+message ReqState{
+  repeated Robot robot = 1;
+}
+ 
+message Camera {
+  int32 camera_id = 1;
+  string camera_name = 2;
+}
+ 
+message Robot {
+  int32 robot_id = 1;
+  string robot_name = 2;
+}
+ 
+message FinishActionChunk {
+  int32 code = 1;           // Result code of the action execution
+  string error_msg = 2;     // Description of errors if any
+  int32 execute_steps = 3;  // Number of steps actually executed.
+  int32 expect_steps = 4;   // Number of steps expected to be executed.
+}

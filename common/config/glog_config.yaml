@@ -1,0 +1,8 @@
+log_dir: "~/RynnRcplog"                # Log is stored in $HOME/${log_dir}/
+server_node_log_name: "server_node"    # Log is stored in $HOME/${log_dir}/{server_node_log_name}/{server_node_log_name}.log
+camera_node_log_name: "camera_node"    # Log is stored in $HOME/${log_dir}/{camera_node_log_name}/{camera_node_log_name}.log
+robot_motion_log_name: "robot_motion"  # Log is stored in $HOME/${log_dir}/{robot_motion_log_name}/{robot_motion_log_name}.log
+stderr_threshold: 1                    # The minimum log level to output to stderr (WARN is 1)
+max_log_size: 10                       # Maximum size of a single log file (unit: MB)
+log_buf_secs: 1                        # Log buffer output time (unit: seconds)
+min_log_level: 0                       # Minimum log output level (INFO is 0)

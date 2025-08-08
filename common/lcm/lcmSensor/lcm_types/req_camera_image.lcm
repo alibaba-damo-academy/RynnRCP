@@ -1,0 +1,8 @@
+package lcmSensor;
+
+struct req_camera_image {
+    int32_t seq;                       // Sequence number
+    int32_t camera_count;              // Camera nums
+    int32_t camera_ids[camera_count];  // Camera ids
+    string camera_names[camera_count]; // Camera names
+}

@@ -1,0 +1,9 @@
+package lcmSensor;
+
+struct camera_ctrl {
+    int32_t id;     // Camera ID
+    int32_t fps;    // Camera frame rate
+    int32_t width;  // Camera image width
+    int32_t height; // Camera image height
+    string format;  // Camera image format (e.g., "YUYV", "MJPG")
+}

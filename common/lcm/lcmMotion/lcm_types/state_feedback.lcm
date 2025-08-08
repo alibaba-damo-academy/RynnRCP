@@ -1,0 +1,36 @@
+package lcmMotion;
+
+struct state_feedback {
+  int32_t sec;                          // Timestamp seconds
+  int32_t nanosec;                      // Timestamp nanoseconds
+  int64_t utime;                        // Microsecond timestamp
+  int32_t seq;                          // Sequence number
+
+  // -------- ACT status type ----------------------------
+  const int8_t kIdle = 0;
+  const int8_t kSuccess = 1;
+  const int8_t kExecuting = 2;
+  const int8_t kPaused = 3;
+  const int8_t kCollision = 4;
+  const int8_t kFail = -1;
+  int8_t act_status_type;             // ACT status type
+  string error_msg;                   // Error message
+
+  // -------- stateID status type ----------------------------
+  const int8_t kGoStand = 1;
+  const int8_t kGoHome = 2;
+  const int8_t kMove1 = 3;
+  const int8_t kMove2 = 4;
+  const int8_t kError = -1;
+  int8_t stateID;
+
+  // -------- substateID status type ----------------------------
+  const int8_t kEnter = 0;
+  const int8_t kDuring = 1;
+  const int8_t kExit = 2;
+  int8_t substateID;
+
+  // -------- state_msg string ----------------------------
+  string state_msg;
+
+}

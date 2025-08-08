@@ -1,0 +1,16 @@
+<mujoco model="so101 scene">
+  <include file="../urdf/so101base.xml"/>
+
+  <include file="../scene/scene_base.xml"/>
+
+  <worldbody>
+    <body name="cube" pos="0.1 -0.2 0.15" euler="0 0 0">
+      <freejoint/>
+      <geom name="cube" type="box" size="0.01 0.01 0.01" rgba="0.9 0.9 0.1 0.9"/>
+      <geom type="cylinder" size="0.002 0.03" rgba="1 0 0 1" pos="0.03 0 0.0" euler="0 1.57079 0" contype="0" conaffinity="0" mass="0"/>
+      <geom type="cylinder" size="0.002 0.03" rgba="0 1 0 1" pos="0 0.03 0.0" euler="1.57079 0 0" contype="0" conaffinity="0" mass="0"/>
+      <geom type="cylinder" size="0.002 0.03" rgba="0 0 1 1" pos="0 0 0.03" euler="0 0 0" contype="0" conaffinity="0" mass="0"/>
+      <inertial mass="0.001" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+    </body>
+  </worldbody>
+</mujoco>

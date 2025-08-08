@@ -1,0 +1,17 @@
+package lcmMotion;
+
+// A request message asking either for state status, robot status, or go home.
+struct act_request {
+  // -------- Time & sequence -----------------------------
+  int32_t sec;         // ROS-style seconds  (Unix epoch)
+  int32_t nanosec;     // ROS-style nanoseconds
+  int64_t utime;       // Microseconds since epoch
+  int32_t seq;         // Consecutive sequence number
+
+  // -------- Request selector ----------------------------
+  // 0 → state status request     1 → Robot status request     2 → Go home request
+  const int8_t kStateFeedbackRequest   = 0;
+  const int8_t kRobotFeedbackRequest = 1;
+  const int8_t kGoHomeRequest = 2;
+  int8_t  request_type;
+}

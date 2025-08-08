@@ -1,0 +1,60 @@
+<mujoco model="so101 scene">
+  <compiler angle="radian" meshdir="../assets" texturedir="../assets"/>
+  <option timestep="0.01" gravity="0 0 -9.80665" integrator="implicitfast"/>
+
+  <include file="../urdf/so101base.xml"/>
+  <include file="../urdf/mug.xml"/>
+
+  <statistic center="0 -0.2 0.1" extent="0.4"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="140" elevation="-30"/>
+  </visual>
+
+  <asset>
+    <mesh name="Tablelegs" file="Tablelegs.obj"/>
+    <mesh name="Tabletop" file="Tabletop.obj"/>
+    <mesh name="Third_Cam" file="Third_Cam.stl"/>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <texture type="2d" file="Small_Meta_Table_Diffuse.png"/>
+    <material name="Groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    <material name="Table" texture="Small_Meta_Table_Diffuse"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="Floor" size="0 0 0.05" type="plane" material="Groundplane" pos="0 0 -0.75"/>
+    <site name="Worldref" pos="0 0 -0.75"/>
+    <geom mesh="Tabletop" material="Table" class="visual" pos="0 -0.36 -0.75" quat="1 0 0 1"/>
+    <geom mesh="Tablelegs" material="Table" class="visual" pos="0 -0.36 -0.75" quat="1 0 0 1"/>
+    <geom name="Table" pos="0 -0.362 -0.375" size="0.61 0.38 0.376" type="box" class="collision" rgba="1 1 1 0.2"/>
+    <geom type="mesh" mesh="Third_Cam" pos="0 -0.15 0.0" euler="1.57 0 0" class="visual" rgba="1 1 1 1"/>
+    <body pos="0.0 -0.663 0.305" euler="0.6109 0 0">
+      <camera name="Third_cam" mode="fixed" resolution="1920 1080" sensorsize="5.37 4.04" focal="2.9 2.9"/>
+    </body>
+    <body name="Cube1" pos="-0.25 -0.36 0.36">
+      <freejoint name="Cube1"/>
+      <geom type="box" mass= "0.01" size="0.01 0.01 0.01" rgba="0.9 0.9 0.1 0.9"/>
+    </body>
+    <body name="Cube2" pos="-0.15 -0.28 0.36">
+      <freejoint name="Cube2"/>
+      <geom type="box" mass= "0.01" size="0.01 0.01 0.01" rgba="0.9 0.9 0.1 0.9"/>
+    </body>
+    <body name="Cube3" pos="-0.15 -0.36 0.36">
+      <freejoint name="Cube3"/>
+      <geom type="box" mass= "0.01" size="0.01 0.01 0.01" rgba="0.9 0.9 0.1 0.9"/>
+    </body>
+    <body name="Cube4" pos="-0.2 -0.36 0.36">
+      <freejoint name="Cube4"/>
+      <geom type="box" mass= "0.01" size="0.01 0.01 0.01" rgba="0.9 0.9 0.1 0.9"/>
+    </body>
+    <body name="Cube5" pos="-0.2 -0.28 0.36">
+      <freejoint name="Cube5"/>
+      <geom type="box" mass= "0.01" size="0.01 0.01 0.01" rgba="0.9 0.9 0.1 0.9"/>
+    </body>
+  </worldbody>
+</mujoco>
+

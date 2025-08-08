@@ -1,0 +1,7 @@
+package lcmSensor;
+
+// request all camera description
+struct req_camera_desc {
+    int32_t seq;    // Sequence number
+    int64_t stamp;  // Timestamp in nanoseconds (ROS2 style)
+}

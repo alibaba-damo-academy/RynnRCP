@@ -1,0 +1,7 @@
+package lcmSensor;
+
+struct req_camera_status {
+    int32_t seq;              // Sequence number
+    int64_t stamp;            // Timestamp in nanoseconds (ROS2 style)
+    int32_t id;               // Camera ID
+}

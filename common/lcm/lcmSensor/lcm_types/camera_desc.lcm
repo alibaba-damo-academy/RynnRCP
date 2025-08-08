@@ -1,0 +1,12 @@
+package lcmSensor;
+
+struct camera_desc {
+    int32_t id;     // Camera ID
+    string product; // Camera product name
+    string name;    // Camera name
+    int32_t fps;    // Camera frame rate
+    int32_t width;  // Camera image width
+    int32_t height; // Camera image height
+    string format;  // Camera image format (e.g., "YUYV", "MJPG")
+    int32_t status; // Camera status
+}

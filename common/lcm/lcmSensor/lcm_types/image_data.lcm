@@ -1,0 +1,11 @@
+package lcmSensor;
+
+struct image_data {
+    int32_t camera_id;            // Camera ID
+    string camera_name;           // Camera name
+    int32_t width;                // Width of the image
+    int32_t height;               // Height of the image
+    int32_t channels;             // Number of channels, e.g., 3 for RGB, 1 for grayscale
+    int32_t image_size;           // Size of the image data
+    byte image_bytes[image_size]; // The compressed image data (in bytes)
+}

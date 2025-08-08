@@ -1,0 +1,20 @@
+package lcmMotion;
+
+struct robot_feedback {
+  int32_t sec;                          // Timestamp seconds
+  int32_t nanosec;                      // Timestamp nanoseconds
+  int64_t utime;                        // Microsecond timestamp
+  int32_t seq;                          // Sequence number
+
+  int32_t numJoint;                     // Number of joints
+  float qFb[numJoint];                  // Joint position feedback
+  float qdFb[numJoint];                 // Joint velocity feedback
+
+  int8_t numGripper;                    // Number of grippers
+  float gripperPosFb[numGripper];       // Gripper position feedback
+
+  float eePosFb[3];                     // End-effector position feedback [x, y, z]
+  float eeQuatFb[4];                    // End-effector quaternion feedback [w, x, y, z]
+
+  float odometry[3];                    // Odometry data [x, y, theta]
+}
