@@ -18,7 +18,6 @@ RobotMotion will provide robot control interfaces for different forms of inferen
 │   ├── lcm                # LCM message type declarations
 │   ├── proto              # Protobuf message type declarations
 │   └── third_party        # Third-party dependencies source code
-├── docker                 # Docker environment
 ├── examples               # Deployment preparations and running instructions for different robots
 ├── robot_motion           # Implementations related to RobotMotion
 │   ├── models             # Robotic arm models
@@ -34,7 +33,7 @@ RobotMotion will provide robot control interfaces for different forms of inferen
 ```
 
 # Installation and Usage
-> Note: For detailed usage instructions, please refer to: [Rynnbot Embodied Intelligence Development Platform User Documentation](https://developer.damo-academy.com/allSpark/document/guide/basic)  
+> Note: For detailed usage instructions, please refer to: [RynnBot Embodied Intelligence Development Platform User Documentation](https://developer.damo-academy.com/allSpark/document/guide/basic)  
 
 ## Download the Source Code
 ```bash

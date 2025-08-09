@@ -17,8 +17,7 @@
 │   ├── config             # 公共配置文件
 │   ├── lcm                # 基于lcm的消息类型声明
 │   ├── proto              # 基于protobuf的消息类型声明
-│   ├── third_party        # 共享的第三方依赖库源码
-├── docker                 # docker环境
+│   └── third_party        # 共享的第三方依赖库源码
 ├── examples               # 包含针对不同本体所需要的部署等准备工作，以及运行说明
 ├── robot_motion           # RobotMotion相关实现
 │   ├── models             # 机械臂模型
