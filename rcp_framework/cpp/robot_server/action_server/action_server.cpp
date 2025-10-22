@@ -102,13 +102,6 @@ void CActionServer::handleActFeedback(const lcm::ReceiveBuffer *rbuf,
   _dataClient->send(protocol_msg);
 }
 
-inline float radiansToDegrees(float radians) {
-  return radians * 180.0 / M_PI;
-}
-inline float degreesToRadians(float degrees) {
-  return degrees * M_PI / 180.0;
-}
-
 void CActionServer::handleRobotFeedback(const lcm::ReceiveBuffer *rbuf,
                                         const std::string &chan,
                                         const lcmMotion::robot_feedback *msg) {
@@ -117,30 +110,92 @@ void CActionServer::handleRobotFeedback(const lcm::ReceiveBuffer *rbuf,
 
   RobotServer::MultiState reply_state;
 
-  std::vector<float> state_data;
+  // arm state data
+  RobotServer::Array arm_state_array;
+  RobotServer::State arm_state;
+
+  std::vector<float> arm_state_data;
   int32_t joint_num = msg->numJoint;
   for (int i = 0; i < joint_num; ++i) {
-    float radians = msg->qFb[i];
-    float degrees = radiansToDegrees(radians);
-    LOG(INFO) << "  Joint position[ " << i << "] = " << degrees << " degrees ("
-              << radians << " radians)";
-    state_data.push_back(degrees);
+    LOG(INFO) << "  Joint position[ " << i << "] = " << msg->qFb[i];
+    arm_state_data.push_back(msg->qFb[i]);
   }
+
+  std::string arm_data_string(arm_state_data.size() * sizeof(float), '\0');
+  std::memcpy(&arm_data_string[0], arm_state_data.data(),
+              arm_state_data.size() * sizeof(float));
+
+  arm_state_array.add_shape(joint_num);
+  arm_state_array.set_data(arm_data_string);
+  arm_state_array.set_dtype(RobotServer::DataType::FLOAT32);
+
+  arm_state.set_id(0);
+  arm_state.set_name(kArmStateName);
+  arm_state.mutable_state_data()->CopyFrom(arm_state_array);
+  reply_state.add_state_list()->CopyFrom(arm_state);
+
+  // gripper state string
+  RobotServer::Array gripper_state_array;
+  RobotServer::State gripper_state;
+
+  std::vector<float> gripper_state_data;
   int32_t gripper_num = msg->numGripper;
   for (int i = 0; i < gripper_num; ++i) {
-    LOG(INFO) << "  Gripper position[ " << i << "] = " << msg->gripperPosFb[i];
-    state_data.push_back(msg->gripperPosFb[i]);
+    LOG(INFO) << "  Gripper position[" << i << "] = " << msg->gripperPosFb[i];
+    gripper_state_data.push_back(msg->gripperPosFb[i]);
   }
 
-  std::string data_string(state_data.size() * sizeof(float), '\0');
-  std::memcpy(&data_string[0], state_data.data(),
-              state_data.size() * sizeof(float));
+  std::string gripper_data_string(gripper_state_data.size() * sizeof(float),
+                                  '\0');
+  std::memcpy(&gripper_data_string[0], gripper_state_data.data(),
+              gripper_state_data.size() * sizeof(float));
 
-  RobotServer::Array robot_state;
-  robot_state.set_dtype(RobotServer::DataType::FLOAT32);
-  robot_state.add_shape(joint_num + gripper_num);
-  robot_state.set_data(data_string);
-  reply_state.add_state_list()->CopyFrom(robot_state);
+  gripper_state_array.add_shape(gripper_num);
+  gripper_state_array.set_data(gripper_data_string);
+  gripper_state_array.set_dtype(RobotServer::DataType::FLOAT32);
+
+  gripper_state.set_id(0);
+  gripper_state.set_name(kGripperStateName);
+  gripper_state.mutable_state_data()->CopyFrom(gripper_state_array);
+
+  bool all_zero = true;
+  if (msg->numFTsensor == 1) {
+    for (int32_t j = 0; j < 6; j++) {
+      if (msg->ftSensorFb[0][j] != 0.0f) {
+        all_zero = false;
+        break;
+      }
+    }
+  }
+
+  if (!all_zero) {
+    RobotServer::Array wrench_state_array;
+    RobotServer::State wrench_state;
+
+    std::vector<float> wrench_state_data;
+    for (int32_t i = 0; i < msg->numFTsensor; i++) {
+      for (int32_t j = 0; j < 6; j++) {
+        LOG(INFO) << "  Wrench position[ " << i << "][" << j
+                  << "]= " << msg->ftSensorFb[i][j];
+        wrench_state_data.push_back(msg->ftSensorFb[i][j]);
+      }
+    }
+
+    std::string wrench_data_string(wrench_state_data.size() * sizeof(float),
+                                   '\0');
+    std::memcpy(&wrench_data_string[0], wrench_state_data.data(),
+                wrench_state_data.size() * sizeof(float));
+
+    wrench_state_array.add_shape(wrench_state_data.size());
+    wrench_state_array.set_data(wrench_data_string);
+    wrench_state_array.set_dtype(RobotServer::DataType::FLOAT32);
+    wrench_state.set_id(0);
+    wrench_state.set_name(kWrenchStateName);
+    wrench_state.mutable_state_data()->CopyFrom(wrench_state_array);
+    reply_state.add_state_list()->CopyFrom(wrench_state);
+  }
+
+  reply_state.add_state_list()->CopyFrom(gripper_state);
 
   std::string serialized_data;
   if (!reply_state.SerializeToString(&serialized_data)) {
@@ -209,20 +264,27 @@ int32_t CActionServer::sendLcmActionData(
   // LCM message
   lcmMotion::act_command act_command;
 
+  std::vector<int8_t> chunk_sizes;
+
   if (multi_action.ParseFromArray(msg->getData().data(),
                                   msg->getData().size())) {
     _actionDataId = msg->getId();
+
     for (const auto &action : multi_action.action_list()) {
-      RobotServer::ActionType action_type = action.action_type();
+      int32_t id = action.id();
+      std::string name = action.name();
       int32_t action_rate = action.action_rate();
       RobotServer::Array action_data = action.action_data();
-      RobotServer::DataType dtype = action_data.dtype();
+
       std::string raw_data = action_data.data();
+      RobotServer::DataType dtype = action_data.dtype();
       int32_t step = action_data.shape(0);
       int32_t joints = action_data.shape(1);
 
+      chunk_sizes.push_back(step);
+
       LOG(INFO) << "[" << _serverName << "][DATA]: PackageType: ACTION_DATA"
-                << " Action_rate: " << action_rate << "Step: " << step
+                << " Action_rate: " << action_rate << " Step: " << step
                 << " joints: " << joints;
 
       switch (dtype) {
@@ -241,84 +303,84 @@ int32_t CActionServer::sendLcmActionData(
           output_stream << "data_point[" << i << "]: ";
 
           for (int32_t j = 0; j < joints; j++) {
-            float angle_value = data_point[i * joints + j];
-            float radian_value = degreesToRadians(angle_value);
-            output_stream << angle_value << " (radians: " << radian_value
-                          << ") ";
+            output_stream << data_point[i * joints + j] << " ";
           }
 
           LOG(INFO) << output_stream.str();
         }
 
-        auto epoch = std::chrono::system_clock::now().time_since_epoch();
-        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
-        auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            epoch - seconds);
-
-        act_command.sec = seconds.count();
-        act_command.nanosec = nanoseconds.count();
-        act_command.utime =
-            std::chrono::duration_cast<std::chrono::microseconds>(epoch)
-                .count();
-        act_command.seq = _lcmCnt.fetch_add(1);
-
-        act_command.chunkSize = step;
-        act_command.numJoint = joints - 1;
-        act_command.numGripper = 1; // Assuming 1 gripper
-        act_command.totalNumJoint =
-            act_command.chunkSize * act_command.numJoint;
-        act_command.totalNumGripper =
-            act_command.chunkSize * act_command.numGripper;
-        act_command.totalEePos = act_command.chunkSize * 3;
-        act_command.totalEeQuat = act_command.chunkSize * 4;
-        act_command.workMode = 0;
-
-        // Reserve memory
-        act_command.jointPos.resize(act_command.totalNumJoint);
-        act_command.jointVel.resize(act_command.totalNumJoint);
-        act_command.gripperPos.resize(act_command.totalNumGripper);
-        act_command.eePos.resize(act_command.totalEePos);
-        act_command.eeQuat.resize(act_command.totalEeQuat);
-
-        // Set joint positions and velocities
-        for (int32_t i = 0; i < step; ++i) {
-          for (int32_t j = 0; j < joints - 1; ++j) {
-            int32_t idx = i * (joints - 1) + j;
-            float radian = degreesToRadians(data_point[i * joints + j]);
-            act_command.jointPos[idx] = radian;
-            act_command.jointVel[idx] = 0.0f;
+        if (name == kArmActionName) {
+          act_command.numJoint = joints;
+          // Set joint positions and velocities
+          for (int32_t i = 0; i < step; ++i) {
+            for (int32_t j = 0; j < joints; ++j) {
+              act_command.jointPos.push_back(data_point[i * joints + j]);
+              act_command.jointVel.push_back(0.0);
+            }
           }
-
-          act_command.gripperPos[i] = data_point[i * joints + joints - 1];
-
-          // Set end effector positions and orientations
-          int32_t ee_pos_base = i * 3;
-          act_command.eePos[ee_pos_base + 0] = 0.0f;
-          act_command.eePos[ee_pos_base + 1] = 0.0f;
-          act_command.eePos[ee_pos_base + 2] = 0.0f;
-
-          int32_t ee_quat_base = i * 4;
-          act_command.eeQuat[ee_quat_base + 0] = 0.0f; // w
-          act_command.eeQuat[ee_quat_base + 1] = 0.0f; // x
-          act_command.eeQuat[ee_quat_base + 2] = 0.0f; // y
-          act_command.eeQuat[ee_quat_base + 3] = 0.0f; // z
+        } else if (name == kGripperActionName) {
+          act_command.numGripper = joints;
+          // Set gripper position
+          for (int32_t i = 0; i < step; ++i) {
+            for (int32_t j = 0; j < joints; ++j) {
+              act_command.gripperPos.push_back(data_point[i * joints + j]);
+            }
+          }
+        } else {
+          LOG(ERROR) << "Unsupported action name: " << name;
+          return -1;
         }
 
-        _lcm.publish(kChannelMotionCommand, &act_command);
-        LOG(INFO) << "[" << _serverName
-                  << "][LCM]: Send action command, seq: " << act_command.seq;
       } break;
       // TODO: support other data types
       default:
         LOG(ERROR) << "[" << _serverName
                    << "][DATA]: Unsupported data type: " << dtype;
-        break;
+        return -1;
       }
     }
   } else {
     LOG(ERROR) << "[" << _serverName
                << "][DATA]: Packet.data is not MultiAction format";
+    return -1;
   }
+
+  // check chunk_sizes should be equal
+  for (int32_t i = 0; i < chunk_sizes.size(); i++) {
+    if (chunk_sizes[i] != chunk_sizes[0]) {
+      LOG(ERROR)
+          << "[" << _serverName
+          << "][DATA]: All actions in Packet.data should have same chunk size";
+      return -1;
+    }
+  }
+
+  auto epoch = std::chrono::system_clock::now().time_since_epoch();
+  auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
+  auto nanoseconds =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(epoch - seconds);
+
+  act_command.sec = seconds.count();
+  act_command.nanosec = nanoseconds.count();
+  act_command.utime =
+      std::chrono::duration_cast<std::chrono::microseconds>(epoch).count();
+  act_command.seq = _lcmCnt.fetch_add(1);
+
+  act_command.chunkSize = chunk_sizes[0];
+  act_command.totalNumJoint = act_command.chunkSize * act_command.numJoint;
+  act_command.totalNumGripper = act_command.chunkSize * act_command.numGripper;
+
+  // Set end effector positions and orientations
+  act_command.totalEePos = act_command.chunkSize * 3;
+  act_command.totalEeQuat = act_command.chunkSize * 4;
+  act_command.eePos = std::vector<float>(act_command.totalEePos, 0);
+  act_command.eeQuat = std::vector<float>(act_command.totalEeQuat, 0);
+
+  act_command.workMode = 0;
+
+  _lcm.publish(kChannelMotionCommand, &act_command);
+  LOG(INFO) << "[" << _serverName
+            << "][LCM]: Send action command, seq: " << act_command.seq;
 
   return 0;
 }

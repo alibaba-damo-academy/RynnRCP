@@ -15,6 +15,7 @@ import sys
 import argparse
 import numpy as np
 import time
+import signal
 import logging
 import yaml
 from typing import Optional
@@ -33,6 +34,14 @@ from utils.lekiwi_velocity_mapping import chassis_ikvelocity
 from interface.unified_interface import create_robot_interface
 from common.lcm.lcmMotion.state_feedback import state_feedback
 
+def handle_signal(signum, frame):
+    print(f"Receive signal {signum}: {signal.Signals(signum).name}")
+    if signum in (signal.SIGINT, signal.SIGTERM):
+        print(f"Exiting gracefully")
+        raise KeyboardInterrupt
+    
+signal.signal(signal.SIGINT, handle_signal)
+signal.signal(signal.SIGTERM, handle_signal)
 
 class UnifiedRobotController:
     """
@@ -244,9 +253,7 @@ class UnifiedRobotController:
                 )
             else:
                 t = current_time - duration
-                joint0_loop_list = [0.0, np.pi / 3, 0.0, -np.pi / 3]
-                loop_count = int(t / duration) % 4
-                target[0] = joint0_loop_list[loop_count]
+                target[0] += 1.0 * amplitude * np.sin(2 * np.pi * frequency * t)
                 target[1] += 0.8 * amplitude * np.sin(3 * np.pi * frequency * t)
                 target[2] += 1.2 * amplitude * np.sin(4 * np.pi * frequency * t)
                 target[5] += 30 - 30 * np.cos(2 * np.pi * frequency * t)
@@ -613,6 +620,8 @@ class UnifiedRobotController:
             self.interpolator_plotter.close()
 
         if self.interface:
+            if self.mode == "real":
+                self.go_home_in_cleanup()
             self.interface.disconnect()
             self.logger.info("✓ Robot disconnected")
 
@@ -620,6 +629,21 @@ class UnifiedRobotController:
 
         self.logger.info("✓ Cleanup completed")
 
+    def go_home_in_cleanup(self):
+        self.go_home_start_position = self.interface.get_joint_positions(radians=True)
+        self.go_home_start_time = time.time()
+        elapsed_time = time.time() - self.go_home_start_time
+        duration = self.movement_parameters["movement_duration"]
+        while elapsed_time < duration:
+            self.qPos_command = lerp(
+                self.go_home_start_position,
+                self.home_position,
+                elapsed_time,
+                duration,
+            )
+            self.interface.set_joint_positions(self.qPos_command, radians=True)
+            elapsed_time = time.time() - self.go_home_start_time
+    
     def gen_joint_plots(self):
         """Generate joint plots."""
         if self.joint_plotter and self.joint_plot_flag:

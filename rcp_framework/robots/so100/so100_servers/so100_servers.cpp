@@ -8,6 +8,7 @@
  */
 
 #include <glog/logging.h>
+#include <signal.h>
 #include <sys/stat.h>
 
 #include <chrono>
@@ -26,12 +27,20 @@ using CActionServer = rynnrcp::fw::robot::CActionServer;
 using CSensorServer = rynnrcp::fw::robot::CSensorServer;
 using CDeviceMonitorServer = rynnrcp::fw::robot::CDeviceMonitorServer;
 
+void signal_handler(int signum) {
+  LOG(INFO) << "Received signal " << signum << ". Exiting gracefully...";
+  exit(-1);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0]
               << " <path_to_device_config> <path_to_glog_config>" << std::endl;
     return -1;
   }
+
+  signal(SIGINT, signal_handler);
+  signal(SIGTERM, signal_handler);
 
   std::string device_config_path = argv[1];
   std::string glog_config_path = argv[2];
@@ -63,6 +72,7 @@ int main(int argc, char *argv[]) {
   CDeviceMonitorServer device_monitor_server("DeviceMonitorServer",
                                              jsonrpc_client, data_client);
   device_monitor_server.start();
+  device_monitor_server.setRobotName(std::string("so100"));
 
   while (true) {
     std::cout << "Press Ctrl-C to terminate" << std::endl;

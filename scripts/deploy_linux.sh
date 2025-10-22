@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# OpenRCP Linux deployment script
 # Script for checking, installing, and configuring various dependencies required
 # for a robotics project, including libraries, tools.
 
@@ -32,19 +33,46 @@ check_isInstall_simple()
 
 install_cmake()
 {
-    echo "Checking if the device has installed cmake..."
-    sleep 0.2
-    check_isInstall_simple cmake
+    echo "Checking cmake version compatibility..."
     
-    if [ $value_exit -eq 1 ]; then
-        sudo apt-get install cmake -y
+    if command -v cmake >/dev/null 2>&1; then
+        CMAKE_VERSION=$(cmake --version | head -n1 | cut -d" " -f3)
+        CMAKE_MAJOR=$(echo $CMAKE_VERSION | cut -d. -f1)
+        CMAKE_MINOR=$(echo $CMAKE_VERSION | cut -d. -f2)
+        
+        echo "Found CMake version: $CMAKE_VERSION"
+        
+        if [ $CMAKE_MAJOR -gt 3 ] || [ $CMAKE_MAJOR -eq 3 -a $CMAKE_MINOR -ge 5 ]; then
+            echo "CMake version is sufficient for building LCM"
+            return 0
+        else
+            echo "CMake version is too old, attempting to install newer version..."
+        fi
+    else
+        echo "CMake not found, installing..."
+    fi
+    
+    sudo apt-get update
+    sudo apt-get install cmake -y
+    
+    if command -v cmake >/dev/null 2>&1; then
+        CMAKE_VERSION=$(cmake --version | head -n1 | cut -d" " -f3)
+        CMAKE_MAJOR=$(echo $CMAKE_VERSION | cut -d. -f1)
+        CMAKE_MINOR=$(echo $CMAKE_VERSION | cut -d. -f2)
+        
+        echo "Installed CMake version: $CMAKE_VERSION"
+        
+        if [ $CMAKE_MAJOR -gt 3 ] || [ $CMAKE_MAJOR -eq 3 -a $CMAKE_MINOR -ge 5 ]; then
+            echo "CMake version is now sufficient"
+        else
+            echo "Warning: CMake version might still be too old. LCM compilation will use compatibility flags."
+        fi
     fi
 }
 
 install_dependence_essential()
 {
     echo "Checking if the device has installed build-essential..."
-    sleep 0.2
     check_isInstall_simple build-essential
     
     if [ $value_exit -eq 1 ]; then
@@ -55,7 +83,6 @@ install_dependence_essential()
 install_dependence_python()
 {
     echo "Checking if the device has installed python-all-dev..."
-    sleep 0.2
     check_isInstall_simple python-all-dev
     
     if [ $value_exit -eq 1 ]; then
@@ -66,7 +93,6 @@ install_dependence_python()
 install_glib()
 {
     echo "Checking if the device has installed libglib2.0-dev..."
-    sleep 0.2
     check_isInstall_simple libglib2.0-dev
     
     if [ $value_exit -eq 1 ]; then
@@ -74,13 +100,11 @@ install_glib()
     fi
 
     echo "libglib2.0's config process has ended..."
-    sleep 0.2
 }
 
 install_google_glog()
 {
     echo "Checking if the device has installed libgoogle-glog..."
-    sleep 0.2
     check_isInstall_simple libgoogle-glog-dev
     
     if [ $value_exit -eq 1 ]; then
@@ -88,7 +112,6 @@ install_google_glog()
     fi
 
     echo "libgoogle_glog's config process has ended..."
-    sleep 0.2
 }
 
 install_protobuf()
@@ -106,7 +129,7 @@ install_protobuf()
    else
        echo "protoc is less than 3.0.0 or it is not installed ..."
        echo "installing the latest libprotoc..."
-       sudo apt install protobuf-compiler libprotobuf-dev  
+       sudo apt install protobuf-compiler libprotobuf-dev -y
    fi
 
    echo "protoc's config process has ended..."
@@ -169,11 +192,24 @@ install_all_dependence_library()
 liblcm_compile()
 {
     echo "Compiling LCM..."
-    sleep 0.2
     cd ${PROJECT_ROOT_DIR}/build/third_party/lcm-1.5.0/build
+
+    CMAKE_VERSION=$(cmake --version | head -n1 | cut -d" " -f3)
+    CMAKE_MAJOR=$(echo $CMAKE_VERSION | cut -d. -f1)
+    CMAKE_MINOR=$(echo $CMAKE_VERSION | cut -d. -f2)
+    
+    CMAKE_FLAGS=""
+    
+    if [ $CMAKE_MAJOR -gt 3 ] || [ $CMAKE_MAJOR -eq 3 -a $CMAKE_MINOR -ge 5 ]; then
+        echo "Using CMake $CMAKE_VERSION - adding compatibility flags for LCM"
+        CMAKE_FLAGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+    else
+        echo "Using CMake $CMAKE_VERSION - no compatibility flags needed"
+    fi
 
     cmake \
         ${PROJECT_ROOT_DIR}/common/third_party/lcm-1.5.0/ \
+        $CMAKE_FLAGS \
         -DLCM_ENABLE_EXAMPLES=OFF \
         -DLCM_ENABLE_PYTHON=OFF \
         -DLCM_ENABLE_JAVA=OFF \
@@ -183,13 +219,11 @@ liblcm_compile()
     make -j$compile_cpu
     
     cd ${PROJECT_ROOT_DIR}
-    sleep 0.2
 }
 
 libwebsockets_compile()
 {
     echo "Compiling libwebsockets..."
-    sleep 0.2
     cd ${PROJECT_ROOT_DIR}/build/third_party/libwebsockets-4.0.20/build
 
     # Use OpenSSL
@@ -204,13 +238,11 @@ libwebsockets_compile()
 
     make -j${compile_cpu}
     cd ${PROJECT_ROOT_DIR}
-    sleep 0.2
 }
 
 libmqtt_compile()
 {
     echo "Compiling paho.mqtt.c..."
-    sleep 0.2
  
     cd ${PROJECT_ROOT_DIR}/build/third_party/libpaho.mqtt.c-1.3.14/build
     
@@ -223,20 +255,17 @@ libmqtt_compile()
     make -j${compile_cpu}
  
     cd ${PROJECT_ROOT_DIR}
-    sleep 0.2
 }
 
 libyaml_cpp_compile()
 {
     echo "Compiling libyaml-cpp..."
-    sleep 0.2
     
     cd ${PROJECT_ROOT_DIR}/build/third_party/libyaml-cpp-0.7.0/build
     cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON ${PROJECT_ROOT_DIR}/common/third_party/libyaml-cpp-0.7.0/
     make -j${compile_cpu}
     
     cd ${PROJECT_ROOT_DIR}
-    sleep 0.2
 }
 
 third_party_compile()
@@ -256,7 +285,6 @@ third_party_compile()
 robot_server_compile()
 {
     echo "Compiling server..."
-    sleep 0.2
  
     export LDFLAGS="-L${PROJECT_ROOT_DIR}/build/third_party/openssl-3.2.0/"
     cmake -DCMAKE_C_FLAGS="-Wno-deprecated-declarations" -B build
@@ -264,17 +292,38 @@ robot_server_compile()
      
     echo "server's compile process has ended..."
     export LIBRARY_PATH=$TMP
-    sleep 0.2
 }
 
-check_root_dir
-install_all_dependence_library 
-install_Openssl3
-download_third_party_source_code
-third_party_compile  
-robot_server_compile
+main()
+{
+    echo "=================================="
+    echo "OpenRCP Linux Deployment"
+    echo "=================================="
+    echo "Installing system dependencies..."
+    echo "=================================="
+    
+    check_root_dir
+    install_all_dependence_library 
+    install_Openssl3
+    download_third_party_source_code
+    third_party_compile  
+    robot_server_compile
+    configLcm
+    
+    echo "=================================="
+    echo "Linux deployment completed successfully!"
+    echo "=================================="
+    echo ""
+    echo "Next steps:"
+    echo "1. Activate your Python virtual environment"
+    echo "2. Install Python requirements: pip install -r requirements.txt"
+    echo "3. Install the lerobot package: cd robot_motion/robots/lerobot && pip install -e ."
+    echo "4. Configure your robot: python example/configure_so100.py"
+    echo "5. Run the system: bash example/so100.sh"
+    
+    cd $CURRENT_DIR
+}
 
-#-----------------------config LCM---------------------------------------------------
 configLcm()
 {
     echo "Ready to configure LCM..."
@@ -299,9 +348,8 @@ configLcm()
     else
         echo "The default size of LCM udp buffer doesn't need modification..."
     fi
-    sudo sysctl -p
-    sleep 0.2
+    sudo sysctl -p || echo "Can't reload sysctl.conf. Please manually reload (sudo sysctl -p) if not in a Docker environment."
 }
-configLcm
 
-cd $CURRENT_DIR
+# Run main function
+main "$@"

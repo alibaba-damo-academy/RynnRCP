@@ -109,7 +109,6 @@ std::string CAuthManager::genSignature(
   std::string content = genSignContent(product_key, timestamp, nonce, ext_args);
   return hmacSha1(content, secret);
 }
-
 Json CAuthManager::getMqttConfig() {
   httplib::Client cli(_httpUrl.c_str());
 
@@ -117,122 +116,159 @@ Json CAuthManager::getMqttConfig() {
   cli.enable_server_certificate_verification(false);
 #endif
 
-  auto res_mqtt =
-      cli.Post(_endpointMqtt.c_str(), _payload.dump(), "application/json");
+  int attempt_count = 0;
 
-  if (res_mqtt == nullptr) {
-    throw std::runtime_error("Request token failed, got NULL, recheck config");
-  }
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    attempt_count++;
 
-  if (res_mqtt->status == httplib::OK_200) {
-    try {
-      auto payload = Json::parse(res_mqtt->body);
-      LOG(INFO) << "[AUTH][HTTP]: MQTT Response: " << payload.dump(4);
+    auto res_mqtt =
+        cli.Post(_endpointMqtt.c_str(), _payload.dump(), "application/json");
 
-      _clientId = payload["data"]["clientId"];
-      _mqttHost = payload["data"]["endpoint"];
-      _deviceAk = payload["data"]["accessKeyId"];
-      _deviceSk = payload["data"]["accessKeySecret"];
-      _instanceId = payload["data"]["instanceId"];
-      _mqttPort = kMqttPort;
+    if (res_mqtt == nullptr) {
+      LOG(ERROR)
+          << "Request token failed: got NULL, recheck config or net (Attempt: "
+          << attempt_count << ")";
+    } else if (res_mqtt->status != httplib::OK_200) {
+      LOG(ERROR) << "Request MQTT token failed with status: "
+                 << res_mqtt->status
+                 << ", recheck config or net (Attempt: " << attempt_count
+                 << ")";
+    } else {
+      Json payload;
+      try {
+        payload = Json::parse(res_mqtt->body);
+        LOG(INFO) << "[AUTH][HTTP]: MQTT Request: " << _payload.dump(4);
+      } catch (const std::exception &e) {
+        LOG(ERROR) << "MQTT response body parse failed: " << e.what()
+                   << " (Attempt: " << attempt_count << ")";
+      }
 
-    } catch (const std::exception &e) {
-      throw std::runtime_error("MQTT response body parse failed: "
-                               + std::string(e.what()));
+      if (payload.contains("code")
+          && payload["code"] != std::to_string(httplib::StatusCode::OK_200)) {
+        LOG(ERROR) << "Request token failed: got " << payload["code"]
+                   << ", recheck config (Attempt: " << attempt_count << ")";
+      } else if (payload.contains("data")) {
+        LOG(INFO) << "[AUTH][HTTP]: MQTT Response: " << payload.dump(4);
+
+        _clientId = payload["data"]["clientId"];
+        _mqttHost = payload["data"]["endpoint"];
+        _deviceAk = payload["data"]["accessKeyId"];
+        _deviceSk = payload["data"]["accessKeySecret"];
+        _instanceId = payload["data"]["instanceId"];
+        _mqttPort = kMqttPort;
+
+        return {
+            {"product_key", _productKey}, {"device_name", _deviceName},
+            {"device_ak", _deviceAk},     {"device_sk", _deviceSk},
+            {"client_id", _clientId},     {"mqtt_host", _mqttHost},
+            {"instance_id", _instanceId}, {"mqtt_port", _mqttPort},
+        };
+      }
     }
-  } else {
-    throw std::runtime_error("Request mqtt token failed with status: "
-                             + std::to_string(res_mqtt->status));
   }
-
-  return {
-      {"product_key", _productKey}, {"device_name", _deviceName},
-      {"device_ak", _deviceAk},     {"device_sk", _deviceSk},
-      {"client_id", _clientId},     {"mqtt_host", _mqttHost},
-      {"instance_id", _instanceId}, {"mqtt_port", _mqttPort},
-  };
 }
 
 Json CAuthManager::getWsConfig() {
   httplib::Client cli(_httpUrl.c_str());
-
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
   cli.enable_server_certificate_verification(false);
 #endif
 
-  auto res_ws =
-      cli.Post(_endpointWebsocket.c_str(), _payload.dump(), "application/json");
+  int attempt_count = 0;
 
-  if (res_ws == nullptr) {
-    throw std::runtime_error("Request token failed, got NULL, recheck config");
-  }
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    attempt_count++;
 
-  if (res_ws->status == httplib::OK_200) {
-    try {
-      auto payload = Json::parse(res_ws->body);
-      LOG(INFO) << "[AUTH][HTTP]: WS Response: " << payload.dump(4);
+    auto res_ws = cli.Post(_endpointWebsocket.c_str(), _payload.dump(),
+                           "application/json");
 
-      _expire = payload["data"]["expire"];
-      _token = payload["data"]["token"];
-      _websocketUrl = payload["data"]["uri"];
-
-      char websocket_host[kMaxUrlPartLength + 1];
-      char websocket_path[kMaxUrlPartLength + 1];
-      memset(websocket_host, 0, sizeof(websocket_host));
-      memset(websocket_path, 0, sizeof(websocket_path));
-
-      std::string url_without_protocol;
-      if (strncmp(_websocketUrl.data(), "wss://", strlen("wss://")) == 0) {
-        url_without_protocol = _websocketUrl.substr(strlen("wss://"));
-      } else if (strncmp(_websocketUrl.data(), "ws://", strlen("ws://")) == 0) {
-        url_without_protocol = _websocketUrl.substr(strlen("ws://"));
-      } else {
-        throw std::runtime_error("URL must start with 'ws://' or 'wss://'");
+    if (res_ws == nullptr) {
+      LOG(ERROR)
+          << "Request token failed: got NULL, recheck config or net (Attempt: "
+          << attempt_count << ")";
+    } else if (res_ws->status != httplib::OK_200) {
+      LOG(ERROR) << "Request WebSocket token failed with status: "
+                 << res_ws->status << " (Attempt: " << attempt_count << ")";
+    } else {
+      Json payload;
+      try {
+        payload = Json::parse(res_ws->body);
+        LOG(INFO) << "[AUTH][HTTP]: WS Response: " << payload.dump(4);
+      } catch (const std::exception &e) {
+        LOG(ERROR) << "WebSocket response body parse failed: " << e.what()
+                   << " (Attempt: " << attempt_count << ")";
+        continue;
       }
 
-      // Find the first '/' character to split host and path
-      size_t slash_pos = url_without_protocol.find('/');
-      std::string host_part, path_part;
-
-      if (slash_pos != std::string::npos) {
-        host_part = url_without_protocol.substr(0, slash_pos);
-        path_part = url_without_protocol.substr(slash_pos);
-      } else {
-        host_part = url_without_protocol;
-        path_part = "/";
+      if (payload.contains("code")
+          && payload["code"] != std::to_string(httplib::StatusCode::OK_200)) {
+        LOG(ERROR) << "Request token failed: got " << payload["code"]
+                   << ", recheck config (Attempt: " << attempt_count << ")";
+        continue;
       }
 
-      if (host_part.length() > kMaxUrlPartLength) {
-        throw std::runtime_error("WebSocket host part too long, max length is "
-                                 + std::to_string(kMaxUrlPartLength));
+      try {
+        _expire = payload["data"]["expire"];
+        _token = payload["data"]["token"];
+        _websocketUrl = payload["data"]["uri"];
+
+        char websocket_host[kMaxUrlPartLength + 1] = {0};
+        char websocket_path[kMaxUrlPartLength + 1] = {0};
+
+        std::string url_without_protocol;
+        if (strncmp(_websocketUrl.data(), "wss://", strlen("wss://")) == 0) {
+          url_without_protocol = _websocketUrl.substr(strlen("wss://"));
+        } else if (strncmp(_websocketUrl.data(), "ws://", strlen("ws://"))
+                   == 0) {
+          url_without_protocol = _websocketUrl.substr(strlen("ws://"));
+        } else {
+          throw std::runtime_error("URL must start with 'ws://' or 'wss://'");
+        }
+
+        size_t slash_pos = url_without_protocol.find('/');
+        std::string host_part, path_part;
+
+        if (slash_pos != std::string::npos) {
+          host_part = url_without_protocol.substr(0, slash_pos);
+          path_part = url_without_protocol.substr(slash_pos);
+        } else {
+          host_part = url_without_protocol;
+          path_part = "/";
+        }
+
+        if (host_part.length() > kMaxUrlPartLength) {
+          throw std::runtime_error(
+              "WebSocket host part too long, max length is "
+              + std::to_string(kMaxUrlPartLength));
+        }
+
+        if (path_part.length() > kMaxUrlPartLength) {
+          throw std::runtime_error(
+              "WebSocket path part too long, max length is "
+              + std::to_string(kMaxUrlPartLength));
+        }
+
+        strncpy(websocket_host, host_part.c_str(), host_part.length());
+        strncpy(websocket_path, path_part.c_str(), path_part.length());
+
+        _websocketHost = websocket_host;
+        _websocketPath = websocket_path;
+        _websocketPort = kWebsocketPort;
+
+        return {{"token", _token},
+                {"expire", _expire},
+                {"websocket_host", _websocketHost},
+                {"websocket_path", _websocketPath},
+                {"websocket_port", _websocketPort}};
+
+      } catch (const std::exception &e) {
+        LOG(ERROR) << "Failed to extract WebSocket data: " << e.what()
+                   << " (Attempt: " << attempt_count << ")";
       }
-
-      if (path_part.length() > kMaxUrlPartLength) {
-        throw std::runtime_error("WebSocket path part too long max length is "
-                                 + std::to_string(kMaxUrlPartLength));
-      }
-
-      strncpy(websocket_host, host_part.c_str(), host_part.length());
-      strncpy(websocket_path, path_part.c_str(), path_part.length());
-
-      _websocketHost = websocket_host;
-      _websocketPath = websocket_path;
-      _websocketPort = kWebsocketPort;
-
-    } catch (const std::exception &e) {
-      throw std::runtime_error("WebSocket response body parse failed: "
-                               + std::string(e.what()));
     }
-  } else {
-    throw std::runtime_error("Request WebSocket token failed with status: "
-                             + std::to_string(res_ws->status));
   }
-
-  return {{"token", _token},
-          {"expire", _expire},
-          {"websocket_host", _websocketHost},
-          {"websocket_path", _websocketPath},
-          {"websocket_port", _websocketPort}};
 }
 
 }}} // namespace rynnrcp::fw::common

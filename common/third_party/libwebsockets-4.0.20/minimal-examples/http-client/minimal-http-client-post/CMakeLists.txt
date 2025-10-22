@@ -1,5 +1,5 @@
 project(lws-minimal-http-client-post)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 include(CheckCSourceCompiles)
 
 set(SAMP lws-minimal-http-client-post)

@@ -1,5 +1,5 @@
 project(lws-minimal-http-server-basicauth)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 include(CheckCSourceCompiles)
 
 set(SAMP lws-minimal-http-server-basicauth)

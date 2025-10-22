@@ -1,5 +1,5 @@
 project(lws-api-test-lws_tokenize)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 include(CheckCSourceCompiles)
 
 set(SAMP lws-api-test-lws_tokenize)
