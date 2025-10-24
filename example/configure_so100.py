@@ -402,7 +402,7 @@ def configure_robot():
                 if 'dialout' not in groups:
                     logging.warning("User not in dialout group, adding...")
                     subprocess.run(
-                        ['sudo', 'usermod', '-aG', 'dialout', os.getenv('USER')],
+                        ['sudo', 'usermod', '-aG', 'dialout', os.getenv('USER', 'root')],
                         check=True
                     )
                     logging.info("User added to dialout group. Please relogin.")

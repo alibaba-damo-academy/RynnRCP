@@ -86,8 +86,23 @@ install_dependence_python()
     check_isInstall_simple python-all-dev
     
     if [ $value_exit -eq 1 ]; then
-        sudo apt-get install python-all-dev -y
+        if sudo apt-get install python-all-dev -y; then
+            echo "python-all-dev installed successfully"
+        else
+            echo -e "\033[33m[WARNING]: Failed to install python-all-dev. skipping.\033[0m" 
+        fi
     fi
+
+    check_isInstall_simple python3-dev
+
+    if [ $value_exit -eq 1 ]; then
+        if sudo apt-get install python3-dev -y; then
+            echo "python3-dev installed successfully"
+        else
+            echo -e "\033[33m[WARNING]: Failed to install python3-dev. skipping.\033[0m" 
+        fi
+    fi
+
 }
 
 install_glib()
@@ -233,7 +248,7 @@ libwebsockets_compile()
         -DOPENSSL_INCLUDE_DIR=${OPENSSL_ROOT_DIR}/include \
         -DOPENSSL_CRYPTO_LIBRARY=${OPENSSL_ROOT_DIR}/libcrypto.so \
         -DOPENSSL_SSL_LIBRARY=${OPENSSL_ROOT_DIR}/libssl.so \
-        -DCMAKE_C_FLAGS="-Wno-deprecated-declarations" \
+        -DCMAKE_C_FLAGS="-Wno-deprecated-declarations -Wno-enum-int-mismatch" \
         ${PROJECT_ROOT_DIR}/common/third_party/libwebsockets-4.0.20/
 
     make -j${compile_cpu}
@@ -294,6 +309,7 @@ robot_server_compile()
     export LIBRARY_PATH=$TMP
 }
 
+
 main()
 {
     echo "=================================="
@@ -329,6 +345,7 @@ configLcm()
     echo "Ready to configure LCM..."
     echo "Modifying /etc/sysctl.conf... adjust the max size of LCM udp buffer for camera..."
     FILE="/etc/sysctl.conf"
+    sudo touch /etc/sysctl.conf
     sudo chmod 666 /etc/sysctl.conf
     SEARCH_STRING="net.core.rmem_max = 16777216"
     CONTENT_TO_ADD="net.core.rmem_max = 16777216"
@@ -348,7 +365,7 @@ configLcm()
     else
         echo "The default size of LCM udp buffer doesn't need modification..."
     fi
-    sudo sysctl -p || echo "Can't reload sysctl.conf. Please manually reload (sudo sysctl -p) if not in a Docker environment."
+    sudo sysctl -p || echo -e "\033[33m[WARNING]: Can't reload sysctl.conf. Please manually reload (sudo sysctl -p) if not in a Docker environment.\033[0m"
 }
 
 # Run main function
