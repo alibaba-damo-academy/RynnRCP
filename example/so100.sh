@@ -1,5 +1,4 @@
 #!/bin/bash
-# Script to launch nodes
 set -e
 
 CURRENT_DIR="$(pwd)"
@@ -10,8 +9,23 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
-# Temporary set LD_LIBRARY_PATH for local libs
-export LD_LIBRARY_PATH=\
+OS_TYPE=$(uname)
+
+if [[ "$OS_TYPE" == "Darwin" ]]; then
+    export DYLD_LIBRARY_PATH=\
+"${PROJECT_ROOT_DIR}/build/third_party/libpaho.mqtt.c-1.3.14/build/src:"\
+"${PROJECT_ROOT_DIR}/build/rcp_framework/cpp/robot_server:"\
+"$DYLD_LIBRARY_PATH"
+    
+    if [[ -d "/opt/homebrew/lib" ]]; then
+        export DYLD_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_LIBRARY_PATH"
+    elif [[ -d "/usr/local/lib" ]]; then
+        export DYLD_LIBRARY_PATH="/usr/local/lib:$DYLD_LIBRARY_PATH"
+    fi
+    
+    log "Using macOS library paths"
+else
+    export LD_LIBRARY_PATH=\
 "${PROJECT_ROOT_DIR}/build/third_party/libpaho.mqtt.c-1.3.14/build/src:"\
 "${PROJECT_ROOT_DIR}/build/third_party/lcm-1.5.0/build/lcm:"\
 "${PROJECT_ROOT_DIR}/build/third_party/libwebsockets-4.0.20/build/lib:"\
@@ -20,8 +34,10 @@ export LD_LIBRARY_PATH=\
 "${PROJECT_ROOT_DIR}/build/third_party/openssl-3.2.0:"\
 "${PROJECT_ROOT_DIR}/build/rcp_framework/cpp/robot_server:"\
 "$LD_LIBRARY_PATH"
+    
+    log "Using Linux library paths"
+fi
 
-# Check for DEBUG mode
 if [[ "$1" == "DEBUG" ]]; then
     LOG_OUTPUT="/dev/stdout"
 else
@@ -31,11 +47,8 @@ fi
 log "Starting robot motion..."
 cd $PROJECT_ROOT_DIR
 
-# Subshells allow background processes to run independently, 
-# enabling graceful signal handling like SIGINT for proper termination.
 
 cd robot_motion/robots/lerobot
-# Start the robot motion process in the background using a subshell
 ( 
     python3 -m scripts.unified_controller --mode real  >> "$LOG_OUTPUT" 2>&1
 ) &
@@ -45,7 +58,6 @@ log "Robot motion started with PID: $MOTION_PID"
 log "Starting server node..."
 cd $PROJECT_ROOT_DIR
 
-# Start the robot server process in the background using a subshell
 ( 
     ./build/rcp_framework/robots/so100/so100_servers/so100_servers \
     ./rcp_framework/robots/so100/config/device_config.yaml \
@@ -57,7 +69,6 @@ log "Server started with PID: $SERVER_PID"
 log "Starting camera node..."
 cd $PROJECT_ROOT_DIR
 
-# Start the camera node process in the background using a subshell
 ( 
     python3 -m rcp_framework.robots.so100.camera_node.camera_node \
     --camera_config rcp_framework/robots/so100/config/cameras.yaml \
@@ -70,8 +81,6 @@ log "Log file to path: ~/RynnRcplog/"
 
 cleanup() {
     log "Stopping processes..."
-    # Send SIGINT signal to the processes to allow them to terminate gracefully
-    kill -SIGINT $SERVER_PID $CAMERA_PID $MOTION_PID
     wait $SERVER_PID $CAMERA_PID $MOTION_PID 2>/dev/null
     log "Processes stopped."
     exit 0

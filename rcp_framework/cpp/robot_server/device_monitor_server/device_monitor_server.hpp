@@ -7,6 +7,13 @@
 
 #include "terminal_device_server.hpp"
 
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <mach/mach_host.h>
+#include <mach/processor_info.h>
+#include <sys/sysctl.h>
+#endif
+
 namespace rynnrcp { namespace fw { namespace robot {
 
 using rynnrcp::fw::common::getNonce;
@@ -43,10 +50,15 @@ public:
   void reportProperties(const Json &params);
 
   /**
+   * @brief Reports basic system properties
+   */
+  void reportBasicProperties();
+
+  /**
    * @brief Retrieves the Ubuntu version
    * @return Ubuntu version string
    */
-  std::string getUbuntuVersion();
+  std::string getOperatingSystem();
 
   /**
    * @brief Retrieves the kernel version
@@ -94,12 +106,19 @@ public:
                                 const std::string &chan,
                                 const lcmSensor::camera_list_desc *msg);
 
+  /**
+   * @brief Sets the robot name
+   * @param robot_name
+   */
+  void setRobotName(const std::string &robot_name);
+
 private:
   lcm::LCM _lcm;                      ///< LCM instance
   std::thread _lcmThread;             ///< Thread for LCM processing
   std::vector<int64_t> _prevCpuTimes; ///< Previous CPU times
   std::vector<int64_t> _currCpuTimes; ///< Current CPU times
   std::thread _periodicReportThread;  ///< Thread for periodic reporting
+  std::string _robotName;             ///< Robot name
 };
 
 }}} // namespace rynnrcp::fw::robot

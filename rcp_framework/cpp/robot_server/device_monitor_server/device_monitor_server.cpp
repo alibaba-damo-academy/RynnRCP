@@ -11,13 +11,8 @@ CDeviceMonitorServer::CDeviceMonitorServer(
     const std::string &name, const std::shared_ptr<CJsonRpcComm> jsonrpc_client,
     const std::shared_ptr<CDataComm> data_client) :
     CTerminalDeviceServer(name, jsonrpc_client, data_client) {
-  Json params;
-  params["mem"] = getMemorySize();
-  params["arch"] = getArchitecture();
-  params["kernel"] = getKernelVersion();
-  params["distrib_desc"] = getUbuntuVersion();
-  params["arm_info"] = "so100";
-  reportProperties(params);
+  _robotName = "robot";
+  reportBasicProperties();
 
   _prevCpuTimes = getCpuTimes();
 
@@ -53,6 +48,21 @@ CDeviceMonitorServer::CDeviceMonitorServer(
 
 CDeviceMonitorServer::~CDeviceMonitorServer() {
   if (_periodicReportThread.joinable()) { _periodicReportThread.join(); }
+}
+
+void CDeviceMonitorServer::setRobotName(const std::string &robot_name) {
+  LOG(INFO) << "[" << _serverName << "] Setting robot name to " << robot_name;
+  _robotName = robot_name;
+  reportBasicProperties();
+}
+void CDeviceMonitorServer::reportBasicProperties() {
+  Json params;
+  params["mem"] = getMemorySize();
+  params["arch"] = getArchitecture();
+  params["kernel"] = getKernelVersion();
+  params["distrib_desc"] = getOperatingSystem();
+  params["arm_info"] = _robotName;
+  reportProperties(params);
 }
 
 void CDeviceMonitorServer::handleCameraDescFeedback(
@@ -106,7 +116,10 @@ void CDeviceMonitorServer::reportProperties(const Json &params) {
   _jsonrpcClient->send(protocol_msg);
 }
 
-std::string CDeviceMonitorServer::getUbuntuVersion() {
+std::string CDeviceMonitorServer::getOperatingSystem() {
+#ifdef __APPLE__
+  return "macOS";
+#else
   try {
     std::ifstream file("/etc/os-release");
     if (!file.is_open()) { return "unknown"; }
@@ -125,6 +138,7 @@ std::string CDeviceMonitorServer::getUbuntuVersion() {
     LOG(ERROR) << "Failed to get Ubuntu version: " << e.what();
   }
   return "unknown";
+#endif
 }
 
 std::string CDeviceMonitorServer::getKernelVersion() {
@@ -142,7 +156,21 @@ std::string CDeviceMonitorServer::getArchitecture() {
   try {
     struct utsname buffer;
     if (uname(&buffer) != 0) { return "unknown"; }
-    return std::string(buffer.machine);
+
+    std::string architecture(buffer.machine);
+
+#ifdef __APPLE__
+    if (architecture == "x86_64") {
+      return "x86_64 (Intel)";
+    } else if (architecture == "arm64") {
+      return "arm64 (Apple Silicon)";
+    } else {
+      return architecture;
+    }
+#else
+    return architecture;
+#endif
+
   } catch (const std::exception &e) {
     LOG(ERROR) << "Failed to get Architecture: " << e.what();
     return "unknown";
@@ -162,6 +190,35 @@ std::string CDeviceMonitorServer::getMemorySize() {
 }
 
 std::string CDeviceMonitorServer::getMemoryUsed() {
+#ifdef __APPLE__
+  try {
+    uint64_t total_mem;
+    size_t len = sizeof(total_mem);
+    if (sysctlbyname("hw.memsize", &total_mem, &len, NULL, 0) != 0) {
+      throw std::runtime_error("Failed to get memory size");
+    }
+
+    mach_port_t host = mach_host_self();
+    vm_statistics64_data_t vm_stat;
+    unsigned int count = HOST_VM_INFO64_COUNT;
+    vm_size_t page_size;
+
+    if (host_page_size(host, &page_size) != KERN_SUCCESS
+        || host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm_stat,
+                             &count)
+               != KERN_SUCCESS) {
+      throw std::runtime_error("Failed to get memory statistics");
+    }
+
+    uint64_t free = vm_stat.free_count * page_size;
+    double mem_used = (double)(total_mem - free) / 1024;
+
+    return std::to_string(mem_used);
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Failed to get Memory Used on Mac: " << e.what();
+    return "unknown";
+  }
+#else
   try {
     std::ifstream file("/proc/meminfo");
     if (!file.is_open()) { return "unknown"; }
@@ -181,12 +238,12 @@ std::string CDeviceMonitorServer::getMemoryUsed() {
     }
 
     int64_t mem_used = mem_total - mem_available;
-    if (mem_used < 0) { mem_used = 0; }
-    return std::to_string(mem_used);
+    return std::to_string(mem_used < 0 ? 0 : mem_used);
   } catch (const std::exception &e) {
-    LOG(ERROR) << "Failed to get Memory Used: " << e.what();
+    LOG(ERROR) << "Failed to get Memory Used on Linux: " << e.what();
     return "unknown";
   }
+#endif
 }
 
 std::vector<int64_t> CDeviceMonitorServer::getCpuTimes() {
@@ -212,6 +269,54 @@ std::vector<int64_t> CDeviceMonitorServer::getCpuTimes() {
 }
 
 std::string CDeviceMonitorServer::getCpuLoad() {
+#ifdef __APPLE__
+  try {
+    host_name_port_t host = mach_host_self();
+    mach_msg_type_number_t count;
+    processor_cpu_load_info_t cpu_load;
+    natural_t processor_count;
+
+    if (host_processor_info(host, PROCESSOR_CPU_LOAD_INFO, &processor_count,
+                            (processor_info_array_t *)&cpu_load, &count)
+        != KERN_SUCCESS) {
+      throw std::runtime_error("Failed to get CPU information");
+    }
+
+    sleep(1);
+
+    processor_cpu_load_info_t prev_cpu_load = cpu_load;
+    if (host_processor_info(host, PROCESSOR_CPU_LOAD_INFO, &processor_count,
+                            (processor_info_array_t *)&cpu_load, &count)
+        != KERN_SUCCESS) {
+      throw std::runtime_error("Failed to get CPU information");
+    }
+
+    unsigned long long total = 0, used = 0;
+    for (natural_t i = 0; i < processor_count; i++) {
+      unsigned long long user = cpu_load[i].cpu_ticks[CPU_STATE_USER]
+                                - prev_cpu_load[i].cpu_ticks[CPU_STATE_USER];
+      unsigned long long system =
+          cpu_load[i].cpu_ticks[CPU_STATE_SYSTEM]
+          - prev_cpu_load[i].cpu_ticks[CPU_STATE_SYSTEM];
+      unsigned long long nice = cpu_load[i].cpu_ticks[CPU_STATE_NICE]
+                                - prev_cpu_load[i].cpu_ticks[CPU_STATE_NICE];
+      unsigned long long idle = cpu_load[i].cpu_ticks[CPU_STATE_IDLE]
+                                - prev_cpu_load[i].cpu_ticks[CPU_STATE_IDLE];
+
+      used += user + system + nice;
+      total += used + idle;
+    }
+
+    double percent = (total > 0) ? ((double)used * 100.0 / total) : 0.0;
+
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(2) << percent << "%";
+    return ss.str();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Failed to get CPU Load on Mac: " << e.what();
+    return "0.00%";
+  }
+#else
   try {
     _currCpuTimes = getCpuTimes();
 
@@ -240,6 +345,7 @@ std::string CDeviceMonitorServer::getCpuLoad() {
     LOG(ERROR) << "Failed to get CPU Load: " << e.what();
     return "0.00%";
   }
+#endif
 }
 
 }}} // namespace rynnrcp::fw::robot

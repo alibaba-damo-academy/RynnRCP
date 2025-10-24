@@ -208,9 +208,13 @@ class LCMHandler:
         msg.numJoint = len(joint_positions) - 1
         msg.qFb = joint_positions[: msg.numJoint].tolist()
         msg.qdFb = [0.0] * msg.numJoint
+        msg.tauFb = [0.0] * msg.numJoint
 
         msg.numGripper = 1
         msg.gripperPosFb = joint_positions[msg.numJoint :].tolist()
+
+        msg.numFTsensor = 1
+        msg.ftSensorFb = [[0.0] * 6 for _ in range(msg.numFTsensor)]
 
         self.lcm_instance.publish("robot_feedback", msg.encode())
         self.logger.info(f"Sent robot feedback #{msg.seq}")

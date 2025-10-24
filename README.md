@@ -63,20 +63,40 @@ pip install -e .
 
 ### Install and Compile C++ Modules
 
+#### For Linux (Ubuntu)
 ```bash
 cd RynnRCP
-bash scripts/deploy.sh
+bash scripts/deploy_linux.sh
 ```
-> Run the one-click installation script `deploy.sh`. This script will automatically check and install necessary dependencies. It will install CMake, build tools, Python development libraries, GLib, Glog, Protobuf, OpenSSL 3, and more. It will also compile required third-party libraries (such as LCM, libwebsockets, Paho MQTT, libyaml-cpp, etc.) and compile the server for the lerobot sample program.
+
+#### For macOS (Apple Silicon/Intel)
+```bash
+cd RynnRCP
+bash scripts/deploy_mac.sh
+```
+
+> Run the appropriate one-click installation script for your platform. These scripts will automatically check and install necessary dependencies:
+> - **Linux**: CMake, build tools, Python development libraries, GLib, Glog, Protobuf, OpenSSL 3, and more via apt package manager
+> - **macOS**: CMake, yaml-cpp, libwebsockets, glog, OpenSSL 3 via Homebrew, plus protobuf from source for compatibility
+> 
+> Both scripts will compile required third-party libraries (such as LCM, libwebsockets, Paho MQTT, libyaml-cpp, etc.) and compile the server for the lerobot sample program.
 
 During the execution of the script, the following operations will also be performed:
-- Modify the UDP buffer configuration to accommodate the communication requirements for image transmission via LCM.
+- **Linux**: Modify the UDP buffer configuration in `/etc/sysctl.conf` to accommodate LCM image transmission
+- **macOS**: Configure UDP buffer settings via sysctl for LCM communication
 
-Notes:
-- Ensure your system is running Ubuntu and is connected to the internet.
-- Some steps in the script may prompt for the sudo password to gain administrative privileges.
-- If any errors arise, troubleshoot and resolve them based on the output information.
-- Ensure that the Python virtual environment is activated before running the script.
+**Platform-specific Notes:**
+
+**Linux:**
+- Ensure your system is running Ubuntu and is connected to the internet
+- Some steps may prompt for the sudo password to gain administrative privileges
+- If any errors arise, troubleshoot based on the output information
+
+**macOS:**
+- Supports both Apple Silicon (M1/M2/M3/M4) and Intel Macs
+- Automatically installs Homebrew if not present
+- Uses specific dependency versions for compatibility
+- May require Xcode command line tools installation
 
 ## Modify Configuration Files
 To simplify the configuration process, we provide an interactive configuration script that can automatically detect devices and guide you through the configuration. You can run the following command to start the configuration tool:
@@ -106,8 +126,8 @@ For more advanced or specific configuration needs, you can also manually edit th
 - Copy the three parameters (`product_key`, `device_name`, `device_secret`) from the robot device activation page and configure them in the `rcp_framework/robots/so100/config/device_config.yaml` file (the parameters http_url/endpoint_mqtt/endpoint_websocket do not need modification).
 
 ### Camera Node
-- Insert a front-angle camera, corresponding to the camera name `observation.images.front`, and execute `ls /dev/video*` to check the device number, for example, `/dev/video0`.
-- Insert a wrist-angle camera, corresponding to the camera name `observation.images.wrist`, and execute `ls /dev/video*` to check the device number, for example, `/dev/video2`.
+- Insert a front-angle camera, corresponding to the camera name `observation.images.front`. On Linux, execute `ls /dev/video*` to check the device number, for example, `/dev/video0`, and fill it in the `device` field. On macOS, simply enter the corresponding device ID, for example, `0`.
+- Insert a wrist-angle camera, corresponding to the camera name `observation.images.wrist`, On Linux, execute `ls /dev/video*` to check the device number, for example, `/dev/video2`, and fill it in the `device` field. On macOS, simply enter the corresponding device ID, for example, `2`.
 - Fill in the device numbers in the camera configuration file `rcp_framework/robots/so100/config/cameras.yaml`.
 - It is recommended that **at least one of the two cameras is connected directly to the USB port of the host**. Based on experience, if both cameras are used through a hub, it may lead to operational issues.
 

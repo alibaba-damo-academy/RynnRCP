@@ -4,10 +4,12 @@ import gzip
 import io
 import cv2
 import yaml
+import signal
 import argparse
 import threading
 import time
 import logging
+import platform
 import numpy as np
 from datetime import datetime
 from lcm import LCM
@@ -22,6 +24,15 @@ from lcmSensor.camera_list_desc import camera_list_desc
 from lcmSensor.req_camera_image import req_camera_image
 from lcmSensor.camera_image_response import camera_image_response
 
+def handle_signal(signum, frame):
+    print(f"Received signal {signum}: {signal.Signals(signum).name}")
+    if signum in (signal.SIGINT, signal.SIGTERM):
+        print(f"Exiting gracefully...")
+        raise KeyboardInterrupt
+        
+signal.signal(signal.SIGINT, handle_signal)
+signal.signal(signal.SIGTERM, handle_signal)
+
 def parse_arguments():
     """Parse command line arguments for camera configuration and logging."""
     parser = argparse.ArgumentParser(description='Camera Node (LCM)')
@@ -35,7 +46,7 @@ class CameraCapture:
     def __init__(self, camera_config):
         """Initialize camera capture settings and start capturing frames."""
         self.name = camera_config['name']
-        self.device = camera_config['device']
+        self.device = str(camera_config['device'])
         self.width = camera_config['width']
         self.height = camera_config['height']
         self.framerate = camera_config['framerate']
@@ -44,7 +55,11 @@ class CameraCapture:
         self.queue_lock = threading.Lock()  # Lock for thread-safe access to the latest frame
         
         self.running = False  # Track if the camera is running
-        self.cap = cv2.VideoCapture(self.device)  # Open the camera device
+        if platform.system() == "Darwin":
+            self.cap = cv2.VideoCapture(int(self.device))
+        else:
+            self.cap = cv2.VideoCapture(self.device)
+            
         if not self.cap.isOpened():
             logging.error(f"Cannot open camera: {self.device}")
             os._exit(-1)
@@ -168,7 +183,7 @@ def publish_camera_list(cameras):
         for camera in cameras:
             camera_item = camera_desc()
             camera_item.name = camera["name"]
-            camera_item.id = int(camera["device"].replace("/dev/video", ""))
+            camera_item.id = int(str(camera["device"]).replace("/dev/video", ""))
             camera_item.product = camera["brand"]
             camera_item.format = camera["format"]
             camera_item.width = camera["width"]
@@ -233,41 +248,41 @@ def main():
     args = parse_arguments()  # Parse command line arguments
     global log_dir 
 
-    log_config = load_config(args.log_config)  # Load logging configuration
-    log_file = log_config["camera_node_log_name"]
-    log_dir = os.path.join(os.path.expanduser(log_config["log_dir"]), log_file)
-    log_console_level = log_config["stderr_threshold"]
-    log_file_level = log_config["min_log_level"]
-
-    setup_logging(log_dir, log_file, log_console_level, log_file_level)  # Setup logging
-
-    cameras_config = load_config(args.camera_config)  # Load camera configuration
-    cameras = cameras_config['cameras'] 
-    camera_captures = []
-    global camera_map
-    camera_map = {}
-
-    for camera in cameras:
-        camera_capture = CameraCapture(camera)  # Initialize each camera capture
-        camera_captures.append(camera_capture)
-        camera_map[camera['name']] = camera_capture  # Map camera name to its capture object
-
-    logging.info("Starting to capture images... (Press Ctrl+C to stop)")
-
-    global lc
-    lc = LCM()  # Initialize LCM (Lightweight Communications and Marshalling)
-    subscription = lc.subscribe("image_request", handle_request)  # Subscribe to image requests
-    lcm_thread = threading.Thread(target=lcm_message_handler, daemon=True)  # Thread to handle LCM messages
-    lcm_thread.start()
-
-    global seq_cnt
-    seq_cnt = 0
-
-    camera_list_thread = threading.Thread(
-        target=publish_camera_list, args=(cameras,), daemon=True)  # Thread to publish camera list
-    camera_list_thread.start()
-
     try:
+        log_config = load_config(args.log_config)  # Load logging configuration
+        log_file = log_config["camera_node_log_name"]
+        log_dir = os.path.join(os.path.expanduser(log_config["log_dir"]), log_file)
+        log_console_level = log_config["stderr_threshold"]
+        log_file_level = log_config["min_log_level"]
+
+        setup_logging(log_dir, log_file, log_console_level, log_file_level)  # Setup logging
+
+        cameras_config = load_config(args.camera_config)  # Load camera configuration
+        cameras = cameras_config['cameras'] 
+        camera_captures = []
+        global camera_map
+        camera_map = {}
+
+        for camera in cameras:
+            camera_capture = CameraCapture(camera)  # Initialize each camera capture
+            camera_captures.append(camera_capture)
+            camera_map[camera['name']] = camera_capture  # Map camera name to its capture object
+
+        logging.info("Starting to capture images... (Press Ctrl+C to stop)")
+
+        global lc
+        lc = LCM()  # Initialize LCM (Lightweight Communications and Marshalling)
+        subscription = lc.subscribe("image_request", handle_request)  # Subscribe to image requests
+        lcm_thread = threading.Thread(target=lcm_message_handler, daemon=True)  # Thread to handle LCM messages
+        lcm_thread.start()
+
+        global seq_cnt
+        seq_cnt = 0
+
+        camera_list_thread = threading.Thread(
+            target=publish_camera_list, args=(cameras,), daemon=True)  # Thread to publish camera list
+        camera_list_thread.start()
+
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
@@ -275,7 +290,6 @@ def main():
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
     finally:
-        lc.unsubscribe(subscription)
         os._exit(-1)
 
 if __name__ == "__main__":

@@ -59,7 +59,7 @@ The server code is located in the `so100_servers` directory, and its main functi
 5. Data interaction: Receive commands from the cloud and communicate locally with sensors and robot arms
 
 ### Building the Server Node
-Make sure to execute the installation script `deploy.sh`, which compiles the files in this directory and generates the executable `so100_servers`.
+Make sure to execute the installation script `deploy_linux.sh` or `deploy_mac.sh`, which compiles the files in this directory and generates the executable `so100_servers`.
 
 ### Running the Server Node
 Run the server by passing the device configuration file and logging configuration file:

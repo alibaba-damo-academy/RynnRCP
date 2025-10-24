@@ -53,6 +53,12 @@ class robot_feedback
 
         /**
          * Joint velocity feedback
+         * LCM Type: float[numJoint]
+         */
+        std::vector< float > tauFb;
+
+        /**
+         * Joint torque feedback
          */
         int8_t     numGripper;
 
@@ -64,6 +70,17 @@ class robot_feedback
 
         /**
          * Gripper position feedback
+         */
+        int8_t     numFTsensor;
+
+        /**
+         * Number of force-torque sensors
+         * LCM Type: float[numFTsensor][6]
+         */
+        std::vector< std::vector< float > > ftSensorFb;
+
+        /**
+         * Force-torque sensor feedback [fx fy fz tx ty tz]
          * LCM Type: float[3]
          */
         float      eePosFb[3];
@@ -201,11 +218,24 @@ int robot_feedback::_encodeNoHash(void *buf, int offset, int maxlen) const
         if(tlen < 0) return tlen; else pos += tlen;
     }
 
+    if(this->numJoint > 0) {
+        tlen = __float_encode_array(buf, offset + pos, maxlen - pos, &this->tauFb[0], this->numJoint);
+        if(tlen < 0) return tlen; else pos += tlen;
+    }
+
     tlen = __int8_t_encode_array(buf, offset + pos, maxlen - pos, &this->numGripper, 1);
     if(tlen < 0) return tlen; else pos += tlen;
 
     if(this->numGripper > 0) {
         tlen = __float_encode_array(buf, offset + pos, maxlen - pos, &this->gripperPosFb[0], this->numGripper);
+        if(tlen < 0) return tlen; else pos += tlen;
+    }
+
+    tlen = __int8_t_encode_array(buf, offset + pos, maxlen - pos, &this->numFTsensor, 1);
+    if(tlen < 0) return tlen; else pos += tlen;
+
+    for (int a0 = 0; a0 < this->numFTsensor; a0++) {
+        tlen = __float_encode_array(buf, offset + pos, maxlen - pos, &this->ftSensorFb[a0][0], 6);
         if(tlen < 0) return tlen; else pos += tlen;
     }
 
@@ -252,6 +282,12 @@ int robot_feedback::_decodeNoHash(const void *buf, int offset, int maxlen)
         if(tlen < 0) return tlen; else pos += tlen;
     }
 
+    if(this->numJoint) {
+        this->tauFb.resize(this->numJoint);
+        tlen = __float_decode_array(buf, offset + pos, maxlen - pos, &this->tauFb[0], this->numJoint);
+        if(tlen < 0) return tlen; else pos += tlen;
+    }
+
     tlen = __int8_t_decode_array(buf, offset + pos, maxlen - pos, &this->numGripper, 1);
     if(tlen < 0) return tlen; else pos += tlen;
 
@@ -259,6 +295,22 @@ int robot_feedback::_decodeNoHash(const void *buf, int offset, int maxlen)
         this->gripperPosFb.resize(this->numGripper);
         tlen = __float_decode_array(buf, offset + pos, maxlen - pos, &this->gripperPosFb[0], this->numGripper);
         if(tlen < 0) return tlen; else pos += tlen;
+    }
+
+    tlen = __int8_t_decode_array(buf, offset + pos, maxlen - pos, &this->numFTsensor, 1);
+    if(tlen < 0) return tlen; else pos += tlen;
+
+    try {
+        this->ftSensorFb.resize(this->numFTsensor);
+    } catch (...) {
+        return -1;
+    }
+    for (int a0 = 0; a0 < this->numFTsensor; a0++) {
+        if(6) {
+            this->ftSensorFb[a0].resize(6);
+            tlen = __float_decode_array(buf, offset + pos, maxlen - pos, &this->ftSensorFb[a0][0], 6);
+            if(tlen < 0) return tlen; else pos += tlen;
+        }
     }
 
     tlen = __float_decode_array(buf, offset + pos, maxlen - pos, &this->eePosFb[0], 3);
@@ -283,8 +335,11 @@ int robot_feedback::_getEncodedSizeNoHash() const
     enc_size += __int32_t_encoded_array_size(NULL, 1);
     enc_size += __float_encoded_array_size(NULL, this->numJoint);
     enc_size += __float_encoded_array_size(NULL, this->numJoint);
+    enc_size += __float_encoded_array_size(NULL, this->numJoint);
     enc_size += __int8_t_encoded_array_size(NULL, 1);
     enc_size += __float_encoded_array_size(NULL, this->numGripper);
+    enc_size += __int8_t_encoded_array_size(NULL, 1);
+    enc_size += this->numFTsensor * __float_encoded_array_size(NULL, 6);
     enc_size += __float_encoded_array_size(NULL, 3);
     enc_size += __float_encoded_array_size(NULL, 4);
     enc_size += __float_encoded_array_size(NULL, 3);
@@ -293,7 +348,7 @@ int robot_feedback::_getEncodedSizeNoHash() const
 
 uint64_t robot_feedback::_computeHash(const __lcm_hash_ptr *)
 {
-    uint64_t hash = 0x207d6b9825023a2dLL;
+    uint64_t hash = 0xf7301476d9735200LL;
     return (hash<<1) + ((hash>>63)&1);
 }
 

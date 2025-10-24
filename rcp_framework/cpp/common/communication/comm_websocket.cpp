@@ -8,6 +8,7 @@
 namespace rynnrcp { namespace fw { namespace common {
 
 CWebsocketComm::CWebsocketComm() {
+  _sendBuffer = std::make_shared<MessageQueue>(kMaxMsgBufSize);
 }
 
 CWebsocketComm::~CWebsocketComm() {
@@ -67,7 +68,6 @@ void CWebsocketComm::init(const std::string &config_file) {
                                 | LCCSCF_ALLOW_INSECURE;
 
   _websocketConnFlag.store(WS_CONN_DEFAULT, std::memory_order_release);
-  _clientWritable.store(false, std::memory_order_release);
 }
 
 int32_t CWebsocketComm::onMessageArrived(void *user, void *in, int len) {
@@ -104,7 +104,39 @@ int CWebsocketComm::onWebsocketEvent(struct lws *wsi,
   } break;
   case LWS_CALLBACK_CLIENT_WRITEABLE: {
     LOG(INFO) << "[WebSocket]: Callback LWS_CALLBACK_CLIENT_WRITEABLE";
-    me->_clientWritable.store(true, std::memory_order_release);
+
+    MessagePointer msg_send;
+    {
+      std::lock_guard<std::mutex> lk(me->_sendMutex);
+      if (!me->_sendBuffer->empty()) { msg_send = me->_sendBuffer->dequeue(); }
+    }
+
+    if (msg_send) {
+      auto ws_msg = std::dynamic_pointer_cast<CDataMessage>(msg_send);
+      if (!ws_msg || ws_msg->getProtocolType() != COMM_DATA) {
+        LOG(ERROR) << "[WebSocket]: Invalid message type in send queue";
+        break;
+      }
+      int64_t ts = getTimeMs();
+      RobotServer::DataPacket data_packet;
+      RobotServer::CommonPartAttr *common_attr =
+          data_packet.mutable_common_part_attr();
+      common_attr->set_timestamp(ts);
+      common_attr->set_id(ws_msg->getId());
+      common_attr->set_type(
+          static_cast<RobotServer::PackageType>(ws_msg->getType()));
+      data_packet.set_data(ws_msg->getData());
+      std::string data = data_packet.SerializeAsString();
+      LOG(INFO) << "[WebSocket]: Sending size: " << data.size();
+      std::vector<unsigned char> buf(LWS_PRE + data.size());
+      std::memcpy(buf.data() + LWS_PRE, data.data(), data.size());
+      int ret =
+          lws_write(wsi, buf.data() + LWS_PRE, data.size(), LWS_WRITE_BINARY);
+      if (ret < 0) {
+        LOG(ERROR) << "[WebSocket]: lws_write failed, code=" << ret;
+      }
+    }
+
   } break;
   case LWS_CALLBACK_CLIENT_ESTABLISHED: {
     LOG(INFO) << "[WebSocket]: Callback LWS_CALLBACK_CLIENT_ESTABLISHED";
@@ -115,13 +147,11 @@ int CWebsocketComm::onWebsocketEvent(struct lws *wsi,
   case LWS_CALLBACK_CLIENT_CLOSED: {
     LOG(INFO) << "[WebSocket]: Callback LWS_CALLBACK_CLIENT_CLOSED";
     me->onConnectionStateChanged(WS_DISCONNECT);
-    me->_clientWritable.store(false, std::memory_order_release);
   } break;
 
   case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
     LOG(ERROR) << "[WebSocket]: Callback LWS_CALLBACK_CLIENT_CONNECTION_ERROR";
     me->onConnectionStateChanged(WS_CONN_ERR);
-    me->_clientWritable.store(false, std::memory_order_release);
   } break;
 
   case LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER: {
@@ -182,7 +212,9 @@ void CWebsocketComm::start() {
 
   _eventLoopThread = std::thread([this]() {
     while (_wsInterface && _context) {
+      if (!_sendBuffer->empty()) { lws_callback_on_writable(_wsInterface); }
       lws_service(_context, 1000);
+
       if (WS_CONNECTED != _websocketConnFlag.load(std::memory_order_acquire)
           && WS_CONN_DEFAULT
                  != _websocketConnFlag.load(std::memory_order_acquire)) {
@@ -193,22 +225,23 @@ void CWebsocketComm::start() {
 }
 
 void CWebsocketComm::reconnect() {
-  if (!_wsInterface) { return; }
-
-  LOG(INFO) << "[WebSocket]: Trying to reconnect";
   std::unique_lock<std::mutex> lk(_mutex);
 
   struct timeval tv;
   gettimeofday(&tv, NULL);
   int64_t gap_time = 1; // 1 second
   static int64_t g_connect_timestamp_s = 0L;
-  if (tv.tv_sec > g_connect_timestamp_s + gap_time) {
-    g_connect_timestamp_s = tv.tv_sec;
-    _wsInterface = lws_client_connect_via_info(&_connectInfo);
-    if (NULL == _wsInterface) {
-      lws_context_destroy(_context);
-      LOG(ERROR) << "[WebSocket]: Reconnect server failed";
-    }
+
+  if (tv.tv_sec <= g_connect_timestamp_s + gap_time) { return; }
+
+  LOG(INFO) << "[WebSocket]: Trying to reconnect...";
+  g_connect_timestamp_s = tv.tv_sec;
+
+  _wsInterface = lws_client_connect_via_info(&_connectInfo);
+  if (!_wsInterface) {
+    LOG(ERROR) << "[WebSocket]: reconnect failed";
+  } else {
+    LOG(INFO) << "[WebSocket]: reconnect success";
   }
 }
 
@@ -228,12 +261,10 @@ void CWebsocketComm::close() {
 }
 
 void CWebsocketComm::send(MessagePointer &msg) {
-  if (_clientWritable.load(std::memory_order_acquire) == false) {
-    LOG(ERROR) << "[WebSocket]: WebSocket client not writable, send failed";
+  if (WS_CONNECTED != _websocketConnFlag.load(std::memory_order_acquire)) {
+    LOG(ERROR) << "[WebSocket]: WebSocket client not connected, send failed";
     return;
   }
-
-  std::unique_lock<std::mutex> lk(_mutex);
 
   auto ws_msg = std::dynamic_pointer_cast<CDataMessage>(msg);
   if (ws_msg->getProtocolType() != COMM_DATA) {
@@ -241,26 +272,11 @@ void CWebsocketComm::send(MessagePointer &msg) {
     return;
   }
 
-  int64_t ts = getTimeMs();
-  RobotServer::DataPacket data_packet;
-  RobotServer::CommonPartAttr *common_attr =
-      data_packet.mutable_common_part_attr();
-  common_attr->set_timestamp(ts);
-  common_attr->set_id(ws_msg->getId());
-  common_attr->set_type(
-      static_cast<RobotServer::PackageType>(ws_msg->getType()));
-  data_packet.set_data(ws_msg->getData());
-
-  std::string data = data_packet.SerializeAsString();
-
-  LOG(INFO) << "[WebSocket]: Message send size: "
-            << float(data.size()) / 1024 / 1024
-            << " MB, packet.type: " << ws_msg->getType();
-
-  std::string buf(LWS_PRE + data.size(), '\0');
-  std::memcpy(&buf[LWS_PRE], data.data(), data.size());
-  lws_write(_wsInterface, reinterpret_cast<unsigned char *>(&buf[LWS_PRE]),
-            data.size(), LWS_WRITE_BINARY);
+  {
+    std::lock_guard<std::mutex> lk(_sendMutex);
+    _sendBuffer->enqueue(msg);
+    lws_cancel_service(_context);
+  }
 }
 
 void CWebsocketComm::bindRecvBuffer(MessageQueue *recv_buffer) {

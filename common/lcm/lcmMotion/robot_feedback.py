@@ -9,11 +9,11 @@ import struct
 
 class robot_feedback(object):
 
-    __slots__ = ["sec", "nanosec", "utime", "seq", "numJoint", "qFb", "qdFb", "numGripper", "gripperPosFb", "eePosFb", "eeQuatFb", "odometry"]
+    __slots__ = ["sec", "nanosec", "utime", "seq", "numJoint", "qFb", "qdFb", "tauFb", "numGripper", "gripperPosFb", "numFTsensor", "ftSensorFb", "eePosFb", "eeQuatFb", "odometry"]
 
-    __typenames__ = ["int32_t", "int32_t", "int64_t", "int32_t", "int32_t", "float", "float", "int8_t", "float", "float", "float", "float"]
+    __typenames__ = ["int32_t", "int32_t", "int64_t", "int32_t", "int32_t", "float", "float", "float", "int8_t", "float", "int8_t", "float", "float", "float", "float"]
 
-    __dimensions__ = [None, None, None, None, None, ["numJoint"], ["numJoint"], None, ["numGripper"], [3], [4], [3]]
+    __dimensions__ = [None, None, None, None, None, ["numJoint"], ["numJoint"], ["numJoint"], None, ["numGripper"], None, ["numFTsensor", 6], [3], [4], [3]]
 
     def __init__(self):
         self.sec = 0
@@ -54,9 +54,15 @@ class robot_feedback(object):
         LCM Type: float[numJoint]
         """
 
-        self.numGripper = 0
+        self.tauFb = []
         """
         Joint velocity feedback
+        LCM Type: float[numJoint]
+        """
+
+        self.numGripper = 0
+        """
+        Joint torque feedback
         LCM Type: int8_t
         """
 
@@ -66,9 +72,21 @@ class robot_feedback(object):
         LCM Type: float[numGripper]
         """
 
-        self.eePosFb = [ 0.0 for dim0 in range(3) ]
+        self.numFTsensor = 0
         """
         Gripper position feedback
+        LCM Type: int8_t
+        """
+
+        self.ftSensorFb = []
+        """
+        Number of force-torque sensors
+        LCM Type: float[numFTsensor][6]
+        """
+
+        self.eePosFb = [ 0.0 for dim0 in range(3) ]
+        """
+        Force-torque sensor feedback [fx fy fz tx ty tz]
         LCM Type: float[3]
         """
 
@@ -95,8 +113,12 @@ class robot_feedback(object):
         buf.write(struct.pack(">iiqii", self.sec, self.nanosec, self.utime, self.seq, self.numJoint))
         buf.write(struct.pack('>%df' % self.numJoint, *self.qFb[:self.numJoint]))
         buf.write(struct.pack('>%df' % self.numJoint, *self.qdFb[:self.numJoint]))
+        buf.write(struct.pack('>%df' % self.numJoint, *self.tauFb[:self.numJoint]))
         buf.write(struct.pack(">b", self.numGripper))
         buf.write(struct.pack('>%df' % self.numGripper, *self.gripperPosFb[:self.numGripper]))
+        buf.write(struct.pack(">b", self.numFTsensor))
+        for i0 in range(self.numFTsensor):
+            buf.write(struct.pack('>6f', *self.ftSensorFb[i0][:6]))
         buf.write(struct.pack('>3f', *self.eePosFb[:3]))
         buf.write(struct.pack('>4f', *self.eeQuatFb[:4]))
         buf.write(struct.pack('>3f', *self.odometry[:3]))
@@ -117,8 +139,13 @@ class robot_feedback(object):
         self.sec, self.nanosec, self.utime, self.seq, self.numJoint = struct.unpack(">iiqii", buf.read(24))
         self.qFb = struct.unpack('>%df' % self.numJoint, buf.read(self.numJoint * 4))
         self.qdFb = struct.unpack('>%df' % self.numJoint, buf.read(self.numJoint * 4))
+        self.tauFb = struct.unpack('>%df' % self.numJoint, buf.read(self.numJoint * 4))
         self.numGripper = struct.unpack(">b", buf.read(1))[0]
         self.gripperPosFb = struct.unpack('>%df' % self.numGripper, buf.read(self.numGripper * 4))
+        self.numFTsensor = struct.unpack(">b", buf.read(1))[0]
+        self.ftSensorFb = []
+        for i0 in range(self.numFTsensor):
+            self.ftSensorFb.append(struct.unpack('>6f', buf.read(24)))
         self.eePosFb = struct.unpack('>3f', buf.read(12))
         self.eeQuatFb = struct.unpack('>4f', buf.read(16))
         self.odometry = struct.unpack('>3f', buf.read(12))
@@ -127,7 +154,7 @@ class robot_feedback(object):
     @staticmethod
     def _get_hash_recursive(parents):
         if robot_feedback in parents: return 0
-        tmphash = (0x207d6b9825023a2d) & 0xffffffffffffffff
+        tmphash = (0xf7301476d9735200) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None
