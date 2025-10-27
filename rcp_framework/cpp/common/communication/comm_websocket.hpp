@@ -115,6 +115,9 @@ private:
   std::thread _eventLoopThread; ///< Thread running the event loop
 
   std::vector<MessageQueue *> _recvBuffer; ///< Message queue for receive
+
+  std::mutex _sendMutex;                     ///< Mutex for send buffer
+  std::shared_ptr<MessageQueue> _sendBuffer; ///< Send buffer
 };
 
 }}} // namespace rynnrcp::fw::common

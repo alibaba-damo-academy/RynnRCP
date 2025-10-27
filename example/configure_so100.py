@@ -11,18 +11,16 @@ import os
 import time
 import cv2
 import sys
+import platform
 from pathlib import Path
 import subprocess
 import logging
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-
-# Configuration file paths - using absolute paths based on script location
 SCRIPT_DIR = Path(__file__).parent.absolute()
 DEVICE_CONFIG_PATH = str(
     SCRIPT_DIR.parent / "rcp_framework/robots/so100/config/device_config.yaml")
@@ -33,7 +31,6 @@ ROBOT_CONFIG_PATH = str(
 
 
 def load_yaml_config(filepath):
-    """Load YAML configuration file"""
     try:
         logging.info(f"Loading configuration from {filepath}")
         with open(filepath, 'r') as file:
@@ -48,7 +45,6 @@ def load_yaml_config(filepath):
 
 
 def save_yaml_config(filepath, config):
-    """Save configuration to YAML file"""
     try:
         logging.info(f"Saving configuration to {filepath}")
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
@@ -61,7 +57,6 @@ def save_yaml_config(filepath, config):
 
 
 def input_with_default(prompt, default_value):
-    """Get user input with a default value"""
     try:
         user_input = input(
             f"{prompt} (default: [{default_value}], Enter to use default): ").strip()
@@ -74,7 +69,6 @@ def input_with_default(prompt, default_value):
 
 
 def detect_serial_devices():
-    """Detect available serial devices"""
     try:
         logging.info("Detecting serial devices...")
         time.sleep(2)
@@ -87,20 +81,22 @@ def detect_serial_devices():
 
 
 def detect_camera_devices():
-    """Detect available camera devices"""
     try:
         logging.info("Detecting camera devices...")
         time.sleep(2)
+
         devices = [str(path) for path in Path("/dev").glob("video*")]
+        logging.info(f"Detected {len(devices)} camera devices on Unix-like system: {devices}")
         return devices
+
     except Exception as e:
         logging.error(f"Failed to detect camera devices: {e}")
         sys.exit(1)
+        
     return []
 
 
 def wait_for_serial_device_change():
-    """Wait for user to plug serial device and detect changes"""
 
     try:
         logging.info("Starting serial device detection process")
@@ -122,7 +118,7 @@ def wait_for_serial_device_change():
         elif len(new_devices) == 1:
             return new_devices[0]
         else:
-            logging.error("No new serial device detected")
+            logging.error(f"No new serial device detected: {new_devices}")
             sys.exit(1)
     except KeyboardInterrupt:
         logging.info("Operation cancelled by user")
@@ -130,7 +126,6 @@ def wait_for_serial_device_change():
 
 
 def wait_for_camera_device_change():
-    """Wait for user to plug camera device and detect changes"""
 
     try:
         logging.info("Starting camera device detection process")
@@ -138,39 +133,47 @@ def wait_for_camera_device_change():
         initial_cameras = detect_camera_devices()
         logging.info(f"Current camera devices: {initial_cameras}")
 
-        # Wait for user to plug camera device
         input("Please plug in the camera device now, then press Enter...")
         after_plug_devices = detect_camera_devices()
 
-        # Get devices after plugging
         new_devices = list(set(after_plug_devices) - set(initial_cameras))
         logging.info(f"New devices detected: {new_devices}")
 
-        # Handle multiple new devices
         if not new_devices:
             logging.error("No new camera devices detected")
             sys.exit(1)
 
         logging.info(
             f"Found {len(new_devices)} new camera devices. Testing each one...")
+        
         for device in new_devices:
+            try:
+                logging.info(f"Setting permissions for {device}")
+                subprocess.run(['sudo', 'chmod', '666', device], check=True)
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to set permissions for {device}: {e}")
+                sys.exit(1)
+            
             if test_camera_device(device):
                 logging.info(
                     f"Using camera device {device} as it successfully captured an image")
                 return device
+                
         logging.error("No camera devices could capture images")
         sys.exit(1)
+
     except KeyboardInterrupt:
         logging.info("Operation cancelled by user")
         sys.exit(1)
 
 
+
 def test_camera_device(device_path):
-    """Test if camera device can capture images"""
     try:
         logging.info(f"Testing camera device: {device_path}")
-        # Try to open the camera
+    
         cap = cv2.VideoCapture(device_path)
+            
         if not cap.isOpened():
             logging.warning(f"Cannot open camera {device_path}")
             return False
@@ -190,7 +193,6 @@ def test_camera_device(device_path):
 
 
 def configure_device_settings():
-    """Configure device settings"""
     logging.info("Starting device configuration")
     print("\n" + "="*50)
     print("        DEVICE CONFIGURATION")
@@ -234,9 +236,24 @@ def configure_device_settings():
         logging.error(f"Error during device configuration: {e}")
         sys.exit(1)
 
-
+def capture_images():
+    camera_index = 0
+    while camera_index < 10:
+        cap = cv2.VideoCapture(camera_index)
+        if not cap.isOpened():
+            print(f"Error: Unable to open device {camera_index}")
+            return
+        ret, frame = cap.read()
+        if ret:
+            save_path = f"{camera_index}.png"
+            cv2.imwrite(save_path, frame)
+            print(f"Captured image from device {camera_index}, save to {save_path}")
+        else:
+            print(f"Error: Unable to capture image from camera {camera_index}")
+        cap.release()
+        camera_index += 1
+                        
 def configure_cameras():
-    """Configure camera settings"""
     logging.info("Starting camera configuration")
     print("\n" + "="*50)
     print("        CAMERA CONFIGURATION")
@@ -249,7 +266,9 @@ def configure_cameras():
             logging.info(
                 "No existing camera configuration found. Starting fresh configuration.")
 
-        # Configure each camera
+        if platform.system() == "Darwin":
+            logging.info("[INSTRUCTION] Running on macOS. Please plug all the camera devices...")
+
         for i, camera in enumerate(config['cameras']):
             print(
                 f"\n--- Configuring Camera {i+1} ({camera.get('name', 'unnamed')}) ---")
@@ -259,10 +278,15 @@ def configure_cameras():
                 camera.get('name', f'camera_{i+1}')
             )
 
-            # Auto-detect camera device by plug
             print(
                 f"\n[INSTRUCTION] Please follow the steps to detect camera {i+1}")
-            new_camera_device = wait_for_camera_device_change()
+            if platform.system() == "Darwin":
+                capture_images()
+                new_camera_device = input_with_default(
+                    f"Input camera device id for Camera {i+1}", "0")
+            else:
+                new_camera_device = wait_for_camera_device_change()
+            
             if new_camera_device:
                 camera['device'] = new_camera_device
             else:
@@ -320,7 +344,6 @@ def configure_cameras():
 
 
 def configure_robot():
-    """Configure robot settings"""
     logging.info("Starting robot configuration")
     print("\n" + "="*50)
     print("        ROBOT CONFIGURATION")
@@ -328,31 +351,67 @@ def configure_robot():
     try:
         config = load_yaml_config(ROBOT_CONFIG_PATH)
 
-        # Ensure robot section exists
         if 'robot' not in config:
             config['robot'] = {}
             logging.info(
                 "No existing robot configuration found. Starting fresh configuration.")
 
-        # Robot configuration - auto-detect serial device by plug/unplug
         new_serial_device = wait_for_serial_device_change()
         if new_serial_device:
             config['robot']['port'] = new_serial_device
             logging.info(f"Using detected serial port: {new_serial_device}")
-            try:
-                # Change permissions of the robot port
-                logging.info(
-                    f"Running command: sudo chmod 666 {new_serial_device} to set device permissions")
-                subprocess.run(
-                    ['sudo', 'chmod', '666', new_serial_device], check=True)
-                logging.info(f"Permissions set to 666 for {new_serial_device}")
-            except subprocess.CalledProcessError as e:
-                logging.error(
-                    f"Failed to set permissions for {new_serial_device}: {e}")
-                sys.exit(1)
         else:
             logging.error("No new serial device detected")
             sys.exit(1)
+            
+        if platform.system() != "Darwin":
+            try:
+                udev_info = subprocess.run(
+                    ['udevadm', 'info', '--query=all', '--name=' + new_serial_device],
+                    capture_output=True, text=True, check=True
+                )
+                udev_output = udev_info.stdout
+
+                vendor_id, product_id = None, None
+                for line in udev_output.splitlines():
+                    if 'ID_VENDOR_ID=' in line:
+                        vendor_id = line.split('=')[1].strip()
+                    elif 'ID_MODEL_ID=' in line:
+                        product_id = line.split('=')[1].strip()
+
+                if not vendor_id or not product_id:
+                    logging.error("Failed to get Vendor ID or Product ID")
+                    sys.exit(1)
+
+                udev_rule = '/etc/udev/rules.d/99-mechanical-arm.rules'
+                rule_content = f'SUBSYSTEM=="tty", ATTRS{{idVendor}}=="{vendor_id}", ATTRS{{idProduct}}=="{product_id}", MODE="0666", GROUP="dialout"\n'
+                
+                logging.info(f"Writing udev rule to {udev_rule}")
+                subprocess.run(
+                    ['sudo', 'tee', udev_rule], 
+                    input=rule_content, text=True, check=True
+                )
+
+                subprocess.run(['sudo', 'udevadm', 'control', '--reload-rules'], check=True)
+                subprocess.run(['sudo', 'udevadm', 'trigger'], check=True)
+                logging.info("Udev rules reloaded")
+
+                groups = subprocess.run(
+                    ['groups'], capture_output=True, text=True, check=True
+                ).stdout
+                if 'dialout' not in groups:
+                    logging.warning("User not in dialout group, adding...")
+                    subprocess.run(
+                        ['sudo', 'usermod', '-aG', 'dialout', os.getenv('USER', 'root')],
+                        check=True
+                    )
+                    logging.info("User added to dialout group. Please relogin.")
+
+                logging.info(f"🔧 Persistent permissions set for {new_serial_device}")
+
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Permission setup failed: {e}")
+                sys.exit(1)
 
         try:
             current_rate = config['robot'].get('inference_rate', 30.0)
@@ -386,13 +445,11 @@ def configure_robot():
 
 
 def calibrate_robot_arm():
-    """Calibrate the robot arm by running the calibration script"""
     logging.info("Starting robot arm calibration")
     print("\n" + "="*50)
     print("        ROBOT ARM CALIBRATION")
     print("="*50)
     try:
-        # Confirm with user before starting calibration
         print("The calibration process will check the robot arm properties and generate")
         print("a calibration parameter configuration file specific to the robot arm.")
         print("To avoid calibration failure, please ensure that the robot arm is")
@@ -403,7 +460,6 @@ def calibrate_robot_arm():
             logging.info("Calibration cancelled by user")
             return
 
-        # Change to the required directory and run the calibration command
         robot_dir = SCRIPT_DIR.parent / "robot_motion/robots/lerobot"
         if not robot_dir.exists():
             logging.error(f"Directory does not exist: {robot_dir}")
@@ -414,7 +470,6 @@ def calibrate_robot_arm():
             "Running command: python -m scripts.follower_calibrate --mode manual")
         print("-" * 50)
 
-        # Run the calibration command with full terminal interaction
         result = subprocess.run(
             ["python", "-m", "scripts.follower_calibrate", "--mode", "manual"],
             cwd=str(robot_dir)
@@ -436,7 +491,6 @@ def calibrate_robot_arm():
 
 
 def main():
-    """Main function"""
     logging.info("Robot Configuration Tool started")
     print("="*60)
     print("                  ROBOT CONFIGURATION TOOL")

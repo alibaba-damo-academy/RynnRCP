@@ -84,6 +84,13 @@ const char kChannelRobotFeedback[] = "robot_feedback";
 const char kChannelImageRequest[] = "image_request";
 const char kChannelImageResponse[] = "image_response";
 
+// Action types
+const char kArmStateName[] = "observation.state.arm";
+const char kWrenchStateName[] = "observation.state.wrench";
+const char kGripperStateName[] = "observation.state.gripper";
+const char kArmActionName[] = "action.arm";
+const char kGripperActionName[] = "action.gripper";
+
 // WebSocket connection status
 typedef enum {
   WS_CONN_DEFAULT = 0,

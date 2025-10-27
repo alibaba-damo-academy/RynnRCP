@@ -1,5 +1,5 @@
 project(lws-api-test-secure-streams)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 include(CheckCSourceCompiles)
 
 # If we are being built as part of lws, confirm current build config supports

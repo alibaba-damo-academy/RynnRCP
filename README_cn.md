@@ -63,20 +63,40 @@ pip install -e .
 
 ### 安装和编译 C++ 模块
 
+#### Linux (Ubuntu) 系统
 ```bash
 cd RynnRCP
-bash scripts/deploy.sh
+bash scripts/deploy_linux.sh
 ```
-> 运行一键安装脚本 `deploy.sh`。该脚本将自动检查和安装所需的依赖项。脚本安装 CMake、构建工具、Python 开发库、GLib、Glog、Protobuf、OpenSSL 3 等。并编译所需的第三方库（例如 LCM、libwebsockets、Paho MQTT、libyaml-cpp 等），最后编译 robot server for lerobot 样例程序。
+
+#### macOS (Apple Silicon/Intel) 系统
+```bash
+cd RynnRCP
+bash scripts/deploy_mac.sh
+```
+
+> 根据您的平台运行相应的一键安装脚本。这些脚本将自动检查和安装所需的依赖项：
+> - **Linux**: 通过 apt 包管理器安装 CMake、构建工具、Python 开发库、GLib、Glog、Protobuf、OpenSSL 3 等
+> - **macOS**: 通过 Homebrew 安装 CMake、yaml-cpp、libwebsockets、glog、OpenSSL 3，并从源码构建 protobuf 以确保兼容性
+> 
+> 两个脚本都会编译所需的第三方库（例如 LCM、libwebsockets、Paho MQTT、libyaml-cpp 等），最后编译 lerobot 样例程序的机器人服务器。
 
 在脚本执行的过程中，还会进行以下操作：
-- 修改 UDP 缓冲区配置，以适应 LCM 传输图片的通信需求。
+- **Linux**: 修改 `/etc/sysctl.conf` 中的 UDP 缓冲区配置，以适应 LCM 图像传输需求
+- **macOS**: 通过 sysctl 配置 UDP 缓冲区设置，用于 LCM 通信
 
-注意事项
-- 请确保运行系统为 Ubuntu 并连接到互联网。
-- 脚本中的一些步骤可能会请求输入 sudo 密码以获得管理权限。
-- 如果出现错误，请根据输出信息进行排查和修复。
-- 确保在运行脚本之前，已激活 Python 虚拟环境。
+**平台特定注意事项：**
+
+**Linux：**
+- 请确保运行系统为 Ubuntu 并连接到互联网
+- 脚本中的一些步骤可能会请求输入 sudo 密码以获得管理权限
+- 如果出现错误，请根据输出信息进行排查和修复
+
+**macOS：**
+- 支持 Apple Silicon (M1/M2/M3/M4) 和 Intel Mac
+- 如果未安装 Homebrew 会自动安装
+- 使用特定的依赖版本以确保兼容性
+- 可能需要安装 Xcode 命令行工具
 
 ## 修改配置文件
 为了简化配置过程，我们提供了一个交互式配置脚本，可以自动检测设备并引导您完成 so100 机械臂的配置。您可以运行以下命令启动配置工具：
@@ -106,8 +126,8 @@ python3 example/configure_so100.py
 - 复制机器人设备激活页面中三个参数的`product_key`，`device_name`, `device_secret`，并且将这三个参数配置到 RynnRCP 目录`rcp_framework/robots/so100/config/device_config.yaml`文件中（http_url/endpoint_mqtt/endpoint_websocket参数不用修改）
 
 ### 相机节点
-- 插入固定视角相机，对应相机名称为`observation.images.front`，执行 `ls /dev/video*` 查看设备号，例如`/dev/video0`。
-- 插入腕部视角相机，对应相机名称为`observation.images.wrist`，执行 `ls /dev/video*` 查看设备号，例如`/dev/video2`。
+- 插入固定视角相机，对应相机名称为`observation.images.front`，在Linux上，执行 `ls /dev/video*` 查看设备号，例如`/dev/video0`，然后将其填入 `device` 字段。在 macOS 上，直接填入对应的设备 ID，例如 `0`。
+- 插入腕部视角相机，对应相机名称为`observation.images.wrist`，在Linux上，执行 `ls /dev/video*` 查看设备号，例如`/dev/video2`，然后将其填入 `device` 字段。在 macOS 上，直接填入对应的设备 ID，例如 `2`。
 - 将设备号填入相机配置文件`rcp_framework/robots/so100/config/cameras.yaml`。
 - 推荐两个视角的相机**至少有一个直连主机的USB口**，根据经验在性能较弱的机器上，如果两个相机同时使用拓展坞可能会导致使用异常。
 
