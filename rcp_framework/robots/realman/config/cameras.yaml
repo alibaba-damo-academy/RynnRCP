@@ -1,0 +1,22 @@
+cameras:
+  - name: observation.images.head_camera
+    ros2_topic: /camera_head/color/image_raw/compressed
+    brand: Brand Name
+    format: MJPG
+    width: 640
+    height: 360
+    framerate: 30
+  - name: observation.images.left_hand_camera
+    ros2_topic: /camera_left/color/image_raw/compressed
+    brand: Brand Name
+    format: MJPG
+    width: 640
+    height: 360
+    framerate: 30
+  - name: observation.images.right_hand_camera
+    ros2_topic: /camera_right/color/image_raw/compressed
+    brand: Brand Name
+    format: MJPG
+    width: 640
+    height: 360
+    framerate: 30

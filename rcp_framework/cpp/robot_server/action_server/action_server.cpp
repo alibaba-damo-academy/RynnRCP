@@ -130,7 +130,11 @@ void CActionServer::handleRobotFeedback(const lcm::ReceiveBuffer *rbuf,
   arm_state_array.set_dtype(RobotServer::DataType::FLOAT32);
 
   arm_state.set_id(0);
-  arm_state.set_name(kArmStateName);
+  if (msg->numGripper == 0) {
+    arm_state.set_name(kStateName);
+  } else {
+    arm_state.set_name(kArmStateName);
+  }
   arm_state.mutable_state_data()->CopyFrom(arm_state_array);
   reply_state.add_state_list()->CopyFrom(arm_state);
 
@@ -157,6 +161,10 @@ void CActionServer::handleRobotFeedback(const lcm::ReceiveBuffer *rbuf,
   gripper_state.set_id(0);
   gripper_state.set_name(kGripperStateName);
   gripper_state.mutable_state_data()->CopyFrom(gripper_state_array);
+
+  if (gripper_num > 0) {
+    reply_state.add_state_list()->CopyFrom(gripper_state);
+  }
 
   bool all_zero = true;
   if (msg->numFTsensor == 1) {
@@ -194,8 +202,6 @@ void CActionServer::handleRobotFeedback(const lcm::ReceiveBuffer *rbuf,
     wrench_state.mutable_state_data()->CopyFrom(wrench_state_array);
     reply_state.add_state_list()->CopyFrom(wrench_state);
   }
-
-  reply_state.add_state_list()->CopyFrom(gripper_state);
 
   std::string serialized_data;
   if (!reply_state.SerializeToString(&serialized_data)) {
@@ -263,6 +269,7 @@ int32_t CActionServer::sendLcmActionData(
 
   // LCM message
   lcmMotion::act_command act_command;
+  act_command.numGripper = 0;
 
   std::vector<int8_t> chunk_sizes;
 
@@ -309,7 +316,7 @@ int32_t CActionServer::sendLcmActionData(
           LOG(INFO) << output_stream.str();
         }
 
-        if (name == kArmActionName) {
+        if (name == kArmActionName || name == kActionName) {
           act_command.numJoint = joints;
           // Set joint positions and velocities
           for (int32_t i = 0; i < step; ++i) {
@@ -365,6 +372,8 @@ int32_t CActionServer::sendLcmActionData(
   act_command.utime =
       std::chrono::duration_cast<std::chrono::microseconds>(epoch).count();
   act_command.seq = _lcmCnt.fetch_add(1);
+
+  if (act_command.numGripper == 0) act_command.gripperPos.push_back(0.0);
 
   act_command.chunkSize = chunk_sizes[0];
   act_command.totalNumJoint = act_command.chunkSize * act_command.numJoint;

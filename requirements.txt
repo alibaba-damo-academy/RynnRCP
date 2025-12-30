@@ -10,3 +10,5 @@ draccus>=0.10.0
 mujoco>=3.0.0
 fsspec>=2023.0.0
 opencv-python>=4.5.0
+pyrealsense2>=2.50.0
+pyzmq>=24.1.0

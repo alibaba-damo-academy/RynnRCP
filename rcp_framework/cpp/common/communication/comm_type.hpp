@@ -91,6 +91,9 @@ const char kGripperStateName[] = "observation.state.gripper";
 const char kArmActionName[] = "action.arm";
 const char kGripperActionName[] = "action.gripper";
 
+const char kStateName[] = "observation.state";
+const char kActionName[] = "action";
+
 // WebSocket connection status
 typedef enum {
   WS_CONN_DEFAULT = 0,

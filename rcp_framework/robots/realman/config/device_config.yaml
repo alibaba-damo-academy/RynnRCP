@@ -1,0 +1,6 @@
+http_url: https://robot-access.damo-academy.com
+endpoint_mqtt: /connect/mqtt
+endpoint_websocket: /connect/webSocket
+product_key: put_product_key_here
+device_name: put_device_name_here
+device_secret: put_device_secret_here

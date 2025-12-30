@@ -225,3 +225,7 @@ add_dependencies(paho-mqtt3c paho-mqtt)
 add_subdirectory(rcp_framework/cpp/robot_server)
 
 add_subdirectory(rcp_framework/robots/so100/so100_servers)
+
+add_subdirectory(rcp_framework/robots/realman/realman_servers)
+
+add_subdirectory(rcp_framework/robots/xtrainer/xtrainer_servers)

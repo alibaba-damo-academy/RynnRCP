@@ -55,7 +55,7 @@ conda create --name venv python=3.10
 conda activate venv
 pip install -r requirements.txt
 
-# 安装RobotMotion模块
+# 安装RobotMotion模块（只有使用 lerobot 机械臂时需要）
 cd robot_motion/robots/lerobot
 pip install -e .
 ```
@@ -99,6 +99,8 @@ bash scripts/deploy_mac.sh
 - 可能需要安装 Xcode 命令行工具
 
 ## 修改配置文件
+> 这里我们使用 so100 机械臂进行演示，其余机械臂配置和运行方式请参考 `RynnRCP/rcp_framework/robots/` 内对应机械臂目录内README文件。
+
 为了简化配置过程，我们提供了一个交互式配置脚本，可以自动检测设备并引导您完成 so100 机械臂的配置。您可以运行以下命令启动配置工具：
 
 ```bash

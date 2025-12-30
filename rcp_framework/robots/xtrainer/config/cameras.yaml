@@ -1,0 +1,22 @@
+cameras:
+  - name: observation.images.cam_main
+    device: 0
+    brand: Brand Name
+    format: GZIP
+    width: 640
+    height: 480
+    framerate: 30
+  - name: observation.images.cam_left_arm
+    device: 1
+    brand: Brand Name
+    format: GZIP
+    width: 640
+    height: 480
+    framerate: 30
+  - name: observation.images.cam_right_arm
+    device: 2
+    brand: Brand Name
+    format: GZIP
+    width: 640
+    height: 480
+    framerate: 30

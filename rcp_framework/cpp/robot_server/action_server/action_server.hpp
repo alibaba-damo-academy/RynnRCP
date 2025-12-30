@@ -14,6 +14,8 @@ using rynnrcp::fw::common::kWrenchStateName;
 using rynnrcp::fw::common::kGripperStateName;
 using rynnrcp::fw::common::kArmActionName;
 using rynnrcp::fw::common::kGripperActionName;
+using rynnrcp::fw::common::kStateName;
+using rynnrcp::fw::common::kActionName;
 using rynnrcp::fw::common::kChannelActFeedback;
 using rynnrcp::fw::common::kChannelRobotFeedback;
 using rynnrcp::fw::common::kChannelMotionCommand;

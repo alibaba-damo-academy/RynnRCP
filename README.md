@@ -55,7 +55,7 @@ conda create --name venv python=3.10
 conda activate venv
 pip install -r requirements.txt
 
-# Install RobotMotion module
+# Install RobotMotion module (Only for lerobot arms)
 cd robot_motion/robots/lerobot
 pip install -e .
 ```
@@ -99,6 +99,8 @@ During the execution of the script, the following operations will also be perfor
 - May require Xcode command line tools installation
 
 ## Modify Configuration Files
+> We demonstrate with the so100 arm. For other robotic arms' configuration and operation, please refer to the README files in  `RynnRCP/rcp_framework/robots/`.
+
 To simplify the configuration process, we provide an interactive configuration script that can automatically detect devices and guide you through the configuration. You can run the following command to start the configuration tool:
 
 ```bash
