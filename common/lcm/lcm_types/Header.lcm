@@ -1,0 +1,9 @@
+package lcm_msgs;
+
+struct Header {
+  // builtin_interfaces/Time stamp
+  int32_t stamp_sec;
+  int32_t stamp_nanosec;
+
+  string frame_id;
+}

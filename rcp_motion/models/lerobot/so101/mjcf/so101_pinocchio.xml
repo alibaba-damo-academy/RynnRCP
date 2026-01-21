@@ -1,0 +1,96 @@
+<mujoco model="so101_description">
+  <compiler angle="radian" />
+
+  <default>
+    <default class="so101_new_calib">
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2" />
+      </default>
+      <default class="collision">
+        <geom group="3" />
+        <default class="finger_collision">
+          <geom type="box" solimp="0 1 0.001 0.02 3" solref="0.001 1" friction="2 0.05 0.05" />
+        </default>
+      </default>
+    </default>
+    <default class="sts3215">
+      <geom contype="0" conaffinity="0" />
+      <joint damping="0.60" frictionloss="0.052" armature="0.028" />
+      <position kp="50" dampratio="1" />
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="base" pos="0 0 0" childclass="so101_new_calib">
+      <geom type="cylinder" size="0.002 0.06" rgba="1 0 0 1" pos="0.06 0.0 0.0" euler="0 1.57079 0" class="visual" />
+      <geom type="cylinder" size="0.002 0.06" rgba="0 1 0 1" pos="0.0 0.06 0.0" euler="1.57079 0 0" class="visual" />
+      <geom type="cylinder" size="0.002 0.06" rgba="0 0 1 1" pos="0.0 0.0 0.06" euler="0 0 0" class="visual" />
+
+      <inertial pos="0.0137179 -5.19711e-05 0.0334843" mass="0.147" fullinertia="0.000114686 0.000136117 0.000130364 -4.59787e-07 4.97151e-06 9.75275e-08" />
+
+      <body name="shoulder" pos="0.0388353 -8.97657e-09 0.0624" quat="3.56167e-16 1.22818e-15 -1 -4.14635e-16">
+        <site name="shoulderSite" pos="0.0 0 0.0" rgba="1 0 0 1" />
+
+        <joint axis="0 0 1" name="shoulder_pan" type="hinge" range="-1.9198621771937616 1.9198621771937634" class="sts3215" />
+        <inertial pos="-0.0307604 -1.66727e-05 -0.0252713" mass="0.100006" fullinertia="8.3759e-05 8.10403e-05 2.39783e-05 7.55525e-08 -1.16342e-06 1.54663e-07" />
+
+        <body name="upper_arm" pos="-0.0303992 -0.0182778 -0.0542" quat="0.5 -0.5 -0.5 -0.5">
+          <joint axis="0 0 1" name="shoulder_lift" type="hinge" range="-1.7453292519943224 1.7453292519943366" class="sts3215" />
+          <inertial pos="-0.0898471 -0.00838224 0.0184089" mass="0.103" fullinertia="4.08002e-05 0.000147318 0.000142487 -1.97819e-05 -4.03016e-08 8.97326e-09" />
+
+          <body name="lower_arm" pos="-0.11257 -0.028 1.73763e-16" quat="0.707107 -5.98613e-17 -2.58051e-17 0.707107">
+            <site name="elbowSite" pos="0.0 0. 0.0182778" rgba="1 0 0 1" />
+
+            <joint axis="0 0 1" name="elbow_flex" type="hinge" range="-1.69 1.69" class="sts3215" />
+            <inertial pos="-0.0980701 0.00324376 0.0182831" mass="0.104" fullinertia="2.87438e-05 0.000159844 0.00014529 7.41152e-06 1.26409e-06 -4.90188e-08" />
+
+            <body name="wrist" pos="-0.1349 0.0052 3.62355e-17" quat="0.707107 9.58722e-16 -7.51313e-16 -0.707107">
+              <site name="wristSite" pos="0.0 0 0.0182778" rgba="1 0 0 1" />
+
+              <joint axis="0 0 1" name="wrist_flex" type="hinge" range="-1.6580628494556928 1.6580627293335335" class="sts3215" />
+              <inertial pos="-0.000103312 -0.0386143 0.0281156" mass="0.079" fullinertia="3.68263e-05 2.5391e-05 2.1e-05 1.7893e-08 -5.28128e-08 3.6412e-06" />
+
+              <body name="gripper" pos="5.55112e-17 -0.0611 0.0181" quat="0.0172091 -0.0172091 0.706897 0.706897">
+                <joint axis="0 0 1" name="wrist_roll" type="hinge" range="-2.7438472969992493 2.841206309382605" class="sts3215" />
+                <inertial pos="0.000213627 0.000245138 -0.025187" mass="0.087" fullinertia="2.75087e-05 4.33657e-05 3.45059e-05 -3.35241e-07 -5.7352e-06 -5.17847e-08" />
+
+                <body name="camera_orientation_bias" pos="-.005 .0244 -.024" euler="-1.57079 0 1.57079">
+                  <body name="camera_wrist_mount" pos="-.0245 -.0085 .0495" euler="2.505 -2.13 0.87079">
+                    <site name="camera_wrist" />
+                  </body>
+                </body>
+
+                <site name="EE" size="0.002" pos="0.0 0.0 -0.1" euler="0 0 1.57079" />
+                <geom type="cylinder" size="0.002 0.05" rgba="1 0 0 1" pos="0.05 -0.0 -0.1" euler="0 1.57079 0" class="visual" />
+                <geom type="cylinder" size="0.002 0.05" rgba="0 1 0 1" pos="0 0.05 -0.1" euler="1.57079 0 0" class="visual" />
+                <geom type="cylinder" size="0.002 0.05" rgba="0 0 1 1" pos="0 -0.0 -0.05" euler="0 0 0" class="visual" />
+
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <body name="camera_front_mount" pos="0.523000 0.000000 0.552000" euler="-1.570803 -0.436790 3.141590">
+        <site name="camera_front" />
+      </body>
+
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position class="sts3215" name="shoulder_pan" joint="shoulder_pan" forcerange="-3.35 3.35" ctrlrange="-1.91986 1.91986" />
+    <position class="sts3215" name="shoulder_lift" joint="shoulder_lift" forcerange="-3.35 3.35" ctrlrange="-1.74533 1.74533" />
+    <position class="sts3215" name="elbow_flex" joint="elbow_flex" forcerange="-3.35 3.35" ctrlrange="-1.69 1.69" />
+    <position class="sts3215" name="wrist_flex" joint="wrist_flex" forcerange="-3.35 3.35" ctrlrange="-1.65806 1.65806" />
+    <position class="sts3215" name="wrist_roll" joint="wrist_roll" forcerange="-3.35 3.35" ctrlrange="-2.74385 2.84121" />
+  </actuator>
+
+  <keyframe>
+    <key name="home" qpos="0 -1.57079 0 0 0" />
+    <key name="standby1" qpos="0 0 0 1.57079 -1.57079" />
+    <key name="standby2" qpos="0 0 0 1.57079 -1.57079" />
+    <key name="rest" qpos="0 -1.75 1.57 1.18 0" />
+  </keyframe>
+
+</mujoco>

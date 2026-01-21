@@ -1,0 +1,27 @@
+<body name="mug" pos="0 0 0" euler="0 0 0">
+  <geom type="mesh" mesh="mug" material="mug" euler="1.57 0 0" contype="0" conaffinity="0"/>
+  <geom class="cup" pos="0.0418 0 0.038" euler="0 0 0"/>
+  <geom class="cup" pos="0.0398 0.0129 0.038" euler="0 0 0.314"/>
+  <geom class="cup" pos="0.0339 0.0246 0.038" euler="0 0 0.628"/>
+  <geom class="cup" pos="0.0246 0.0339 0.038" euler="0 0 0.942"/>
+  <geom class="cup" pos="0.0129 0.0398 0.038" euler="0 0 1.256"/>
+  <geom class="cup" pos="0 0.0418 0.038" euler="0 0 1.57"/>
+  <geom class="cup" pos="-0.0129 0.0398 0.038" euler="0 0 1.884"/>
+  <geom class="cup" pos="-0.0246 0.0339 0.038" euler="0 0 2.198"/>
+  <geom class="cup" pos="-0.0339 0.0246 0.038" euler="0 0 2.512"/>
+  <geom class="cup" pos="-0.0398 0.0129 0.038" euler="0 0 2.826"/>
+  <geom class="cup" pos="-0.0418 0 0.038" euler="0 0 3.14"/>
+  <geom class="cup" pos="-0.0398 -0.0129 0.038" euler="0 0 3.454"/>
+  <geom class="cup" pos="-0.0339 -0.0246 0.038" euler="0 0 3.768"/>
+  <geom class="cup" pos="-0.0246 -0.0339 0.038" euler="0 0 4.082"/>
+  <geom class="cup" pos="-0.0129 -0.0398 0.038" euler="0 0 4.396"/>
+  <geom class="cup" pos="0 -0.0418 0.038" euler="0 0 4.71"/>
+  <geom class="cup" pos="0.0129 -0.0398 0.038" euler="0 0 5.024"/>
+  <geom class="cup" pos="0.0246 -0.0339 0.038" euler="0 0 5.338"/>
+  <geom class="cup" pos="0.0339 -0.0246 0.038" euler="0 0 5.652"/>
+  <geom class="cup" pos="0.0398 -0.0129 0.038" euler="0 0 5.966"/>
+  <geom class="cup" mass="1.0" type="cylinder" size="0.045 0.0026" pos="0 0 0.0026" solref="0.0002 1" solimp="0. 0.98 0.0001 0.02 3"/>
+  <body name="handle" pos="0.056 0 0.0395" euler="1.57 0 0">
+    <!-- handle collision geoms available in original, currently disabled -->
+  </body>
+</body>

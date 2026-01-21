@@ -1,0 +1,43 @@
+<mujoco model="so101_assets">
+
+  <asset>
+    <material name="red" rgba="1 0.072272 0.039546 1"/>
+    <material name="orange" rgba="1.0 0.5 0.0 1"/>
+    <material name="yellow" rgba="1.0 1.0 0.0 1"/>
+    <material name="green" rgba="0.0 1.0 0.0 1"/>
+    <material name="blue" rgba="0.0 0.0 1.0 1"/>
+    <material name="cyan" rgba="0.0 1.0 1.0 1" />
+
+    <!-- Mesh files -->
+    <mesh file="waveshare_mounting_plate_so101_v2.stl"/>
+    <mesh file="sts3215_03a_v1.stl"/>
+    <mesh file="motor_holder_so101_base_v1.stl"/>
+    <mesh file="wrist_roll_follower_so101_v1.stl"/>
+    <mesh file="moving_jaw_so101_v1.stl"/>
+    <mesh file="base_motor_holder_so101_v1.stl"/>
+    <mesh file="upper_arm_so101_v1.stl"/>
+    <mesh file="wrist_roll_pitch_so101_v2.stl"/>
+    <mesh file="under_arm_so101_v1.stl"/>
+    <mesh file="rotation_pitch_so101_v1.stl"/>
+    <mesh file="motor_holder_so101_wrist_v1.stl"/>
+    <mesh file="sts3215_03a_no_horn_v1.stl"/>
+    <mesh file="base_so101_v2.stl"/>
+    <mesh name="Wrist_Camera" file="../assets/Wrist_Camera_With_Adap_V0d2.stl"/>
+
+    <!-- Materials -->
+    <material name="base_motor_holder_so101_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="base_so101_v2_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="sts3215_03a_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="waveshare_mounting_plate_so101_v2_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="motor_holder_so101_base_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="rotation_pitch_so101_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="upper_arm_so101_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="under_arm_so101_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="motor_holder_so101_wrist_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="sts3215_03a_no_horn_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="wrist_roll_pitch_so101_v2_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="wrist_roll_follower_so101_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="moving_jaw_so101_v1_material" rgba="1 1 1 1"/>
+  </asset>
+
+</mujoco>

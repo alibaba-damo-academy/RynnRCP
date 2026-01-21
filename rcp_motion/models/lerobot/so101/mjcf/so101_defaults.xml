@@ -1,0 +1,21 @@
+<mujoco model="so101_defaults">
+  <default>
+    <default class="so101_new_calib">
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      </default>
+      <default class="collision">
+        <geom group="3"/>
+        <default class="finger_collision">
+          <geom type="box" solimp="0 1 0.001 0.02 3" solref="0.001 1" friction="2 0.05 0.05"/>
+        </default>
+      </default>
+    </default>
+    <default class="sts3215">
+      <geom contype="0" conaffinity="0"/>
+      <joint damping="0.60" frictionloss="0.052" armature="0.028"/>
+      <position kp="50" dampratio="1"/>
+    </default>
+  </default>
+
+</mujoco>

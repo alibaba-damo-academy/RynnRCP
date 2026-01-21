@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "RynnRCP"
+version = "0.1.0"
+description = "RynnRCP(Robotics Context Protocol)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.0.0",
+    "scipy>=1.10.0",
+    "PyYAML>=6.0.0",
+    "matplotlib>=3.8.0",
+    "mujoco>=3.3.0",
+    "tqdm>=4.60.0",
+    "lcm>=1.5.0",
+    "opencv-python>=4.5.0",
+    "fsspec>=2023.0.0",
+    "pin>=3.7.0; sys_platform != 'win32'",
+    "pinocchio>=0.4.3; sys_platform == 'win32'",
+    "spatialmath-python>=1.0.0",
+    "ruckig>=0.10.0; sys_platform != 'win32'",
+    "requests>=2.0.0",
+    "grpcio-tools>=1.60.0",
+    "paho-mqtt>=1.6.0",
+    "websocket-client>=1.0.0",
+    "psutil>=5.0.0",
+    "msgpack>=1.0.0",
+    "dearpygui>=2.0.0; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
+
+    # Robot-specific dependency groups
+    # NOTE: franka and realman require ROS2 (rclpy) which cannot be installed via pip.
+    # Install ROS2 Humble first: https://docs.ros.org/en/humble/Installation.html
+    # Then: source /opt/ros/humble/setup.bash
+    # franka/realman
+    "EmPy>=4.0.0",
+    "lark==1.1.5",
+    "feetech-servo-sdk>=1.0.0",
+    "pyserial>=3.5",
+    "draccus>=0.10.0",
+    "deepdiff>=8.0.0",
+    "pygrabber>=0.2",
+    "huggingface_hub>=0.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "ipykernel>=6.30.0",
+]
+
+[project.scripts]
+# Entry points for each robot (via mjpython wrapper for macOS compatibility)
+fr3-motion = "rcp_motion.utils.mjpython_wrapper:fr3_motion"
+rm75-motion = "rcp_motion.utils.mjpython_wrapper:rm75_motion"
+so101-motion = "rcp_motion.utils.mjpython_wrapper:so101_motion"
+so101-inference = "rcp_motion.utils.mjpython_wrapper:so101_inference"
+
+# SO101 utility scripts
+so101-calibrate = "rcp_motion.robots.so101.scripts.calibrate:main"
+so101-find-motor-port = "rcp_motion.robots.so101.scripts.find_motor_port:main"
+so101-find-camera-port = "rcp_motion.robots.so101.scripts.find_camera_port:main"
+so101-jointsine = "rcp_motion.robots.so101.scripts.follower_jointsine:main"
+so101-show-joint-angles = "rcp_motion.robots.so101.scripts.show_joint_angles:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rcp_motion*", "common*", "rynnrcp*", "comm_plugin*", "rcp_core*", "rcp_sensor*", "rcp_model*"]
+
+[tool.setuptools.package-data]
+"common.lcm" = ["*.lcm"]
+"common.lcm.lcm_types" = ["*.lcm"]
+"comm_plugin.rynnbot_plugin.proto" = ["*.proto"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

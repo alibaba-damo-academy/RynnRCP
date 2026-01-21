@@ -1,0 +1,29 @@
+logging:
+  log_dir: ~/RynnRcplog/robotMotion
+  log_file: robotMotion.log
+signal:
+  chunk_size: 20
+  signal_home_position: [0.0, 0.0, 0, 1.57, 0, 0.0, -0.0]
+  block_time: 0.0
+  signal_type: "sin"
+  signal_amplitude: 0.3
+  signal_frequency: 0.1
+  random_seed: 5
+  random_ratio: 0.0
+robot:
+  topic_name: "rm75_joint_cmd"
+  inference_rate: 30.0
+  timeout_seconds: 30.0
+  joint_names: [ joint1, joint2, joint3, joint4, joint5, joint6, joint7]
+  joint_limit_lower: [ -3.1, -2.268, -3.1, -2.355, -2.8065, -3.1, -2.233 ]
+  joint_limit_upper: [ 3.1 ,  2.268,  3.1, 2.355,  2.8065, 3.1,  2.233 ]
+  joint_vel_limit: [ 6.28, 6.28, 6.28, 6.28, 6.28, 6.28, 6.28]
+  joint_acc_limit: [ 62.8, 62.8, 62.8, 62.8, 62.8, 62.8, 62.8 ]
+  joint_jerk_limit: [ 6280.0, 6280.0, 6280.0, 6280.0, 6280.0, 6280.0, 6280.0]
+  vel_limit_ratio: 0.5
+simulation:
+  scene_path: {1: "models/realman/rm75/scene/scene.xml"}
+plot:
+  enable_joint_plotting: false
+  enable_interpolator_plotting: false
+  show_plots: false

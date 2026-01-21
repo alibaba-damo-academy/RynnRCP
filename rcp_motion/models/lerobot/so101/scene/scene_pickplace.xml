@@ -1,0 +1,99 @@
+<mujoco model="so101 pickplace">
+  <option timestep="0.001" gravity="0 0 -9.80665" integrator="implicitfast" />
+  <compiler angle="radian" meshdir="../assets" />
+  <statistic center="0.2 0 0.4" extent="0.8" />
+
+  <include file="../mjcf/so101_defaults.xml" />
+  <include file="../mjcf/so101_assets.xml" />
+
+  <include file="../../../environments/mug_assets.xml" />
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0 0 0" />
+    <rgba haze="0.15 0.25 0.35 1" />
+    <global azimuth="120" elevation="-20" />
+  </visual>
+
+  <asset>
+    <mesh name="Tablelegs" file="../../../environments/tablelegs.obj" />
+    <mesh name="Tabletop" file="../../../environments/tabletop.obj" />
+    <mesh name="highstage" file="../../../environments/highstage_camera.stl" />
+    <mesh name="front_camera" file="../assets/Camera.stl" />
+    <material name="Table" texture="small_meta_table_diffuse" />
+    <texture type="2d" file="../../../environments/small_meta_table_diffuse.png" />
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072" />
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300" />
+    <material name="Groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2" />
+    <texture name="lerobot_tablecloth" type="2d" file="../../../environments/lerobot_tablecloth.png" />
+    <material name="lerobot_tablecloth" texture="lerobot_tablecloth" texuniform="false" texrepeat="1 1" reflectance="0.2" />
+  </asset>
+
+  <worldbody>
+    <geom type="cylinder" size="0.002 0.05" rgba="1 0 0 1" pos="0.05 -0.0 0." euler="0 1.57079 0" class="visual" />
+    <geom type="cylinder" size="0.002 0.05" rgba="0 1 0 1" pos="0 0.05 0." euler="1.57079 0 0" class="visual" />
+    <geom type="cylinder" size="0.002 0.05" rgba="0 0 1 1" pos="0 -0.0 0.05" euler="0 0 0" class="visual" />
+
+    <light pos="0 0 2.25" dir="0 0 -1" directional="true" />
+    <geom name="Floor" size="0 0 0.05" type="plane" material="Groundplane" pos="0 0 -0.75" />
+    <geom mesh="Tabletop" material="Table" class="visual" pos="0.36 0. -0.75" euler="0 0 0" />
+    <geom mesh="Tablelegs" material="Table" class="visual" pos="0.36 0. -0.75" euler="0 0 0" />
+    <geom name="Table" pos="0 -0. -0.375" size="0.61 0.38 0.376" type="box" class="collision" rgba="1 1 1 0.2" solref="0.001 1" solimp="0. 1 0.0001 0.02 3" />
+    <geom name="lerobot_tablecloth" type="plane" material="lerobot_tablecloth" pos="0.318 0 0.001" size="0.420 0.297 0.0005" euler="0 0 -1.57079" />
+    <body name="highstage" pos="0.54 0.0 0.0" euler="0 0 3.14159">
+      <geom type="mesh" mesh="highstage" rgba="1 1 1 1" />
+      <body name="tf2" pos="0.017 0 0.552" euler="0 1.134 0">
+        <geom type="mesh" mesh="front_camera" rgba="1 1 1 0.7" />
+        <body name="tf3" euler="1.57079 -1.57079 0">
+          <camera name="front_camera" mode="fixed" resolution="1920 1080" sensorsize="5.76 3.24" focal="3.5 3.5" />
+          <body name="tf4" euler="3.1415926 0 0">
+            <site name="camera_front" />
+            <!-- <geom type="cylinder" size="0.002 0.03" rgba="1 0 0 1" pos="0.03 0.0 0.0" euler="0 1.57079 0" class="visual" />
+            <geom type="cylinder" size="0.002 0.03" rgba="0 1 0 1" pos="0.0 0.03 0.0" euler="1.57079 0 0" class="visual" />
+            <geom type="cylinder" size="0.002 0.03" rgba="0 0 1 1" pos="0.0 0.0 0.03" euler="0 0 0" class="visual" /> -->
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <include file="../mjcf/so101_links.xml" />
+
+    <body name="mug" pos="0.2 -0.15 0.0">
+      <include file="../../../environments/mug_body.xml" />
+    </body>
+    <body name="cube1" pos="0.16 0.0 0.07">
+      <freejoint name="cube1" />
+      <geom type="box" mass="0.01" size="0.01 0.01 0.01" rgba="1 0.072272 0.039546 1" solref="0.001 1" solimp="0. 1 0.0001 0.02 3" />
+    </body>
+    <body name="cube2" pos="0.20 0.0 0.07">
+      <freejoint name="cube2" />
+      <geom type="box" mass="0.01" size="0.01 0.01 0.01" rgba="1.0 0.5 0.0 1" solref="0.001 1" solimp="0. 1 0.0001 0.02 3" />
+    </body>
+    <body name="cube3" pos="0.16 0.05 0.07">
+      <freejoint name="cube3" />
+      <geom type="box" mass="0.01" size="0.01 0.01 0.01" rgba="1.0 1.0 0.0 1" solref="0.001 1" solimp="0. 1 0.0001 0.02 3" />
+    </body>
+    <body name="cube4" pos="0.20 0.05 0.07">
+      <freejoint name="cube4" />
+      <geom type="box" mass="0.01" size="0.01 0.01 0.01" rgba="0.0 1.0 0.0 1" solref="0.001 1" solimp="0. 1 0.0001 0.02 3" />
+    </body>
+    <body name="cube5" pos="0.24 0.05 0.07">
+      <freejoint name="cube5" />
+      <geom type="box" mass="0.01" size="0.01 0.01 0.01" rgba="0.0 0.0 1.0 1" solref="0.001 1" solimp="0. 1 0.0001 0.02 3" />
+    </body>
+    <body name="cube6" pos="0.24 0.0 0.07">
+      <freejoint name="cube6" />
+      <geom type="box" mass="0.01" size="0.01 0.01 0.01" rgba="0.0 1.0 1.0 1" solref="0.001 1" solimp="0. 1 0.0001 0.02 3" />
+    </body>
+
+  </worldbody>
+
+  <include file="../mjcf/so101_actuators.xml" />
+  <include file="../mjcf/so101_sensors.xml" />
+
+  <keyframe>
+    <key name="middle" qpos="0 0 -0.141 0.193 0 0 0.16 0.0 0.07 1 0 0 0 0.20 0.0 0.07 1 0 0 0 0.16 0.05 0.07 1 0 0 0 0.20 0.05 0.07 1 0 0 0 0.24 0.05 0.07 1 0 0 0 0.24 0.0 0.07 1 0 0 0" ctrl="0 0 -0.141 0.193 0 0" />
+    <key name="zero" qpos="0 1.348 -1.201 -0.139 0 0 0.16 0.0 0.07 1 0 0 0 0.20 0.0 0.07 1 0 0 0 0.16 0.05 0.07 1 0 0 0 0.20 0.05 0.07 1 0 0 0 0.24 0.05 0.07 1 0 0 0 0.24 0.0 0.07 1 0 0 0" ctrl="0 1.348 -1.201 -0.139 0 0" />
+    <key name="erect" qpos="0 0.068 -1.428 0 0 0 0.16 0.0 0.07 1 0 0 0 0.20 0.0 0.07 1 0 0 0 0.16 0.05 0.07 1 0 0 0 0.20 0.05 0.07 1 0 0 0 0.24 0.05 0.07 1 0 0 0 0.24 0.0 0.07 1 0 0 0" ctrl="0 0.068 -1.428 0 0 0" />
+  </keyframe>
+
+</mujoco>

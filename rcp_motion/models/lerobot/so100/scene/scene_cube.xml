@@ -1,0 +1,5 @@
+<mujoco model="so_arm100 scene">
+  <include file="../urdf/so_arm100_base.xml"/>
+  <include file="../scene/scene_base.xml"/>
+  <include file="../../../environments/cube.xml"/>
+</mujoco>

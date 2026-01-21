@@ -1,0 +1,16 @@
+<mujoco model = "color">
+
+  <material name="white" rgba="1 1 1 1"/>
+  <material name="off_white" rgba="0.901961 0.921569 0.929412 1"/>
+  <material name="black" rgba="0.2 0.2 0.2 1"/>
+  <material name="metal" rgba="0.58 0.58 0.58 1"/>
+  <material name="silicone" rgba="0.1882 0.1882 0.1882 1"/>
+  <material name="gray" rgba="0.863156 0.863156 0.863157 1"/>
+  <material name="orange" rgba="1.0 0.5 0.0 1"/>
+  <material name="red" rgba="1 0.072272 0.039546 1"/>
+  <material name="yellow" rgba="1.0 1.0 0.0 1"/>
+  <material name="green" rgba="0.0 1.0 0.0 1"/>
+  <material name="blue" rgba="0.0 0.0 1.0 1"/>
+
+
+</mujoco>

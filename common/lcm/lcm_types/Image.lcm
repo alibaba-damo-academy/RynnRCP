@@ -1,0 +1,15 @@
+package lcm_msgs;
+
+struct Image {
+  lcm_msgs.msg.Header header;
+
+  int32_t height;
+  int32_t width;
+
+  string encoding;      // 例如 "rgb8", "bgr8", "mono8", "rgba8" 等
+  int8_t is_bigendian; // ROS2 uint8 is_bigendian (0 或 1)
+  int32_t step;        // ROS2 uint32 step，每一行的字节数（stride）
+
+  int32_t data_length;    // 数据长度，通常应为 step * height
+  byte data[data_length]; // ROS2 uint8[] data
+}

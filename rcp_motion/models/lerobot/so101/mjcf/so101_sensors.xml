@@ -1,0 +1,13 @@
+<mujoco model="so101_sensors">
+
+  <sensor>
+    <framepos name="eePos" objtype="site" objname="EE"/>
+    <framequat name="eeQuat" objtype="site" objname="EE"/>
+    <framelinvel name="eeLinVel" objtype="site" objname="EE"/>
+    <frameangvel name="eeAngVel" objtype="site" objname="EE"/>
+    <gyro name="eeGyro" site="EE"/>
+    <accelerometer name="eeAcc" site="EE"/>
+    <force name="eeForce" site="EE"/>
+  </sensor>
+
+</mujoco>

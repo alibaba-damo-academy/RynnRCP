@@ -1,0 +1,7 @@
+config_type: rynnbot_config
+robot_type: so101
+rynnbot:
+  product_key: put_product_key_here
+  device_name: put_device_name_here
+  device_secret: put_device_secret_here
+  http_url: https://robot-access.damo-academy.com

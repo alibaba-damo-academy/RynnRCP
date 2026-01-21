@@ -1,0 +1,23 @@
+<mujoco model="so101">
+  <option timestep="0.001" gravity="0 0 -9.80665" integrator="implicitfast" />
+  <compiler angle="radian" meshdir="../assets" autolimits="true" />
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0.2 0.2 0.2" width="512" height="3072" />
+  </asset>
+
+  <include file="../mjcf/so101_defaults.xml" />
+  <include file="../mjcf/so101_assets.xml" />
+  <include file="../mjcf/so101_actuators.xml" />
+  <include file="../mjcf/so101_sensors.xml" />
+
+  <worldbody>
+    <include file="../mjcf/so101_links.xml" />
+  </worldbody>
+
+  <keyframe>
+    <key name="home" qpos="0 -1.57079 0 0 0 0" ctrl="0 -1.57079 0 0 0 0" />
+    <key name="standby1" qpos="0 0 0 1.57079 -1.57079 0" ctrl="0 0 0 1.57079 -1.57079 0" />
+    <key name="standby2" qpos="0 0 0 1.57079 -1.57079 0" ctrl="0 0 0 1.57079 -1.57079 0" />
+    <key name="rest" qpos="0 -1.75 1.57 1.18 0 -0.174" ctrl="0 -1.75 1.57 1.18 0 -0.174" />
+  </keyframe>
+</mujoco>

@@ -1,0 +1,8 @@
+package lcm_msgs;
+
+struct JointTrajectory {
+  lcm_msgs.msg.Header header;
+
+  int32_t joints_length;
+  lcm_msgs.msg.JointState joints[joints_length];
+}

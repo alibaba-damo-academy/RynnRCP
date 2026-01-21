@@ -1,195 +1,165 @@
 # Overview
-**RynnRCP** is a complete set of robot service agreements and frameworks, mainly consisting of two modules: **RCP framework** and **RobotMotion**.
 
-- **RCP framework** is the overall implementation of the architecture. The current main functions implemented include: providing an abstraction of the capabilities of the robot body and related sensors, offering various functionalities externally and interacting through standard protocols, different transport layers, and model services.
-- **RobotMotion** serves as a bridge between cloud inference and robot body control, converting discrete low-frequency inference commands into high-frequency continuous control signals in real time to drive the robot to complete motion tasks. Additionally, it is equipped with a toolkit necessary for motion planning and control, including MuJoCo physics simulation, real machine debugging and playback, data collection, and motion trajectory visualization, facilitating the integration of embodied intelligence into the physical world.
+**RynnRCP** provides a service-oriented capability framework for robot embodiments and an external communication protocol (Robotics Context Protocol). Its goal is to encapsulate robot-side capabilities—such as motion control, sensor acquisition, and device monitoring—into a unified set of **Tools**, and expose them to external applications / cloud platforms via **communication plugins (Plugins)**.
 
-Users can gain a clear and comprehensive understanding of the complete workflow from data acquisition from sensors to model inference and robot action execution through RynnRCP. The well-defined layered structure and standard communication protocols also make it relatively easy for users to adapt the SDK to their own usage scenarios.
+This project mainly consists of two parts: **RCP Core (tool services)** on the robot side and **Comm Plugin (external protocol/transport)**:
+- **RCP Core**: integrates robot hardware and sensors, maintains buffers, aligns observations, executes actions, and exposes capabilities as Tools.
+- **Comm Plugin**: exposes Tools to external systems via specific protocols and transports such as MQTT, WebSocket, MCP (JSON-RPC), etc. Currently, a plugin for the Leyun cloud platform (**RynnBot**) is implemented.
 
-In the future, RCP framework will integrate more robust and adaptable link layers for various scenarios to facilitate high-speed and stable interactions with cloud model inference. Additionally, RobotServer will be compatible with more hardware platforms. Furthermore, model inference services may also be integrated into the edge and open-sourced, making the entire RynnRCP even more comprehensive.
+> With RynnRCP, users can clearly understand the end-to-end pipeline from sensor data acquisition to model inference and robot action execution. Meanwhile, the layered architecture and standardized communication protocol make it easier to migrate the system to specific application scenarios.
 
-RobotMotion will provide robot control interfaces for different forms of inference models, adopting a unified foundational module and development paradigm for robot regulation and control. Additionally, RobotMotion will offer simulation tools based on Mujoco, serving as a secure visualization platform for validating model execution, enabling developers to confirm their robot configurations and quickly build embodied intelligent robot control systems.
 
 # Directory Structure
-``` bash
+
+```bash
 .
-├── common                 # Common message definitions and components
-│   ├── config             # Configuration files
-│   ├── lcm                # LCM message type declarations
-│   ├── proto              # Protobuf message type declarations
-│   └── third_party        # Third-party dependencies source code
-├── examples               # Deployment preparations and running instructions for different robots
-├── robot_motion           # Implementations related to RobotMotion
-│   ├── models             # Robotic arm models
-│   └── robots             # Supported robots
-│       └── lerobot        # Control implementation for lerobot, including simulation tools
-├── rcp_framework          # Implementations related to rcp_framework
-│   ├── cpp                # Contains the C++ implementations of rcp_framework
-│   │   ├── common         # Contains communication capabilities and other common components
-│   │   └── robot_server   # Contains implementations related to robot_server
-│   └── robots             # Supported robots
-│       └── so100          # Minimal project for so100, including camera nodes
-└── scripts                # Compilation scripts
+├── setup_rcp.sh                 # One-click installation/setup (recommended)
+├── pyproject.toml               # Python package configuration
+├── README.md / README_cn.md     # Project documentation
+├── rynnrcp/                     # Top-level entry: RynnRCP
+├── rcp_core/                    # RCP Core: tool service core
+│   ├── rcp_core.py              # RcpCore initialization entry
+│   ├── action_server/           # Action-related servers
+│   ├── sensor_server/           # Sensor-related servers
+│   ├── device_monitor_server/   # Device monitoring server
+│   └── common/                  # bus / adapter / protocol / utils, etc.
+├── comm_plugin/                 # Communication plugins: external protocol/transport
+│   ├── base_plugin/             # Plugin interface definitions
+│   └── rynnbot_plugin/          # RynnBot plugin (MQTT + WebSocket)
+├── rcp_sensor/                  # Port devices / sensor implementations
+│   └── camera/                  # Camera implementation
+├── robots/                      # Minimal runnable projects & docs for each robot
+│   ├── so100/
+│   └── so101/
+├── rcp_motion/                  # Motion control + simulation/toolchain
+├── common/                      # Shared files (configs, LCM messages, etc.)
+│   ├── config/
+│   └── lcm/
+├── scripts/                     # Scripts
+└── docs/                        # Documentation
+
 ```
 
-# Installation and Usage
-> Note: For detailed usage instructions, please refer to: [RynnBot Embodied Intelligence Development Platform User Documentation](https://developer.damo-academy.com/allSpark/document/guide/basic)  
+# Compatibility Support Status
 
-## Download the Source Code
+
+## Robot Configurations
+| Robot | Platform/Plugin | Typical Integration | Directory | Notes |
+|---|---|---|---|---|
+| SO100 | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/so100/` | Minimal runnable example + configuration wizard |
+| SO101 | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/so101/` | Minimal runnable example + configuration wizard |
+
+> The SO100/SO101 configurations support zero-code integration: users only need to configure the serial port, cameras, and platform device triplet to run. The robot control logic is provided by the built-in `controller` in `rcp_motion` (no need to write SDK calls). Meanwhile, `rcp_motion` (RCP Motion) converts low-frequency discrete outputs from the cloud/model into high-frequency continuous control signals executable by the robot, and provides tooling such as MuJoCo simulation, real-robot debugging & replay, data collection, and trajectory visualization.
+
+## Services (RCP Core)
+
+| Server | Status | Tools | Description |
+|---|---|---|---|
+| ActionServer | ✅ | `get_state`、`run_action_chunk` | Observation alignment and action execution; exposes state snapshot and action chunk execution |
+| SensorServer | ✅ | `get_image`、`get_image_info` | Sensor data service (currently camera-focused): image capture/encoding and camera capability enumeration |
+| DeviceMonitorServer | ✅ | `get_device_info` | Device/system monitoring: CPU/memory/system info and camera list, etc. |
+| Skill Server | 🚧 | - | Skill encapsulation and execution |
+| Data Manager Server | 🚧 | - | Data collection, replay, and management |
+| Infer Server | 🚧  | - | Inference service: supports multiple models (e.g., VLA/RL) for local or remote inference; calls Action/Sensor via BUS at runtime |
+| Model Manager Server | 🚧 | - | Model management: provides model management services |
+| Agent Server | 🚧 | - | Workflow/task orchestration: parses and executes a unified workflow spec; can call Skills or low-level Tools; will integrate planning models and support cross-robot collaboration after secure pairing |
+
+
+## Communication Plugins (Comm Plugin)
+
+| Plugin | Status | Protocol | Description |
+|---|---|---|---|
+| RynnBot Plugin | ✅ | MQTT + WebSocket | RynnBot platform integration: device claim/release, action dispatch, image/state fetching, and device property reporting |
+| MCP Plugin | 🚧 | JSON-RPC (MCP-style) | Standardized tools/list / tools/call integration for local/LAN/WAN connectivity with external apps and model services |
+
+
+# Installation & Usage
+
+## Clone
 ```bash
 git clone https://github.com/alibaba-damo-academy/RynnRCP.git
 ```
 
-## Dependency Installation and Compilation
-### Install Python Environment
+## Quick Setup (Recommended)
+
+We provide a unified setup script with bilingual support (English/Chinese):
+
+```bash
+cd RynnRCP
+bash setup_rcp.sh
+```
+
+It will guide you through:
+1. Language selection (English / 中文)
+2. Installing uv (if not installed)
+3. Creating and activating a virtual environment (macOS: venv/; Linux/Windows: .venv/)
+4. Installing RynnRCP and development dependencies
+5. Generating protocol and message code (protobuf + LCM; on Windows, LCM failures will be reported and skipped)
+6. Import checks (rynnrcp / rcp_motion / mujoco)
+
+
+## Manual Installation
+
+
+### Python Environment
 ```bash
 cd RynnRCP
 
 # Using venv
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -e .
 
 # Or using Conda
 conda create --name venv python=3.10
 conda activate venv
-pip install -r requirements.txt
-
-# Install RobotMotion module
-cd robot_motion/robots/lerobot
 pip install -e .
+
+# Generate protocol & message code
+python scripts/gen_proto_msg.py
+python scripts/gen_lcm_msg.py   # May need to skip on Windows
 ```
-> This will create and activate the required environment and install all dependencies. Python 3.10 is the minimum required version.
-
-### Install and Compile C++ Modules
-
-#### For Linux (Ubuntu)
-```bash
-cd RynnRCP
-bash scripts/deploy_linux.sh
-```
-
-#### For macOS (Apple Silicon/Intel)
-```bash
-cd RynnRCP
-bash scripts/deploy_mac.sh
-```
-
-> Run the appropriate one-click installation script for your platform. These scripts will automatically check and install necessary dependencies:
-> - **Linux**: CMake, build tools, Python development libraries, GLib, Glog, Protobuf, OpenSSL 3, and more via apt package manager
-> - **macOS**: CMake, yaml-cpp, libwebsockets, glog, OpenSSL 3 via Homebrew, plus protobuf from source for compatibility
-> 
-> Both scripts will compile required third-party libraries (such as LCM, libwebsockets, Paho MQTT, libyaml-cpp, etc.) and compile the server for the lerobot sample program.
-
-During the execution of the script, the following operations will also be performed:
-- **Linux**: Modify the UDP buffer configuration in `/etc/sysctl.conf` to accommodate LCM image transmission
-- **macOS**: Configure UDP buffer settings via sysctl for LCM communication
-
-**Platform-specific Notes:**
-
-**Linux:**
-- Ensure your system is running Ubuntu and is connected to the internet
-- Some steps may prompt for the sudo password to gain administrative privileges
-- If any errors arise, troubleshoot based on the output information
-
-**macOS:**
-- Supports both Apple Silicon (M1/M2/M3/M4) and Intel Macs
-- Automatically installs Homebrew if not present
-- Uses specific dependency versions for compatibility
-- May require Xcode command line tools installation
-
-## Modify Configuration Files
-To simplify the configuration process, we provide an interactive configuration script that can automatically detect devices and guide you through the configuration. You can run the following command to start the configuration tool:
-
-```bash
-cd RynnRCP
-
-# Using Conda environment
-conda activate venv
-
-# Or using venv environment
-source venv/bin/activate
-
-# Run the configuration script
-python example/configure_so100.py
-```
-
-The script will guide you through the following configurations:
-1. Device authentication configuration (MQTT/WebSocket)
-2. Camera device configuration (automatic device detection)
-3. Robot parameter configuration (automatic serial port detection)
-4. Robot arm calibration
-
-For more advanced or specific configuration needs, you can also manually edit the following configuration files:
-
-### RobotServer
-- Copy the three parameters (`product_key`, `device_name`, `device_secret`) from the robot device activation page and configure them in the `rcp_framework/robots/so100/config/device_config.yaml` file (the parameters http_url/endpoint_mqtt/endpoint_websocket do not need modification).
-
-### Camera Node
-- Insert a front-angle camera, corresponding to the camera name `observation.images.front`. On Linux, execute `ls /dev/video*` to check the device number, for example, `/dev/video0`, and fill it in the `device` field. On macOS, simply enter the corresponding device ID, for example, `0`.
-- Insert a wrist-angle camera, corresponding to the camera name `observation.images.wrist`, On Linux, execute `ls /dev/video*` to check the device number, for example, `/dev/video2`, and fill it in the `device` field. On macOS, simply enter the corresponding device ID, for example, `2`.
-- Fill in the device numbers in the camera configuration file `rcp_framework/robots/so100/config/cameras.yaml`.
-- It is recommended that **at least one of the two cameras is connected directly to the USB port of the host**. Based on experience, if both cameras are used through a hub, it may lead to operational issues.
-
-### RobotMotion
-
-Configure the relevant parameters for the robot. The configuration process may vary for different robots. For the lerobot, the relevant configurations and the method for calibrating the robotic arm can be found in: [RobtoMotion LeRobot README](robot_motion/robots/lerobot/README.md).
-
+> Python 3.10 is the minimum required version.
 
 ## Run
-```bash
-cd RynnRCP
 
-# Using Conda environment
-conda activate venv
+This project supports multiple robot arms/configurations. For robot-specific configuration, calibration, and launch instructions (SO100/SO101, etc.), see:
+- robots/<robot_name>/README.md
+- robots/<robot_name>/config/*.yaml
+- robots/<robot_name>/run_rcp_*.py launch scripts
 
-# Or using venv environment
-source venv/bin/activate
-
-# Launch nodes
-bash example/so100.sh
-
-# Or launch nodes and output debug logs to terminal
-bash example/so100.sh DEBUG
-```
-
-This script will sequentially start the following components to support the `so100`'s edge functionality:
-- RobotMotion: Launches the motion control program.
-- RobotServer: Runs the robot server and loads device information and log configurations.
-- Camera Node: Starts the camera node, processes camera configuration information, and initiates asynchronous image capture.
-
-Notes:
-- Logs are stored in the `$HOME/RynnRcplog/` folder.
-- Use the Ctrl+C key combination to terminate the script execution; the system will automatically close all subprocesses.
-- Ensure that all configuration file paths and dependencies are correctly set before running the script.
-- Ensure that the Python virtual environment is activated before running the script.
+Typical workflow:
+1. Go to the target robot directory (e.g., robots/so100/)
+2. Follow its README to finish configuration (camera/serial/plugin settings)
+3. Run the example launch script (typically run_rcp_*.py)
 
 
-# Module Introduction
+## Advanced Development
+Advanced development is supported, including:
+- Adding a new robot configuration
+- Adding a custom `Server`
+- Adding a new `Comm Plugin`
 
-## RobotServer
-RobotServer provides a framework for building robot server modules, primarily responsible for handling communication and data exchange between robot devices and cloud. This module include Action Server (ActionServer), Sensor Server (SensorServer), and Device Monitor Server (DeviceMonitorServer), which communicate via data transmission protocols such as MQTT and WebSocket for controlling robot devices and data collection.
-- Multi-protocol Communication: A unified communication middleware is provided to cater to various protocol requirements, supporting MQTT, WebSocket, LCM, etc., achieving high-frequency and stable execution of core functions such as command transmission, data collection, and state monitoring through standardized interfaces.
-- Decoupled Server Module Design: Adopting a modular design, it offers basic server node templates for action execution, sensor acquisition, and device monitoring. Developers can extend and customize service nodes based on the CTerminalDeviceServer base class to implement functionalities such as device occupancy control, resource scheduling, and multi-client collaboration.
-- Secure Environment and Configuration Center: Configuration files only store device authentication metadata. At runtime, requests are initiated through an HTTPS secure channel to the authentication service, generating time-sensitive access tokens to ensure the security of communication links.
+For more detailed instructions and examples, please refer to: [RynnRCP Tutorials](https://rynnrcp.github.io/)
 
-## RobotMotion
-Robot Motion provides a middleware that drives robot movement and task completion using different models, along with a Mujoco simulation visualization tool equipped with a physics engine, offering a safe environment for configuring and validating models for your robots.
-- Model and Robot Integration: It provides regulatory control middleware that robots can execute based on the disparities in output from different models. For hierarchical inference models of the VLA type or lightweight real-time inference models (such as ACT), RobotMotion supplies middleware that can be executed at high frequency by real robots.
-- Simulation Tools with Physics Engine: It offers Mujoco-based simulation tools with a physics engine, providing a secure visual environment for validating robot strategy execution and enabling rapid verification of robot configurations in the simulation environment.
-- Additional Auxiliary Tools: It includes tools for data recording and visualization, simulation playback, and more.
 
-## Camera Node
+## Notes
 
-The camera node implements a basic image capture and transmission class, providing efficient and real-time image capture and processing capabilities. This module utilizes the LCM protocol for instantaneous transmission of camera data and optimizes data processing and management through a multithreaded architecture.
+**Linux：**
+- Some setup steps may require sudo privileges
+- UDP buffer settings will be adjusted in /etc/sysctl.conf to meet LCM image transmission requirements
 
-- Real-time Image Capture: Utilizes the OpenCV library to achieve real-time image capture for multiple cameras, supporting dynamic adjustment of resolution and frame rate based on configurations.
-- Lossless Image Compression: Employs Gzip for lossless compression of raw images to reduce bandwidth consumption during network transmission.
-- Asynchronous Processing: Separates the camera capture process from message response using Python's threading capabilities, ensuring system responsiveness and effective utilization of system resources.
+**macOS：**
+- Supports Apple Silicon (M1/M2/M3/M4) and Intel Macs
+- For LCM multicast: sudo route -nv add -net 224.0.0.0/4 -interface lo0
+
+**Windows：**
+- Cameras must not be connected through the same USB hub/expander; otherwise, multiple cameras cannot be opened simultaneously.
+- It is recommended to use Git Bash as the terminal for running setup_rcp.sh to configure the environment. When installing Git, pay attention to the line-ending configuration and select "Checkout as-is, commit Unix-style line endings" (i.e., use Unix-style line endings).
 
 # Todo
 - [x] Release **RynnRCP** 1.0 version
 - [ ] Release Technical Report
 - [ ] ActionServer and SensorServer support MCP
-- [ ] Complete the rest of **RynnRCP** framework
+- [ ] Complete the rest of RynnRCP framework
 - [ ] Support for robots with more structural types

@@ -1,0 +1,20 @@
+<mujoco model="mug_assets">
+  <asset>
+    <texture name="mug" file="./meshes/mug/mug.png" type="2d"/>
+    <material name="mug" texture="mug" specular="1" shininess="1"/>
+    <mesh file="./meshes/mug/mug.obj" scale=".01 .01 .01"/>
+    <material name="floor" reflectance=".1"/>
+  </asset>
+
+  <default>
+    <default class="mugcollision">
+      <geom type="box" group="3"/>
+      <default class="cup">
+        <geom size="0.0026 0.00704 0.033"/>
+      </default>
+      <default class="handle">
+        <geom size="0.0025 0.00328 0.0055"/>
+      </default>
+    </default>
+  </default>
+</mujoco>

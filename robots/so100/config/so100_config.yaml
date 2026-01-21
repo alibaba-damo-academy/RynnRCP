@@ -1,0 +1,85 @@
+config_type: robot_config
+robot_type: so100
+servers:
+- name: action_server
+  inputs:
+  - protocol: module
+    adapter: ModuleGenericInputAdapter
+    params:
+      sys_path:
+      - ../../rcp_motion/robots/so100/
+      module_name: scripts.unified_controller.UnifiedRobotController
+      init_args:
+        mode: real
+        motion: 0
+        frequency: 100
+        config_path: ../../rcp_motion/robots/so100/configs/config.yaml
+        scene: 1
+      start_call:
+      - method_name: start
+        method_kwargs: {}
+      destroy_call:
+      - method_name: stop
+        method_kwargs: {}
+      method_name: get_joint_positions
+      method_kwargs: {}
+      interval: 0.01
+      out_key: observation.state
+  outputs:
+  - protocol: module
+    adapter: ModuleStepOutputAdapter
+    params:
+      sys_path:
+      - ../../rcp_motion/robots/so100/
+      module_name: scripts.unified_controller.UnifiedRobotController
+      init_args:
+        mode: real
+        motion: 0
+        frequency: 100
+        config_path: ../../rcp_motion/robots/so100/configs/config.yaml
+        scene: 1
+      instance_lock: true
+      start_call:
+      - method_name: start
+        method_kwargs: {}
+      destroy_call:
+      - method_name: stop
+        method_kwargs: {}
+      method_name: set_joint_positions
+      dynamic_arg:
+      - from_key: action
+        arg: positions
+      static_args: []
+      post_chunk_delay_s: 0.1
+- name: sensor_server
+  inputs:
+  - protocol: port
+    adapter: PortImageInputAdapter
+    params:
+      port_type: USBCamera
+      init_args:
+        device_id: /dev/videoXXX
+        width: 640
+        height: 480
+        encoding: bgr8
+        fps: 30
+        brand: usb_camera
+        rotate: 0
+      out_key: observation.images.front
+  - protocol: port
+    adapter: PortImageInputAdapter
+    params:
+      port_type: USBCamera
+      init_args:
+        device_id: /dev/videoXXX
+        width: 640
+        height: 480
+        encoding: bgr8
+        fps: 30
+        brand: usb_camera
+        rotate: 0
+      out_key: observation.images.wrist
+  outputs: []
+- name: device_monitor_server
+  robot_info:
+    robot_name: so100
