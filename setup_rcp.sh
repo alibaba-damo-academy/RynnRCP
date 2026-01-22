@@ -119,11 +119,7 @@ fi
 # ----------------------------
 # Virtual Environment Setup
 # ----------------------------
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    VENV_DIR="venv"
-else
-    VENV_DIR=".venv"
-fi
+VENV_DIR="venv"
 
 PYTHON_PATH="$(detect_python_path)"
 if [[ -n "$PYTHON_PATH" ]]; then

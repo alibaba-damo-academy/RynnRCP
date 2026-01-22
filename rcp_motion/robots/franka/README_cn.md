@@ -47,8 +47,8 @@ source ./setup_motion.sh
 **手动设置（如果需要）：**
 ```bash
 # 创建并激活虚拟环境
-python -m venv .venv
-source .venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 
 # 然后运行设置
 ./setup_motion.sh

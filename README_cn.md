@@ -92,7 +92,7 @@ bash setup_rcp.sh
 该脚本将引导您完成：
 1. 语言选择（English / 中文）
 2. 安装 uv（若未安装）
-3. 创建并激活虚拟环境（macOS: venv/；Linux/Windows: .venv/）
+3. 创建并激活虚拟环境（venv/）
 4. 安装 RynnRCP 与开发依赖
 5. 生成协议与消息代码（protobuf + LCM；Windows 上 LCM 失败会提示并继续）
 6. 导入验证（rynnrcp / rcp_motion / mujoco）

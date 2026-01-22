@@ -2,43 +2,31 @@
 """
 SO101 Robot Configuration Tool (Bilingual, minimal-field changes)
 
-Features (match SO100 script style as much as possible):
-- Device settings GUI (DearPyGui) preferred; fallback to CLI input.
-- Camera visual mapper GUI (DearPyGui) preferred; fallback to Linux hotplug.
-- Serial hotplug GUI (DearPyGui + pyserial) preferred; fallback to Linux hotplug.
-- GUI text follows language selection (zh/en).
+Added:
+- Camera visual mapper (DearPyGui) preferred; fallback to hotplug on CLI/unavailable GUI.
+- Writes mapping directly into robots/so101/config/so101_config.yaml (NOT temp json).
 
-Only updates:
-1) robots/so101/config/rynnbot_config.yaml
-   - rynnbot.product_key
-   - rynnbot.device_name
-   - rynnbot.device_secret
-   - rynnbot.http_url
-
-2) robots/so101/config/so101_config.yaml
-   - sensor_server.inputs[*].params.init_args.device_id for out_key:
-       - observation.images.front
-       - observation.images.wrist
-
-3) rcp_motion/robots/so101/configs/so101.yaml
-   - robot.port = <selected serial port>
-   - (Linux only) sudo chmod 666 <port>
-
-4) Calibration
-   - python -m scripts.calibrate   (cwd=rcp_motion/robots/so101)
+Only updates in so101_config.yaml:
+- sensor_server.inputs[*].params.init_args.device_id for out_key:
+    - observation.images.front
+    - observation.images.wrist
 """
 
 from __future__ import annotations
 
 import os
+import io
 import sys
 import time
 import yaml
 import cv2
 import logging
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from contextlib import contextmanager
+
 
 # Optional GUI deps (best-effort)
 try:
@@ -64,6 +52,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
 )
 
 # ----------------------------
@@ -256,8 +245,17 @@ I18N: Dict[str, Dict[str, str]] = {
 }
 
 
+# ----------------------------
+# Input helper (flush prompt)
+# ----------------------------
+def prompt_input(prompt: str = "") -> str:
+    if prompt:
+        print(prompt, end="", flush=True)
+    return input()
+
+
 def choose_language() -> str:
-    ans = input(I18N["choose_lang"]["zh"]).strip()
+    ans = prompt_input(I18N["choose_lang"]["zh"]).strip()
     if ans == "2":
         return "en"
     if ans == "1" or ans == "":
@@ -276,14 +274,6 @@ def log_info(key: str, **kwargs) -> None:
     logging.info(t(key, **kwargs))
 
 
-def log_warning(key: str, **kwargs) -> None:
-    logging.warning(t(key, **kwargs))
-
-
-def log_error(key: str, **kwargs) -> None:
-    logging.error(t(key, **kwargs))
-
-
 # ----------------------------
 # YAML helpers
 # ----------------------------
@@ -291,12 +281,12 @@ def load_yaml_config(filepath: Path) -> Dict[str, Any]:
     try:
         log_info("load_cfg", path=str(filepath))
         if not filepath.exists():
-            log_warning("file_not_found", path=str(filepath))
+            log_info("file_not_found", path=str(filepath))
             return {}
         with filepath.open("r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     except yaml.YAMLError as e:
-        log_error(
+        log_info(
             "Failed to load YAML file {path}: {err}", path=str(filepath), err=str(e)
         )
         sys.exit(1)
@@ -311,17 +301,16 @@ def save_yaml_config(filepath: Path, config: Dict[str, Any]) -> None:
                 config, f, default_flow_style=False, allow_unicode=True, sort_keys=False
             )
     except Exception as e:
-        log_error(
+        log_info(
             "Failed to save YAML file {path}: {err}", path=str(filepath), err=str(e)
         )
         sys.exit(1)
 
 
-def input_with_default(prompt_text: str, default_value: str) -> str:
+def input_with_default(prompt: str, default_value: str) -> str:
     try:
-        user_input = input(
-            f"{prompt_text} (default: [{default_value}], Enter to use default): "
-        ).strip()
+        msg = f"{prompt} (default: [{default_value}], Enter to use default): "
+        user_input = prompt_input(msg).strip()
         return user_input if user_input else str(default_value)
     except KeyboardInterrupt:
         print(t("cancelled"))
@@ -329,8 +318,372 @@ def input_with_default(prompt_text: str, default_value: str) -> str:
 
 
 # ----------------------------
-# GUI helpers (match SO100 style)
+# Option 1: Device settings (RynnBot) - ONLY update 4 fields under rynnbot
 # ----------------------------
+def configure_device_settings_gui(cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not DPG_AVAILABLE:
+        return None
+
+    if sys.platform.startswith("linux") and not (
+        ("DISPLAY" in os.environ) or ("WAYLAND_DISPLAY" in os.environ)
+    ):
+        return None
+
+    rb = cfg.get("rynnbot")
+    if not isinstance(rb, dict):
+        rb = {}
+        cfg["rynnbot"] = rb
+
+    product_key = str(rb.get("product_key", "") or "")
+    device_name = str(rb.get("device_name", "") or "")
+    device_secret = str(rb.get("device_secret", "") or "")
+    http_url = str(rb.get("http_url", "") or "")
+
+    state = {"saved": False, "running": True}
+
+    def on_save(sender, app_data, user_data):
+        rb["product_key"] = dpg.get_value("rb_product_key").strip()
+        rb["device_name"] = dpg.get_value("rb_device_name").strip()
+        rb["device_secret"] = dpg.get_value("rb_device_secret").strip()
+        rb["http_url"] = dpg.get_value("rb_http_url").strip()
+        state["saved"] = True
+        state["running"] = False
+
+    def on_cancel(sender, app_data, user_data):
+        state["running"] = False
+
+    dpg.create_context()
+
+    FONT_SIZE = 26
+    font_path = find_font_path()
+    with dpg.font_registry():
+        if font_path and os.path.exists(font_path):
+            fnt = dpg.add_font(font_path, FONT_SIZE)
+            dpg.bind_font(fnt)
+
+    with dpg.window(label="RynnBot Device Settings", width=820, height=520):
+        dpg.add_text("Edit RynnBot fields (only these four will be updated):")
+        dpg.add_separator()
+        dpg.add_spacer(height=8)
+
+        dpg.add_text("product_key")
+        dpg.add_input_text(tag="rb_product_key", default_value=product_key, width=-1)
+
+        dpg.add_spacer(height=8)
+        dpg.add_text("device_name")
+        dpg.add_input_text(tag="rb_device_name", default_value=device_name, width=-1)
+
+        dpg.add_spacer(height=8)
+        dpg.add_text("device_secret")
+        dpg.add_input_text(
+            tag="rb_device_secret", default_value=device_secret, width=-1
+        )
+
+        dpg.add_spacer(height=8)
+        dpg.add_text("http_url")
+        dpg.add_input_text(tag="rb_http_url", default_value=http_url, width=-1)
+
+        dpg.add_spacer(height=18)
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="Save", width=140, height=44, callback=on_save)
+            dpg.add_button(label="Cancel", width=140, height=44, callback=on_cancel)
+
+    _safe_create_viewport(
+        title="RynnBot Device Settings", width=860, height=560, dpi_aware=True
+    )
+    dpg.setup_dearpygui()
+    dpg.show_viewport()
+
+    while dpg.is_dearpygui_running() and state["running"]:
+        dpg.render_dearpygui_frame()
+
+    dpg.destroy_context()
+
+    if not state["saved"]:
+        return None
+    return cfg
+
+
+def configure_device_settings() -> None:
+    log_info("device_title")
+    print("\n" + "=" * 50)
+    print(f"        {t('device_title')}")
+    print("=" * 50)
+
+    cfg = load_yaml_config(RYNNBOT_CONFIG_PATH)
+
+    try:
+        log_info("device_try_gui")
+        new_cfg = configure_device_settings_gui(cfg)
+    except Exception:
+        new_cfg = None
+
+    if new_cfg is not None:
+        save_yaml_config(RYNNBOT_CONFIG_PATH, new_cfg)
+        log_info("device_gui_done")
+        print(t("saved", path=str(RYNNBOT_CONFIG_PATH)))
+        return
+
+    log_info("device_gui_unavailable")
+
+    rb = cfg.get("rynnbot")
+    if not isinstance(rb, dict):
+        rb = {}
+        cfg["rynnbot"] = rb
+
+    rb["product_key"] = input_with_default(
+        t("prompt_product_key"), rb.get("product_key", "")
+    )
+    rb["device_name"] = input_with_default(
+        t("prompt_device_name"), rb.get("device_name", "")
+    )
+    rb["device_secret"] = input_with_default(
+        t("prompt_device_secret"), rb.get("device_secret", "")
+    )
+    rb["http_url"] = input_with_default(t("prompt_http_url"), rb.get("http_url", ""))
+
+    save_yaml_config(RYNNBOT_CONFIG_PATH, cfg)
+    print(t("saved", path=str(RYNNBOT_CONFIG_PATH)))
+
+
+# ----------------------------
+# Option 2: Camera settings - GUI preferred, fallback to hotplug
+# ----------------------------
+CAM_OUT_KEYS = ["observation.images.front", "observation.images.wrist"]
+
+
+def detect_camera_devices_linux() -> List[str]:
+    devices = sorted(str(p) for p in Path("/dev").glob("video*"))
+    log_info("detected_cams", devices=devices)
+    return devices
+
+
+def test_camera_device_linux(device_path: str) -> bool:
+    try:
+        cap = cv2.VideoCapture(device_path, cv2.CAP_V4L2)
+        if not cap.isOpened():
+            log_info("test_cam_fail", dev=device_path)
+            return False
+
+        ok = False
+        for _ in range(10):
+            ret, frame = cap.read()
+            if ret and frame is not None and frame.size > 0:
+                ok = True
+                break
+            time.sleep(0.05)
+
+        cap.release()
+        if not ok:
+            log_info("test_cam_fail", dev=device_path)
+            return False
+
+        log_info("test_cam_ok", dev=device_path)
+        return True
+    except Exception:
+        log_info("test_cam_fail", dev=device_path)
+        return False
+
+
+def wait_for_camera_device_change_video() -> str:
+    if not sys.platform.startswith("linux"):
+        raise SystemExit("Linux only for hotplug camera detection.")
+
+    try:
+        prompt_input(t("unplug_camera"))
+        time.sleep(0.5)
+        before = set(detect_camera_devices_linux())
+
+        prompt_input(t("plug_camera"))
+        time.sleep(0.5)
+        after = set(detect_camera_devices_linux())
+
+        new_devices = sorted(after - before)
+        log_info("new_cams", devices=new_devices)
+
+        if not new_devices:
+            log_info("no_new_cam")
+            raise SystemExit(0)
+
+        for dev in new_devices:
+            try:
+                subprocess.run(["sudo", "chmod", "666", dev], check=True)
+            except Exception:
+                pass
+
+            if test_camera_device_linux(dev):
+                print(t("use_cam", dev=dev))
+                return dev
+
+        log_info("no_cam_work")
+        raise SystemExit(0)
+
+    except KeyboardInterrupt:
+        print(t("cancelled"))
+        raise SystemExit(0)
+
+
+def _update_camera_device_id_only(
+    cfg: Dict[str, Any], out_key: str, device_id: str
+) -> None:
+    servers = cfg.get("servers")
+    if not isinstance(servers, list):
+        log_info("so101_config.yaml: servers is missing or not a list")
+        raise SystemExit(0)
+
+    sensor_server = None
+    for s in servers:
+        if isinstance(s, dict) and s.get("name") == "sensor_server":
+            sensor_server = s
+            break
+    if sensor_server is None:
+        log_info("so101_config.yaml: sensor_server not found")
+        raise SystemExit(0)
+
+    inputs = sensor_server.get("inputs")
+    if not isinstance(inputs, list):
+        log_info("so101_config.yaml: sensor_server.inputs is missing or not a list")
+        raise SystemExit(0)
+
+    for item in inputs:
+        if not isinstance(item, dict):
+            continue
+        params = item.get("params")
+        if not isinstance(params, dict):
+            continue
+        if params.get("out_key") != out_key:
+            continue
+
+        init_args = params.get("init_args")
+        if not isinstance(init_args, dict):
+            init_args = {}
+            params["init_args"] = init_args
+
+        init_args["device_id"] = device_id
+        return
+
+    log_info(f"so101_config.yaml: camera entry not found for out_key={out_key}")
+    raise SystemExit(0)
+
+
+@contextmanager
+def silent_opencv_probe(silent_stderr: bool = True):
+    old_lvl = None
+    used = None
+
+    try:
+        if (
+            hasattr(cv2, "utils")
+            and hasattr(cv2.utils, "logging")
+            and hasattr(cv2.utils.logging, "setLogLevel")
+        ):
+            used = "utils.logging"
+            if hasattr(cv2.utils.logging, "getLogLevel"):
+                old_lvl = cv2.utils.logging.getLogLevel()
+            cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_SILENT)
+        elif hasattr(cv2, "setLogLevel"):
+            used = "setLogLevel"
+            if hasattr(cv2, "getLogLevel"):
+                old_lvl = cv2.getLogLevel()
+            cv2.setLogLevel(0)
+    except Exception:
+        pass
+
+    if not silent_stderr:
+        try:
+            yield
+        finally:
+            pass
+        return
+
+    devnull_fd = None
+    saved_stderr_fd = None
+    try:
+        saved_stderr_fd = os.dup(2)
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull_fd, 2)
+        yield
+    finally:
+        try:
+            if saved_stderr_fd is not None:
+                os.dup2(saved_stderr_fd, 2)
+        finally:
+            if saved_stderr_fd is not None:
+                os.close(saved_stderr_fd)
+            if devnull_fd is not None:
+                os.close(devnull_fd)
+
+        try:
+            if used == "utils.logging" and old_lvl is not None:
+                cv2.utils.logging.setLogLevel(old_lvl)
+            elif used == "setLogLevel" and old_lvl is not None:
+                cv2.setLogLevel(old_lvl)
+        except Exception:
+            pass
+
+
+def _make_capture(index: int) -> cv2.VideoCapture:
+    source = f"/dev/video{index}" if sys.platform.startswith("linux") else index
+
+    if sys.platform.startswith("linux"):
+        backends: List[Optional[int]] = [cv2.CAP_V4L2, cv2.CAP_GSTREAMER, None]
+    elif sys.platform.startswith("win"):
+        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, None]
+    elif sys.platform == "darwin":
+        backends = [cv2.CAP_AVFOUNDATION, None]
+    else:
+        backends = [None]
+
+    last_cap: Optional[cv2.VideoCapture] = None
+    for be in backends:
+        cap = cv2.VideoCapture(source) if be is None else cv2.VideoCapture(source, be)
+        last_cap = cap
+        if cap is not None and cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            return cap
+        try:
+            cap.release()
+        except Exception:
+            pass
+
+    return last_cap if last_cap is not None else cv2.VideoCapture(source)
+
+
+def probe_camera_indices(max_probe: int = 8) -> List[int]:
+    ok: List[int] = []
+    for i in range(max_probe):
+        cap = None
+        try:
+            with silent_opencv_probe(silent_stderr=True):
+                cap = _make_capture(i)
+                if cap is None or not cap.isOpened():
+                    continue
+
+                good = False
+                for _ in range(3):
+                    ret, frame = cap.read()
+                    if ret and frame is not None and frame.size > 0:
+                        good = True
+                        break
+                    time.sleep(0.03)
+
+            if good:
+                print(t("use_cam", dev=i))
+                ok.append(i)
+
+        except Exception:
+            pass
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+    return ok
+
+
 def find_font_path() -> Optional[str]:
     if sys.platform.startswith("win"):
         candidates = [
@@ -383,301 +736,19 @@ def _safe_create_viewport(**kwargs):
         return dpg.create_viewport(**filtered)
 
 
-def _bind_font_if_possible(font_size: int) -> None:
-    font_path = find_font_path()
-    if font_path and os.path.exists(font_path):
-        with dpg.font_registry():
-            fnt = dpg.add_font(font_path, font_size)
-        dpg.bind_font(fnt)
-
-
 # ----------------------------
-# Option 1: Device settings (GUI preferred)
+# GUI camera mapper (multithread capture)
 # ----------------------------
-def configure_device_settings_gui(cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if not DPG_AVAILABLE:
-        return None
-    if sys.platform.startswith("linux") and not (
-        ("DISPLAY" in os.environ) or ("WAYLAND_DISPLAY" in os.environ)
-    ):
-        return None
-
-    rb = cfg.get("rynnbot")
-    if not isinstance(rb, dict):
-        rb = {}
-        cfg["rynnbot"] = rb
-
-    product_key = str(rb.get("product_key", "") or "")
-    device_name = str(rb.get("device_name", "") or "")
-    device_secret = str(rb.get("device_secret", "") or "")
-    http_url = str(rb.get("http_url", "") or "")
-
-    state = {"saved": False, "running": True}
-
-    def on_save(sender, app_data, user_data):
-        rb["product_key"] = (dpg.get_value("rb_product_key") or "").strip()
-        rb["device_name"] = (dpg.get_value("rb_device_name") or "").strip()
-        rb["device_secret"] = (dpg.get_value("rb_device_secret") or "").strip()
-        rb["http_url"] = (dpg.get_value("rb_http_url") or "").strip()
-        state["saved"] = True
-        state["running"] = False
-
-    def on_cancel(sender, app_data, user_data):
-        state["running"] = False
-
-    dpg.create_context()
-    _bind_font_if_possible(font_size=26)
-
-    with dpg.window(label="RynnBot Device Settings", width=820, height=520):
-        dpg.add_text("Edit RynnBot fields (only these four will be updated):")
-        dpg.add_separator()
-        dpg.add_spacer(height=8)
-
-        dpg.add_text("product_key")
-        dpg.add_input_text(tag="rb_product_key", default_value=product_key, width=-1)
-
-        dpg.add_spacer(height=8)
-        dpg.add_text("device_name")
-        dpg.add_input_text(tag="rb_device_name", default_value=device_name, width=-1)
-
-        dpg.add_spacer(height=8)
-        dpg.add_text("device_secret")
-        dpg.add_input_text(
-            tag="rb_device_secret", default_value=device_secret, width=-1
-        )
-
-        dpg.add_spacer(height=8)
-        dpg.add_text("http_url")
-        dpg.add_input_text(tag="rb_http_url", default_value=http_url, width=-1)
-
-        dpg.add_spacer(height=18)
-        with dpg.group(horizontal=True):
-            dpg.add_button(label="Save", width=140, height=44, callback=on_save)
-            dpg.add_button(label="Cancel", width=140, height=44, callback=on_cancel)
-
-    _safe_create_viewport(
-        title="RynnBot Device Settings", width=860, height=560, dpi_aware=True
-    )
-    dpg.setup_dearpygui()
-    dpg.show_viewport()
-
-    while dpg.is_dearpygui_running() and state["running"]:
-        dpg.render_dearpygui_frame()
-
-    dpg.destroy_context()
-    if not state["saved"]:
-        return None
-    return cfg
-
-
-def configure_device_settings() -> None:
-    log_info("device_title")
-    print("\n" + "=" * 50)
-    print(f"        {t('device_title')}")
-    print("=" * 50)
-
-    cfg = load_yaml_config(RYNNBOT_CONFIG_PATH)
-
-    # 1) Prefer GUI
-    try:
-        log_info("device_try_gui")
-        new_cfg = configure_device_settings_gui(cfg)
-    except Exception:
-        new_cfg = None
-
-    if new_cfg is not None:
-        save_yaml_config(RYNNBOT_CONFIG_PATH, new_cfg)
-        log_info("device_gui_done")
-        print(t("saved", path=str(RYNNBOT_CONFIG_PATH)))
-        return
-
-    # 2) Fallback CLI
-    log_warning("device_gui_unavailable")
-
-    rb = cfg.get("rynnbot")
-    if not isinstance(rb, dict):
-        rb = {}
-        cfg["rynnbot"] = rb
-
-    rb["product_key"] = input_with_default(
-        t("prompt_product_key"), rb.get("product_key", "")
-    )
-    rb["device_name"] = input_with_default(
-        t("prompt_device_name"), rb.get("device_name", "")
-    )
-    rb["device_secret"] = input_with_default(
-        t("prompt_device_secret"), rb.get("device_secret", "")
-    )
-    rb["http_url"] = input_with_default(t("prompt_http_url"), rb.get("http_url", ""))
-
-    save_yaml_config(RYNNBOT_CONFIG_PATH, cfg)
-    print(t("saved", path=str(RYNNBOT_CONFIG_PATH)))
-
-
-# ----------------------------
-# Option 2: Camera settings - GUI preferred, fallback to hotplug
-# ----------------------------
-CAM_OUT_KEYS = ["observation.images.front", "observation.images.wrist"]
-
-
-def detect_camera_devices_linux() -> List[str]:
-    devices = sorted(str(p) for p in Path("/dev").glob("video*"))
-    log_info("detected_cams", devices=devices)
-    return devices
-
-
-def test_camera_device_linux(device_path: str) -> bool:
-    try:
-        cap = cv2.VideoCapture(device_path, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            log_warning("test_cam_fail", dev=device_path)
-            return False
-
-        ok = False
-        for _ in range(10):
-            ret, frame = cap.read()
-            if ret and frame is not None and frame.size > 0:
-                ok = True
-                break
-            time.sleep(0.05)
-
-        cap.release()
-        if not ok:
-            log_warning("test_cam_fail", dev=device_path)
-            return False
-
-        log_info("test_cam_ok", dev=device_path)
-        return True
-    except Exception:
-        log_warning("test_cam_fail", dev=device_path)
-        return False
-
-
-def wait_for_camera_device_change_video() -> str:
-    if not sys.platform.startswith("linux"):
-        raise SystemExit("Linux only for hotplug camera detection.")
-    try:
-        input(t("unplug_camera"))
-        time.sleep(0.5)
-        before = set(detect_camera_devices_linux())
-
-        input(t("plug_camera"))
-        time.sleep(0.5)
-        after = set(detect_camera_devices_linux())
-
-        new_devices = sorted(after - before)
-        log_info("new_cams", devices=new_devices)
-
-        if not new_devices:
-            raise SystemExit(t("no_new_cam"))
-
-        for dev in new_devices:
-            try:
-                subprocess.run(["sudo", "chmod", "666", dev], check=True)
-            except Exception:
-                pass
-
-            if test_camera_device_linux(dev):
-                print(t("use_cam", dev=dev))
-                return dev
-
-        raise SystemExit(t("no_cam_work"))
-    except KeyboardInterrupt:
-        print(t("cancelled"))
-        raise SystemExit(0)
-
-
-def _find_server(cfg: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
-    servers = cfg.get("servers")
-    if not isinstance(servers, list):
-        return None
-    for s in servers:
-        if isinstance(s, dict) and s.get("name") == name:
-            return s
-    return None
-
-
-def _update_camera_device_id_only(
-    cfg: Dict[str, Any], out_key: str, device_id: str
-) -> None:
-    sensor = _find_server(cfg, "sensor_server")
-    if not sensor:
-        raise SystemExit("so101_config.yaml: sensor_server not found")
-
-    inputs = sensor.get("inputs")
-    if not isinstance(inputs, list):
-        raise SystemExit(
-            "so101_config.yaml: sensor_server.inputs is missing or not a list"
-        )
-
-    for item in inputs:
-        if not isinstance(item, dict):
-            continue
-        params = item.get("params")
-        if not isinstance(params, dict):
-            continue
-        if params.get("out_key") != out_key:
-            continue
-
-        init_args = params.get("init_args")
-        if not isinstance(init_args, dict):
-            init_args = {}
-            params["init_args"] = init_args
-
-        # ONLY update this field
-        init_args["device_id"] = device_id
-        return
-
-    raise SystemExit(f"so101_config.yaml: camera entry not found for out_key={out_key}")
-
-
-# ---------- GUI camera mapper (integrated; returns mapping out_key->device_id) ----------
-def _preferred_backend() -> Optional[int]:
-    if sys.platform.startswith("win"):
-        return cv2.CAP_DSHOW
-    if sys.platform == "darwin":
-        return cv2.CAP_AVFOUNDATION
-    return None
-
-
-def _make_capture(index: int) -> cv2.VideoCapture:
-    backend = _preferred_backend()
-    if backend is None:
-        cap = cv2.VideoCapture(index)
-    else:
-        cap = cv2.VideoCapture(index, backend)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    return cap
-
-
-def probe_camera_indices(max_probe: int = 8) -> List[int]:
-    ok: List[int] = []
-    for i in range(max_probe):
-        cap = None
-        try:
-            cap = _make_capture(i)
-            if not cap.isOpened():
-                continue
-            good = False
-            for _ in range(3):
-                ret, frame = cap.read()
-                if ret and frame is not None and getattr(frame, "size", 0) > 0:
-                    good = True
-                    break
-                time.sleep(0.03)
-            if good:
-                ok.append(i)
-        finally:
-            if cap is not None:
-                cap.release()
-    return ok
-
-
 def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
+    """
+    Returns mapping: out_key -> device_id (string)
+
+    Linux: device_id will prefer the mapped /dev/videoX (NOT f"/dev/video{index}" guess).
+    Else: uses numeric index as string.
+    """
     if not DPG_AVAILABLE:
         return None
+
     if sys.platform.startswith("linux") and not (
         ("DISPLAY" in os.environ) or ("WAYLAND_DISPLAY" in os.environ)
     ):
@@ -687,8 +758,8 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
     if not cam_indices:
         return None
 
-    tex_w, tex_h = 320, 240
-    ui_fps = 20
+    tex_w, tex_h = 200, 200
+    ui_fps = 30
 
     state = {
         "selected_out_key": CAM_OUT_KEYS[0],
@@ -730,10 +801,17 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
     def on_quit(sender, app_data, user_data):
         state["running"] = False
 
-    caps: Dict[int, cv2.VideoCapture] = {i: _make_capture(i) for i in cam_indices}
+    with silent_opencv_probe(silent_stderr=True):
+        caps: Dict[int, cv2.VideoCapture] = {i: _make_capture(i) for i in cam_indices}
 
     dpg.create_context()
-    _bind_font_if_possible(font_size=26)
+
+    FONT_SIZE = 26
+    font_path = find_font_path()
+    with dpg.font_registry():
+        if font_path and os.path.exists(font_path):
+            fnt = dpg.add_font(font_path, FONT_SIZE)
+            dpg.bind_font(fnt)
 
     def empty_rgba():
         return [0.0] * (tex_w * tex_h * 4)
@@ -781,7 +859,7 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
                 )
 
                 dpg.add_spacer(height=14)
-                dpg.add_text("2) Current mapping")
+                dpg.add_text("3) Current mapping")
                 dpg.add_separator()
                 dpg.add_input_text(
                     tag="binding_view",
@@ -806,7 +884,7 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
                     dpg.add_button(label="Quit", width=90, height=40, callback=on_quit)
 
             with dpg.child_window(width=-1, height=-1):
-                dpg.add_text("Camera previews (click bind under the correct image)")
+                dpg.add_text("2) Click bind camera to outkey (front & wrist))")
                 dpg.add_separator()
 
                 cols = 2 if len(cam_indices) <= 4 else 3
@@ -820,7 +898,7 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
                         dpg.add_text(f"Camera index: {cam}")
                         dpg.add_image(texture_tags[cam])
                         dpg.add_button(
-                            label="Bind to selected out_key",
+                            label="Click to bind out_key",
                             width=tex_w,
                             height=38,
                             callback=on_bind_camera,
@@ -834,6 +912,35 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
     dpg.setup_dearpygui()
     dpg.show_viewport()
 
+    stop_event = threading.Event()
+    latest: Dict[int, Optional[np.ndarray]] = {cam: None for cam in cam_indices}
+    locks: Dict[int, threading.Lock] = {cam: threading.Lock() for cam in cam_indices}
+
+    def capture_worker(cam: int, cap: cv2.VideoCapture):
+        while not stop_event.is_set():
+            if cap is None or not cap.isOpened():
+                time.sleep(0.05)
+                continue
+            with silent_opencv_probe(silent_stderr=True):
+                ret, frame = cap.read()
+            if not ret or frame is None:
+                time.sleep(0.005)
+                continue
+            try:
+                frame = cv2.resize(frame, (tex_w, tex_h), interpolation=cv2.INTER_AREA)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+                data = (frame.astype(np.float32) / 255.0).ravel()
+                with locks[cam]:
+                    latest[cam] = data
+            except Exception:
+                time.sleep(0.01)
+
+    threads: List[threading.Thread] = []
+    for cam, cap in caps.items():
+        th = threading.Thread(target=capture_worker, args=(cam, cap), daemon=True)
+        th.start()
+        threads.append(th)
+
     frame_interval = 1.0 / max(1, ui_fps)
     last = 0.0
 
@@ -841,18 +948,17 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
         now = time.time()
         if now - last >= frame_interval:
             last = now
-            for cam, cap in caps.items():
-                if cap is None or not cap.isOpened():
-                    continue
-                ret, frame = cap.read()
-                if not ret or frame is None:
-                    continue
-                frame = cv2.resize(frame, (tex_w, tex_h), interpolation=cv2.INTER_AREA)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-                data = (frame.astype(np.float32) / 255.0).ravel()
-                dpg.set_value(texture_tags[cam], data)
+            for cam in cam_indices:
+                with locks[cam]:
+                    data = latest[cam]
+                if data is not None:
+                    dpg.set_value(texture_tags[cam], data)
 
         dpg.render_dearpygui_frame()
+
+    stop_event.set()
+    for th in threads:
+        th.join(timeout=0.5)
 
     for cap in caps.values():
         try:
@@ -864,17 +970,10 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
     if not state["saved"]:
         return None
 
-    # Convert index -> device_id string
     mapping: Dict[str, str] = {}
-    for ok, idx in state["binding"].items():
-        if sys.platform.startswith("linux"):
-            # Prefer /dev/videoX if exists; else fallback to numeric string
-            dev = f"/dev/video{idx}"
-            mapping[ok] = dev if Path(dev).exists() else str(idx)
-        else:
-            mapping[ok] = str(idx)
+    for ok_key, idx in state["binding"].items():
+        mapping[ok_key] = str(idx)
 
-    # Ensure both keys exist
     if not all(k in mapping for k in CAM_OUT_KEYS):
         return None
     return mapping
@@ -888,7 +987,6 @@ def configure_cameras() -> None:
 
     cfg = load_yaml_config(SO101_RCP_CONFIG_PATH)
 
-    # 1) Prefer GUI
     mapping: Optional[Dict[str, str]] = None
     try:
         log_info("camera_try_gui")
@@ -908,22 +1006,22 @@ def configure_cameras() -> None:
         print(t("saved", path=str(SO101_RCP_CONFIG_PATH)))
         return
 
-    # 2) Fallback hotplug
-    log_warning("camera_gui_unavailable")
+    log_info("camera_gui_unavailable")
     print("\n" + t("front_camera"))
     front_dev = wait_for_camera_device_change_video()
+
     print("\n" + t("wrist_camera"))
     wrist_dev = wait_for_camera_device_change_video()
 
     _update_camera_device_id_only(cfg, "observation.images.front", front_dev)
     _update_camera_device_id_only(cfg, "observation.images.wrist", wrist_dev)
+
     save_yaml_config(SO101_RCP_CONFIG_PATH, cfg)
     print(t("saved", path=str(SO101_RCP_CONFIG_PATH)))
 
 
 # ----------------------------
-# Option 3: Robot serial settings - GUI preferred (cross-platform), fallback Linux hotplug
-# ONLY update robot.port
+# Option 3: Robot serial settings
 # ----------------------------
 def detect_serial_devices_linux() -> List[str]:
     devs = []
@@ -935,12 +1033,13 @@ def detect_serial_devices_linux() -> List[str]:
 def wait_for_serial_device_change_linux() -> str:
     if not sys.platform.startswith("linux"):
         raise SystemExit("Linux only for CLI hotplug serial detection.")
+
     try:
-        input(t("unplug_serial"))
+        prompt_input(t("unplug_serial"))
         time.sleep(0.5)
         before = set(detect_serial_devices_linux())
 
-        input(t("plug_serial"))
+        prompt_input(t("plug_serial"))
         time.sleep(0.5)
         after = set(detect_serial_devices_linux())
 
@@ -961,9 +1060,6 @@ def wait_for_serial_device_change_linux() -> str:
         raise SystemExit(0)
 
 
-# ----------------------------
-# Serial GUI hotplug mapper (cross-platform via pyserial)
-# ----------------------------
 def _scan_serial_ports_pyserial() -> Dict[str, Dict[str, str]]:
     if not PYSERIAL_AVAILABLE:
         return {}
@@ -995,6 +1091,7 @@ def _fmt_ports(title: str, ports: Dict[str, Dict[str, str]]) -> str:
 def configure_serial_gui_hotplug(refresh_interval: float = 0.1) -> Optional[str]:
     if not DPG_AVAILABLE or not PYSERIAL_AVAILABLE:
         return None
+
     if sys.platform.startswith("linux") and not (
         ("DISPLAY" in os.environ) or ("WAYLAND_DISPLAY" in os.environ)
     ):
@@ -1090,7 +1187,13 @@ def configure_serial_gui_hotplug(refresh_interval: float = 0.1) -> Optional[str]
     app = App()
 
     dpg.create_context()
-    _bind_font_if_possible(font_size=28)
+
+    FONT_SIZE = 26
+    font_path = find_font_path()
+    if font_path and os.path.exists(font_path):
+        with dpg.font_registry():
+            fnt = dpg.add_font(font_path, FONT_SIZE)
+        dpg.bind_font(fnt)
 
     with dpg.window(
         label="Serial Hotplug Mapper (Auto Refresh)", width=1020, height=760
@@ -1168,13 +1271,11 @@ def configure_serial_gui_hotplug(refresh_interval: float = 0.1) -> Optional[str]
     dpg.setup_dearpygui()
     dpg.show_viewport()
 
-    # init content
     dpg.set_value("txt_before", "Baseline (after unplug):\n  (click Step 1)")
     dpg.set_value("txt_after", "After plug-in:\n  (click Step 2)")
     dpg.set_value("txt_new", "New ports:\n  (click Step 2 after plug-in)")
     app.autorefresh_current()
 
-    # 0.1s autorefresh
     last_refresh = 0.0
     while dpg.is_dearpygui_running() and app.running:
         now = time.time()
@@ -1198,7 +1299,6 @@ def configure_robot() -> None:
 
     dev: Optional[str] = None
 
-    # 1) Prefer GUI (cross-platform)
     try:
         log_info("serial_try_gui")
         dev = configure_serial_gui_hotplug(refresh_interval=0.1)
@@ -1208,18 +1308,16 @@ def configure_robot() -> None:
     if dev:
         log_info("serial_gui_done", dev=dev)
     else:
-        # 2) Fallback: unplug/plug
-        log_warning("serial_gui_unavailable")
+        log_info("serial_gui_unavailable")
         dev = wait_for_serial_device_change_linux()
 
-    # Write robot.port only
     low_cfg = load_yaml_config(SO101_LOWLEVEL_CONFIG_PATH)
     robot = low_cfg.get("robot")
     if not isinstance(robot, dict):
         robot = {}
         low_cfg["robot"] = robot
 
-    robot["port"] = dev  # ONLY update robot.port
+    robot["port"] = dev
 
     save_yaml_config(SO101_LOWLEVEL_CONFIG_PATH, low_cfg)
     print(t("saved", path=str(SO101_LOWLEVEL_CONFIG_PATH)))
@@ -1233,9 +1331,6 @@ def configure_robot() -> None:
             pass
 
 
-# ----------------------------
-# Option 4: Calibration
-# ----------------------------
 def calibrate_robot_arm() -> None:
     log_info("calib_title")
     print("\n" + "=" * 50)
@@ -1243,9 +1338,7 @@ def calibrate_robot_arm() -> None:
     print("=" * 50)
 
     try:
-        print(t("calib_tip1"))
-        print(t("calib_tip2"))
-        confirm = input(t("calib_confirm")).strip().lower()
+        confirm = prompt_input(t("calib_confirm")).strip().lower()
         if confirm not in ["y", "yes"]:
             print(t("calib_cancel"))
             return
@@ -1254,7 +1347,15 @@ def calibrate_robot_arm() -> None:
             raise SystemExit(t("dir_missing", path=str(SO101_ROBOT_DIR)))
 
         result = subprocess.run(
-            [sys.executable, "-m", "scripts.calibrate"],
+            [
+                sys.executable,
+                "-m",
+                "scripts.calibrate",
+                "--arm",
+                "follower",
+                "--lang",
+                LANG,
+            ],
             cwd=str(SO101_ROBOT_DIR),
         )
 
@@ -1268,9 +1369,6 @@ def calibrate_robot_arm() -> None:
         raise SystemExit(0)
 
 
-# ----------------------------
-# Main
-# ----------------------------
 def main():
     global LANG
     LANG = choose_language()
@@ -1294,7 +1392,7 @@ def main():
         print("-" * 50)
 
         try:
-            choice = input(t("menu_prompt")).strip()
+            choice = prompt_input(t("menu_prompt")).strip()
             logging.info(f"[choice]={choice}")
 
             if choice == "1":
@@ -1315,7 +1413,7 @@ def main():
                 break
             else:
                 print(t("invalid_choice", choice=choice))
-                log_warning("invalid_choice", choice=choice)
+                log_info("invalid_choice", choice=choice)
 
         except KeyboardInterrupt:
             print(t("cancelled"))

@@ -6,16 +6,7 @@
 if [ -z "$VIRTUAL_ENV" ]; then
     echo "⚠️ 当前未处于虚拟环境中，正在尝试激活..."
 
-    # 检测操作系统
-    OS_TYPE=$(uname -s)
-    if [ "$OS_TYPE" = "Linux" ]; then
-        VENV_DIR=".venv"
-    elif [ "$OS_TYPE" = "Darwin" ]; then
-        VENV_DIR="venv"
-    else
-        echo "❌ 不支持的操作系统：$OS_TYPE"
-        exit 1
-    fi
+    VENV_DIR="venv"
 
     # 检查虚拟环境是否存在
     if [ ! -d "$VENV_DIR" ]; then

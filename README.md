@@ -92,7 +92,7 @@ bash setup_rcp.sh
 It will guide you through:
 1. Language selection (English / 中文)
 2. Installing uv (if not installed)
-3. Creating and activating a virtual environment (macOS: venv/; Linux/Windows: .venv/)
+3. Creating and activating a virtual environment (venv/)
 4. Installing RynnRCP and development dependencies
 5. Generating protocol and message code (protobuf + LCM; on Windows, LCM failures will be reported and skipped)
 6. Import checks (rynnrcp / rcp_motion / mujoco)
