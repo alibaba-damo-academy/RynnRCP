@@ -1,0 +1,8 @@
+config_type: mcp_config
+robot_type: lekiwi
+mcp:
+  server_name: rcp_server
+  host: 0.0.0.0
+  port: 8000
+  path: /mcp
+  transport: streamable-http

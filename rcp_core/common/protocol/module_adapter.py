@@ -71,11 +71,11 @@ class ModuleAdapter(BaseProtocolAdapter):
       module_name: str              # Class path or factory function path
       init_args: dict               # Arguments passed to constructor/factory
 
-      start_call:                  # Optional, methods to call after instance creation
+      start_call:                  # Methods to call after instance creation
         - method_name: str
           method_kwargs: dict
 
-      destroy_call:               # Optional, methods to call before instance destruction
+      destroy_call:               # Methods to call before instance destruction
         - method_name: str
           method_kwargs: dict
 
@@ -121,6 +121,15 @@ class ModuleAdapter(BaseProtocolAdapter):
     def _instance_key(self, module_name: str, init_args: Dict[str, Any]) -> str:
         return module_name + "::" + repr(sorted(init_args.items()))
 
+    def get_instance(self, params: Dict[str, Any]) -> Any:
+        """
+        Public getter to reuse the same instance pool managed by ModuleAdapter.
+        If instance doesn't exist -> create it (lazy).
+        If exists -> reuse it (no re-init).
+        """
+        inst, _ = self._create_or_get_instance(params)
+        return inst
+
     def _create_or_get_instance(self, params: Dict[str, Any]) -> Tuple[Any, str]:
         module_name = params.get("module_name")
         if not module_name:
@@ -155,17 +164,15 @@ class ModuleAdapter(BaseProtocolAdapter):
 
         # 5. Start calls for one-time initialization
         start_call = params.get("start_call")
-        if not start_call:
-            # If start_call is not configured, try to call start() by default
-            if hasattr(instance, "start") and callable(getattr(instance, "start")):
-                try:
-                    getattr(instance, "start")()
-                except Exception as e:
-                    logger.error(
-                        f"[ModuleAdapter] Error calling default start() ({inst_key}): {e}"
-                    )
-        else:
-            for call in start_call or []:
+        if start_call is not None:
+            if not isinstance(start_call, list):
+                raise TypeError(
+                    "[ModuleAdapter] params.start_call must be a list (or empty list)"
+                )
+
+            for call in start_call:
+                if not isinstance(call, dict):
+                    continue
                 mname = call.get("method_name")
                 if not mname:
                     continue
@@ -372,32 +379,21 @@ class ModuleAdapter(BaseProtocolAdapter):
             params = self._instance_params.get(inst_key, {}) or {}
             destroy_call = params.get("destroy_call")
 
-            if not destroy_call:
-                # If destroy_call is not configured, try to call destroy() by default
-                if hasattr(inst, "destroy") and callable(getattr(inst, "destroy")):
-                    try:
-                        # destroy also follows the instance lock logic to avoid conflicts with parallel calls
-                        self._call_with_instance_lock(
-                            inst_key, getattr(inst, "destroy")
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"[ModuleAdapter] Error calling default destroy() for instance {inst_key}: {e}"
-                        )
-            else:
-                for call in destroy_call or []:
+            if destroy_call is not None:
+                if not isinstance(destroy_call, list):
+                    raise TypeError(
+                        "[ModuleAdapter] params.destroy_call must be a list (or empty list)"
+                    )
+
+                for call in destroy_call:
+                    if not isinstance(call, dict):
+                        continue
                     mname = call.get("method_name")
                     if not mname:
                         continue
                     mkwargs = call.get("method_kwargs", {}) or {}
-                    try:
-                        m = getattr(inst, mname)
-                        # destroy also follows the instance lock logic to avoid conflicts with parallel calls
-                        self._call_with_instance_lock(inst_key, m, **mkwargs)
-                    except Exception as e:
-                        logger.error(
-                            f"[ModuleAdapter] Error calling destroy_call.{mname} for instance {inst_key}: {e}"
-                        )
+                    m = getattr(inst, mname)
+                    self._call_with_instance_lock(inst_key, m, **mkwargs)
 
         logger.info(
             "[ModuleAdapter] All module threads have been stopped and destroy_call/default destroy() executed."

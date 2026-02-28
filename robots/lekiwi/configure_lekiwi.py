@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-SO101 Robot Configuration Tool (Bilingual, minimal-field changes)
+Lekiwi Robot Configuration Tool (Bilingual, minimal-field changes)
 
 Added:
 - Camera visual mapper (DearPyGui) preferred; fallback to hotplug on CLI/unavailable GUI.
-- Writes mapping directly into robots/so101/config/so101_config.yaml (NOT temp json).
+- Writes mapping directly into robots/lekiwi/config/lekiwi_config.yaml (NOT temp json).
 
-Only updates in so101_config.yaml:
+Only updates in lekiwi_config.yaml:
 - sensor_server.inputs[*].params.init_args.device_id for out_key:
     - observation.images.front
     - observation.images.wrist
@@ -56,18 +56,18 @@ logging.basicConfig(
 )
 
 # ----------------------------
-# Paths (SO101)
+# Paths (Lekiwi)
 # ----------------------------
 SCRIPT_DIR = Path(__file__).parent.absolute()
 RYNNBOT_CONFIG_PATH = SCRIPT_DIR / "config" / "rynnbot_config.yaml"
-SO101_RCP_CONFIG_PATH = SCRIPT_DIR / "config" / "so101_config.yaml"
+LEKIWI_RCP_CONFIG_PATH = SCRIPT_DIR / "config" / "lekiwi_config.yaml"
 SO101_LOWLEVEL_CONFIG_PATH = (
     SCRIPT_DIR.parent.parent
     / "rcp_motion"
     / "robots"
     / "so101"
     / "configs"
-    / "so101.yaml"
+    / "lekiwi.yaml"
 )
 SO101_ROBOT_DIR = SCRIPT_DIR.parent.parent / "rcp_motion" / "robots" / "so101"
 
@@ -86,10 +86,10 @@ I18N: Dict[str, Dict[str, str]] = {
         "en": "Invalid input, defaulting to Chinese.",
     },
     "cancelled": {"zh": "用户取消操作。", "en": "Cancelled by user."},
-    "tool_title": {"zh": "SO101 配置工具", "en": "SO101 CONFIGURATION TOOL"},
+    "tool_title": {"zh": "lekiwi 配置工具", "en": "lekiwi CONFIGURATION TOOL"},
     "welcome": {
-        "zh": "欢迎使用 SO101 配置工具！请按提示完成配置。\n日志会输出到控制台，便于排查问题。\n",
-        "en": "Welcome! Follow the prompts to configure SO101.\nLogs are printed to console for troubleshooting.\n",
+        "zh": "欢迎使用 lekiwi 配置工具！请按提示完成配置。\n日志会输出到控制台，便于排查问题。\n",
+        "en": "Welcome! Follow the prompts to configure lekiwi.\nLogs are printed to console for troubleshooting.\n",
     },
     "menu_title": {"zh": "主菜单", "en": "MAIN MENU"},
     "menu_desc": {
@@ -528,7 +528,7 @@ def _update_camera_device_id_only(
 ) -> None:
     servers = cfg.get("servers")
     if not isinstance(servers, list):
-        log_info("so101_config.yaml: servers is missing or not a list")
+        log_info("lekiwi_config.yaml: servers is missing or not a list")
         raise SystemExit(0)
 
     sensor_server = None
@@ -537,12 +537,12 @@ def _update_camera_device_id_only(
             sensor_server = s
             break
     if sensor_server is None:
-        log_info("so101_config.yaml: sensor_server not found")
+        log_info("lekiwi_config.yaml: sensor_server not found")
         raise SystemExit(0)
 
     inputs = sensor_server.get("inputs")
     if not isinstance(inputs, list):
-        log_info("so101_config.yaml: sensor_server.inputs is missing or not a list")
+        log_info("lekiwi_config.yaml: sensor_server.inputs is missing or not a list")
         raise SystemExit(0)
 
     for item in inputs:
@@ -562,7 +562,7 @@ def _update_camera_device_id_only(
         init_args["device_id"] = device_id
         return
 
-    log_info(f"so101_config.yaml: camera entry not found for out_key={out_key}")
+    log_info(f"lekiwi_config.yaml: camera entry not found for out_key={out_key}")
     raise SystemExit(0)
 
 
@@ -838,7 +838,7 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
             callback=lambda: dpg.configure_item("modal_need_all", show=False),
         )
 
-    with dpg.window(label="SO101 Camera Mapper", width=1200, height=780):
+    with dpg.window(label="Lekiwi Camera Mapper", width=1200, height=780):
         with dpg.group(horizontal=True):
             with dpg.child_window(width=460, height=-1):
                 dpg.add_text("1) Select out_key")
@@ -907,7 +907,7 @@ def configure_cameras_gui(max_probe: int = 8) -> Optional[Dict[str, str]]:
                         dpg.add_spacer(height=12)
 
     _safe_create_viewport(
-        title="SO101 Camera Mapper", width=1220, height=820, dpi_aware=True
+        title="Lekiwi Camera Mapper", width=1220, height=820, dpi_aware=True
     )
     dpg.setup_dearpygui()
     dpg.show_viewport()
@@ -985,7 +985,7 @@ def configure_cameras() -> None:
     print(f"        {t('camera_title')}")
     print("=" * 50)
 
-    cfg = load_yaml_config(SO101_RCP_CONFIG_PATH)
+    cfg = load_yaml_config(LEKIWI_RCP_CONFIG_PATH)
 
     mapping: Optional[Dict[str, str]] = None
     try:
@@ -1002,8 +1002,8 @@ def configure_cameras() -> None:
         _update_camera_device_id_only(
             cfg, "observation.images.wrist", mapping["observation.images.wrist"]
         )
-        save_yaml_config(SO101_RCP_CONFIG_PATH, cfg)
-        print(t("saved", path=str(SO101_RCP_CONFIG_PATH)))
+        save_yaml_config(LEKIWI_RCP_CONFIG_PATH, cfg)
+        print(t("saved", path=str(LEKIWI_RCP_CONFIG_PATH)))
         return
 
     log_info("camera_gui_unavailable")
@@ -1016,8 +1016,8 @@ def configure_cameras() -> None:
     _update_camera_device_id_only(cfg, "observation.images.front", front_dev)
     _update_camera_device_id_only(cfg, "observation.images.wrist", wrist_dev)
 
-    save_yaml_config(SO101_RCP_CONFIG_PATH, cfg)
-    print(t("saved", path=str(SO101_RCP_CONFIG_PATH)))
+    save_yaml_config(LEKIWI_RCP_CONFIG_PATH, cfg)
+    print(t("saved", path=str(LEKIWI_RCP_CONFIG_PATH)))
 
 
 # ----------------------------
@@ -1352,7 +1352,7 @@ def calibrate_robot_arm() -> None:
                 "-m",
                 "scripts.calibrate",
                 "--robot_type",
-                "so101",
+                "lekiwi",
                 "--arm",
                 "follower",
                 "--lang",

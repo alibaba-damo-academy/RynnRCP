@@ -49,6 +49,8 @@ Thumbs.db
 build/
 common/third_party/lcm-*/
 common/third_party/libpaho.mqtt.c-*/
+common/lcm/lcm_types/lcm_msgs/
+common/proto/*.py
 
 # Robot specific
 logs/

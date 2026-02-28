@@ -43,6 +43,12 @@ from rcp_motion.robots.so101.hardware.robots.so101_follower.config_so101_followe
 from rcp_motion.robots.so101.hardware.robots.so101_follower.so101_follower import (
     SO101Follower,
 )
+from rcp_motion.robots.so101.hardware.robots.lekiwi.config_lekiwi import (
+    LeKiwiConfig,
+)
+from rcp_motion.robots.so101.hardware.robots.lekiwi.lekiwi import (
+    LeKiwi,
+)
 from rcp_motion.robots.so101.scripts.lang import select_language, t, set_language
 
 logger = logging.getLogger(__name__)
@@ -50,6 +56,12 @@ logger = logging.getLogger(__name__)
 
 def parse_args():
     p = argparse.ArgumentParser(description="SO101 calibration helper")
+    p.add_argument(
+        "--robot_type",
+        choices=["so101", "lekiwi"],
+        default=None,
+        help="Which type of robot to calibrate.",
+    )
     p.add_argument(
         "--arm",
         choices=["follower", "leader", "both"],
@@ -70,18 +82,20 @@ def parse_args():
     return p.parse_args()
 
 
-def get_config_path():
+def get_config_path(robot_type):
     """Get the path to the so101.yaml config file."""
     import rcp_motion
 
     package_dir = Path(rcp_motion.__file__).parent
-    return package_dir / "robots" / "so101" / "configs" / "so101.yaml"
+    config_filename = str(robot_type) + ".yaml"
+
+    return package_dir / "robots" / "so101" / "configs" / config_filename
 
 
-def load_config(config_path: str = None):
+def load_config(robot_type: str = "so101", config_path: str = None):
     """Load configuration from YAML file."""
     if config_path is None:
-        config_path = get_config_path()
+        config_path = get_config_path(robot_type)
     try:
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
@@ -104,18 +118,26 @@ def make_robot_from_config(
     robot_type: str, port: str = None, calibration_dir: str = None
 ):
     """Create robot instance based on type."""
-    if robot_type != "so101_follower":
+    if robot_type != "so101" and robot_type != "lekiwi":
         raise ValueError(f"Unsupported robot type: {robot_type}")
 
     robot_id = extract_id_from_path(calibration_dir) if calibration_dir else robot_type
-    config = SO101FollowerConfig(port=port or "/dev/ttyACM0", id=robot_id)
+    if robot_type == "so101":
+        config = SO101FollowerConfig(port=port or "/dev/ttyACM0", id=robot_id)
+    elif robot_type == "lekiwi":
+        config = LeKiwiConfig(port=port or "/dev/ttyUSB0", id=robot_id)
 
     if calibration_dir:
         calibration_path = Path(os.path.expanduser(calibration_dir))
         config.calibration_dir = calibration_path
         logging.info(f"Set calibration file path: {calibration_path}")
-
-    return SO101Follower(config)
+    if robot_type == "so101":
+        return SO101Follower(config)
+    elif robot_type == "lekiwi":
+        return LeKiwi(config)
+    else:
+        raise ValueError(f"Unsupported robot type: {robot_type}")
+    
 
 
 def make_teleoperator_from_config(
@@ -201,7 +223,7 @@ def calibrate_follower(config: dict) -> str:
 
     robot_port = robot_config.get("port")
     robot_calibration_dir = robot_config.get("calibration_dir")
-    robot_type = "so101_follower"
+    robot_type = robot_config.get("robot_type")
     robot_id = (
         extract_id_from_path(robot_calibration_dir)
         if robot_calibration_dir
@@ -311,8 +333,8 @@ def main():
         select_language()
 
     # Load configuration
-    config_path = args.config or str(get_config_path())
-    config = load_config(config_path)
+    config_path = args.config or str(get_config_path(args.robot_type))
+    config = load_config(args.robot_type, config_path)
     logging.info(t("calib_loading_config", config_path=config_path))
 
     # Decide which arm(s) to calibrate

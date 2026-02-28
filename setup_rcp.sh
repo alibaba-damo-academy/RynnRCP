@@ -32,15 +32,15 @@ detect_python_path() {
     local python_path=""
     if [[ "$OSTYPE" == "darwin"* ]]; then
         if command -v brew &> /dev/null; then
-            BREW_PYTHON="$(brew --prefix python@3.13 2>/dev/null)/bin/python3.13"
+            BREW_PYTHON="$(brew --prefix python@3.10 2>/dev/null)/bin/python3.10"
             if [[ -x "$BREW_PYTHON" ]]; then
                 python_path="$BREW_PYTHON"
-                # msg "🍺 Using Homebrew Python 3.13 (recommended for MuJoCo)" "🍺 使用 Homebrew Python 3.13（MuJoCo 推荐）"
+                # msg "🍺 Using Homebrew Python 3.10 (recommended for       )" "🍺 使用 Homebrew Python 3.10（MuJoCo 推荐）"
             fi
         fi
-        if [[ -z "$python_path" && -x "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13" ]]; then
-            python_path="/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13"
-            # msg "🐍 Using Framework Python 3.13" "🐍 使用 Framework Python 3.13"
+        if [[ -z "$python_path" && -x "/Library/Frameworks/Python.framework/Versions/3.10/bin/python3.10" ]]; then
+            python_path="/Library/Frameworks/Python.framework/Versions/3.10/bin/python3.10"
+            # msg "🐍 Using Framework Python 3.10" "🐍 使用 Framework Python 3.10"
         fi
     fi
     echo "$python_path"
@@ -139,7 +139,7 @@ if [ -d "$VENV_DIR" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
         if [[ -n "$PYTHON_PATH" ]]; then
             uv venv $VENV_DIR --python "$PYTHON_PATH"
         else
-            uv venv $VENV_DIR --python 3.13
+            uv venv $VENV_DIR --python 3.10
         fi
     else
         msg "✅ Using existing virtual environment." "✅ 使用现有虚拟环境。"
@@ -151,7 +151,7 @@ if [ ! -d "$VENV_DIR" ]; then
     if [[ -n "$PYTHON_PATH" ]]; then
         uv venv "$VENV_DIR" --python "$PYTHON_PATH"
     else
-        uv venv "$VENV_DIR" --python 3.13
+        uv venv "$VENV_DIR" --python 3.10
     fi
 fi
 

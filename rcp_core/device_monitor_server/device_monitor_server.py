@@ -1,10 +1,10 @@
-# rcp_core/robot_server/device_monitor_server.py
+# rcp_core/device_monitor_server/device_monitor_server.py
 
 """
 Device/robot info server.
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This module defines :class:`~rcp_core.robot_server.device_monitor_server.DeviceMonitorServer`,
+This module defines :class:`~rcp_core.device_monitor_server.device_monitor_server.DeviceMonitorServer`,
 a :class:`~rcp_core.common.server.base_server.BaseServer` subclass that exposes a bus tool
 to retrieve basic robot identity and host resource information.
 
@@ -183,21 +183,26 @@ class DeviceMonitorServer(BaseServer):
                 "success": "bool",
                 "message": "str",
                 "result": {
-                    "arch": "str  CPU architecture, e.g. 'x86_64', 'aarch64'",
-                    "arm_info": "str  Robot name/model, e.g. 'robot'",
-                    "distrib_desc": "str  OS description, e.g. 'Ubuntu 22.04 LTS'",
-                    "kernel": "str  Kernel version, e.g. '5.15.0-...'",
-                    "mem": "str  Total memory (KB) as string",
-                    "camera_info": (
-                        "List[Dict[str, Any]]  Camera configuration list, parsed from sensor_server.inputs; "
-                        "each item: {id, name, brand, width, height, encoding}"
-                    ),
-                    "cpu_load": "str  Current CPU usage percentage, e.g. '12.34%'",
-                    "mem_used": "str  Used memory (KB) as string",
+                    "arch": "str  # CPU architecture, e.g. 'x86_64'/'aarch64'",
+                    "arm_info": "str  # robot name/model, e.g. 'robot'",
+                    "distrib_desc": "str  # OS description, e.g. 'Ubuntu 22.04 LTS'",
+                    "kernel": "str  # kernel version, e.g. '5.15.0-...'",
+                    "mem": "str  # total memory (KB) as string",
+                    "cpu_load": "str  # current CPU usage, e.g. '12.34%'",
+                    "mem_used": "str  # used memory (KB) as string",
+                    "camera_info": [
+                        {
+                            "id": "int | str  # camera id",
+                            "name": "str  # camera name",
+                            "brand": "str | None  # camera brand",
+                            "width": "int | None  # image width",
+                            "height": "int | None  # image height",
+                            "encoding": "str | None  # image encoding, e.g. 'jpeg'/'png'",
+                        }
+                    ],
                 },
             },
             description=(
-                "Get basic device and robot information, including OS, memory, CPU load, "
-                "and camera config parsed from sensor_server configuration."
+                "Get basic device info (OS/CPU/memory) and camera config from sensor_server configuration."
             ),
         )

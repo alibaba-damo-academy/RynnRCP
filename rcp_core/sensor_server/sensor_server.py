@@ -1,10 +1,10 @@
-# python/robot_server/sensor_server.py
+# rcp_core/sensor_server/sensor_server.py
 
 """
 Sensor server (image retrieval from buffer).
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This module defines :class:`~python.robot_server.sensor_server.SensorServer`, a
+This module defines :class:`~python.sensor_server.sensor_server.SensorServer`, a
 :class:`~rcp_core.common.server.base_server.BaseServer` subclass that serves camera
 frames from the shared buffer as encoded image bytes.
 
@@ -288,26 +288,19 @@ class SensorServer(BaseServer):
             "get_image",
             self.get_image,
             input_schema={
-                "image_opts": (
-                    "Optional[Dict[str, Dict[str, Any]]]  "
-                    "Options for image retrieval; if None or empty, use all keys "
-                    "starting with 'observation.images.*' and synchronize them.\n"
-                    "Example:\n"
-                    "{\n"
-                    "  'observation.images.cam0': {\n"
-                    "      'encoding': 'png',  # Image encoding, e.g. 'jpeg'/'png'\n"
-                    "      'width': 320,       # Optional target width\n"
-                    "      'height': 240       # Optional target height\n"
-                    "  },\n"
-                    "  ...\n"
-                    "}\n"
-                ),
+                "image_opts": {
+                    "observation.images.<camera_name>": {
+                        "encoding": "str  # 'jpeg' or 'png' (default: jpeg)",
+                        "width": "int  # optional resize width",
+                        "height": "int  # optional resize height",
+                    }
+                }
             },
             output_schema={
                 "success": "bool",
                 "message": "str",
                 "result": {
-                    "<image_key>": "bytes  Encoded image data; keys are observation.images.*",
+                    "observation.images.<camera_name>": "bytes  # encoded image bytes (jpeg/png)",
                 },
             },
             description=(
@@ -315,8 +308,6 @@ class SensorServer(BaseServer):
                 "if no options are provided, return all 'observation.images.*' keys."
             ),
         )
-
-        # Register the get_image_info functionality
         bus.add_tool(
             "get_image_info",
             self.get_image_info,
@@ -325,16 +316,13 @@ class SensorServer(BaseServer):
                 "success": "bool",
                 "message": "str",
                 "result": {
-                    "<image_key>": {
-                        "encoding": "str",
-                        "width": "Optional[int]",
-                        "height": "Optional[int]",
-                        "brand": "Optional[str]",
+                    "observation.images.<camera_name>": {
+                        "encoding": "str  # 'jpeg'/'png'",
+                        "width": "int | None  # image width",
+                        "height": "int | None  # image height",
+                        "brand": "str | None  # camera brand",
                     },
                 },
             },
-            description=(
-                "Retrieve encoding, width, height, and key information for each camera. "
-                "Returns a dictionary with keys corresponding to observation.images.*"
-            ),
+            description="Get per-camera image metadata for keys 'observation.images.*'.",
         )

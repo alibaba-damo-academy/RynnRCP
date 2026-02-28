@@ -1,10 +1,10 @@
-# rcp_core/robot_server/action_server.py
+# rcp_core/action_server/action_server.py
 
 """
 Action execution server.
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-This module defines :class:`~rcp_core.robot_server.action_server.ActionServer`, a
+This module defines :class:`~rcp_core.action_server.action_server.ActionServer`, a
 :class:`~rcp_core.common.server.base_server.BaseServer` implementation responsible
 for executing high-level action chunks.
 
@@ -247,29 +247,30 @@ class ActionServer(BaseServer):
                 "success": "bool",
                 "message": "str",
                 "result": {
-                    "observation.state": "Any  # State data",
+                    "<buffer_key>": "Any  # aligned value from buffer (dict/list/number/...)",
                 },
             },
-            description="Get current observation state from internal buffer.",
+            description="Get an aligned observation snapshot from internal buffer.",
         )
         bus.add_tool(
             "run_action_chunk",
             self.run_action_chunk,
             input_schema={
-                "action_chunk": (
-                    "Dict[str, list]  "
-                    "# Fixed to {'action': [frame0, frame1, ..., frameN-1]};\n"
-                    "# Must contain a single key='action' with a list of frames in chronological order."
-                ),
+                "action_chunk": {
+                    "action": [
+                        "[j0, j1, j2, j3, j4, j5]  # one frame: joint positions (list[float])",
+                        "[j0, j1, j2, j3, j4, j5]",
+                    ]
+                },
                 "fps": "int  # Publishing frame rate (frames per second), e.g. 30",
-                "post_delay_s": "float | None  # Optional delay after chunk; overrides config params.post_chunk_delay_s",
+                "post_delay_s": "float | None  # Optional delay after chunk; e.g. 0.0",
             },
             output_schema={
                 "success": "bool",
-                "message": "str",
+                "message": "str | None",
                 "result": {
-                    "frames_sent": "int  # Number of frames actually sent\n",
-                    "expect_frames": "int  # Total expected number of frames\n",
+                    "frames_sent": "int  # frames actually sent",
+                    "expect_frames": "int  # expected frames (len(action_chunk['action']))",
                 },
             },
             description="Publish an action chunk at a given FPS using the configured output adapter.",

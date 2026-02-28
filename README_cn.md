@@ -27,16 +27,16 @@
 │   └── common/                  # bus / adapter / protocol / utils 等公共组件
 ├── comm_plugin/                 # 通信插件：对外协议/传输
 │   ├── base_plugin/             # 插件接口定义
+│   ├── mcp_plugin/              # Mcp 插件
 │   └── rynnbot_plugin/          # RynnBot 插件（MQTT + WebSocket）
 ├── rcp_sensor/                  # 端口设备/传感器实现
 │   └── camera/                  # 相机实现
 ├── robots/                      # 各机器人最小工程与说明
+|   ├── lekiwi/
 │   ├── so100/
 │   └── so101/
 ├── rcp_motion/                  # 运动控制与仿真/工具链
 ├── common/                      # 公共文件（配置、lcm 消息等）
-│   ├── config/
-│   └── lcm/
 ├── scripts/                     # 脚本
 └── docs/                        # 文档
 
@@ -49,8 +49,9 @@
 |---|---|---|---|---|
 | SO100 | 乐云平台（MQTT + WebSocket） | Action：module｜Sensor：port | `robots/so100/` | 提供最小可运行工程与配置向导 |
 | SO101 | 乐云平台（MQTT + WebSocket） | Action：module｜Sensor：port | `robots/so101/` | 提供最小可运行工程与配置向导 |
+| LeKiwi | 乐云平台（MQTT + WebSocket） | Action：module｜Sensor：port | `robots/lekiwi/` | 提供最小可运行工程与配置向导 |
 
-> SO100/SO101 构型为零代码接入：用户仅需配置串口、相机与平台三元组等信息即可运行；本体控制逻辑由 `rcp_motion` 内置 `controller` 提供（无需自行编写 SDK 调用代码）。同时，`rcp_motion`（RCP Motion）负责将云端/模型的离散低频输出转换为机器人可执行的高频连续控制信号，并提供 MuJoCo 仿真、真机调试与回放、数据采集与轨迹可视化等配套工具。
+> SO100/SO101/LeKiwi 构型为零代码接入：用户仅需配置串口、相机与平台三元组等信息即可运行；本体控制逻辑由 `rcp_motion` 内置 `controller` 提供（无需自行编写 SDK 调用代码）。同时，`rcp_motion`（RCP Motion）负责将云端/模型的离散低频输出转换为机器人可执行的高频连续控制信号，并提供 MuJoCo 仿真、真机调试与回放、数据采集与轨迹可视化等配套工具。
 
 ## 服务（RCP Core）
 | Server | 状态 | 提供 Tools| 说明 |
@@ -69,7 +70,7 @@
 | Plugin | 状态 | 传输协议 | 说明 |
 |---|---|---|---|
 | RynnBot Plugin | ✅ | MQTT + WebSocket | 面向乐云平台接入：设备占用/释放、动作下发、取图/取状态、设备属性上报 |
-| MCP Plugin | 🚧 | JSON-RPC（MCP 风格） | 标准化 `tools/list` / `tools/call` 接入，便于本地/局域网/公网场景对接外部应用与模型服务 |
+| MCP Plugin | ✅ | JSON-RPC（MCP 风格） | 标准化 `tools/list` / `tools/call` 接入，便于本地/局域网/公网场景对接外部应用与模型服务 |
 
 
 # 安装与使用
@@ -122,7 +123,7 @@ python scripts/gen_lcm_msg.py   # Windows 上可能需要跳过
 
 ## 运行
 
-本项目已经接入了多种机械臂机器人/构型。具体机器人（SO100/SO101等）的 **配置、标定与启动** 方式，请参考：
+本项目已经接入了多种机械臂机器人/构型。具体机器人（SO100/SO101/LeKiwi等）的 **配置、标定与启动** 方式，请参考：
 - robots/<robot_name>/README.md
 - robots/<robot_name>/config/*.yaml
 - robots/<robot_name>/run_rcp_*.py 等启动脚本
@@ -159,6 +160,6 @@ python scripts/gen_lcm_msg.py   # Windows 上可能需要跳过
 # 待办
 - [x] 发布**RynnRCP** 1.0版本
 - [ ] 发布技术报告
-- [ ] ActionServer和SensorServer支持MCP
+- [x] ActionServer和SensorServer支持MCP
 - [ ] 完善RynnRCP框架剩余部分
 - [ ] 支持更多构型的机器人

@@ -116,7 +116,7 @@ class ProtocolFactory:
 
         return protocols
 
-    def _get_adapter(self, protocol: str) -> BaseProtocolAdapter:
+    def get_adapter(self, protocol: str) -> BaseProtocolAdapter:
         """According to protocol, get the protocol adapter."""
         protocol = protocol.lower()
         adapter = self.protocol_adapters.get(protocol)
@@ -129,7 +129,7 @@ class ProtocolFactory:
 
     def pub(self, protocol: str, params: Dict[str, Any], msg: Any) -> None:
         """Publish a message to the given protocol and params."""
-        adapter = self._get_adapter(protocol)
+        adapter = self.get_adapter(protocol)
         adapter.pub(params, msg)
 
     def sub(
@@ -139,7 +139,7 @@ class ProtocolFactory:
         callback: Callable,
     ) -> None:
         """Subscribe to a topic for the given protocol."""
-        adapter = self._get_adapter(protocol)
+        adapter = self.get_adapter(protocol)
         adapter.sub(params, callback)
 
     def stop(self) -> None:

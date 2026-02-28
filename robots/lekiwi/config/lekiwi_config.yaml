@@ -1,5 +1,5 @@
 config_type: robot_config
-robot_type: so101
+robot_type: lekiwi
 servers:
 - name: action_server
   inputs:
@@ -12,7 +12,7 @@ servers:
       init_args:
         mode: real
         frequency: 100
-        robot_name: so101
+        robot_name: lekiwi
       start_call:
       - method_name: start
         method_kwargs: {}
@@ -33,7 +33,7 @@ servers:
       init_args:
         mode: real
         frequency: 100
-        robot_name: so101
+        robot_name: lekiwi
       instance_lock: true
       start_call:
       - method_name: start
@@ -60,7 +60,7 @@ servers:
         encoding: bgr8
         fps: 30
         brand: usb_camera
-        rotate: 0
+        rotate: 180
       out_key: observation.images.front
   - protocol: port
     adapter: PortImageInputAdapter
@@ -73,9 +73,9 @@ servers:
         encoding: bgr8
         fps: 30
         brand: usb_camera
-        rotate: 0
+        rotate: 180
       out_key: observation.images.wrist
   outputs: []
 - name: device_monitor_server
   robot_info:
-    robot_name: so101
+    robot_name: lekiwi

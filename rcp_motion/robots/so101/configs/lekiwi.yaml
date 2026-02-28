@@ -22,12 +22,12 @@ plot:
   show_plots: false
 robot:
   baudrate: 1000000
-  calibration_dir: ~/.cache/huggingface/lerobot/calibration/robots/so101_follower
+  calibration_dir: ~/.cache/huggingface/lerobot/calibration/robots/lekiwi
   inference_rate: 30.0
   model: sts3215
-  port: /dev/ttyACM1
+  port: /dev/cu.usbmodem5A680131241
   timeout_seconds: 30.0
-  robot_type: so101
+  robot_type: lekiwi
 simulation:
   camera_frequency: 30
   camera_name: Wrist_camera
@@ -48,3 +48,23 @@ teleoperate:
   timeout_seconds: 30.0
 leader:
   port: /dev/ttyACM0
+joint_names:
+- arm_shoulder_pan.pos
+- arm_shoulder_lift.pos
+- arm_elbow_flex.pos
+- arm_wrist_flex.pos
+- arm_wrist_roll.pos
+- arm_gripper.pos
+- x.vel
+- y.vel
+- theta.vel
+home_joint_positions:
+- 0.0
+- -1.564
+- 1.564
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0

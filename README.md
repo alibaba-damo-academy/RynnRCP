@@ -25,16 +25,16 @@ This project mainly consists of two parts: **RCP Core (tool services)** on the r
 │   └── common/                  # bus / adapter / protocol / utils, etc.
 ├── comm_plugin/                 # Communication plugins: external protocol/transport
 │   ├── base_plugin/             # Plugin interface definitions
+│   ├── mcp_plugin/              # Mcp plugin
 │   └── rynnbot_plugin/          # RynnBot plugin (MQTT + WebSocket)
 ├── rcp_sensor/                  # Port devices / sensor implementations
 │   └── camera/                  # Camera implementation
 ├── robots/                      # Minimal runnable projects & docs for each robot
+|   ├── lekiwi/
 │   ├── so100/
 │   └── so101/
 ├── rcp_motion/                  # Motion control + simulation/toolchain
 ├── common/                      # Shared files (configs, LCM messages, etc.)
-│   ├── config/
-│   └── lcm/
 ├── scripts/                     # Scripts
 └── docs/                        # Documentation
 
@@ -48,8 +48,9 @@ This project mainly consists of two parts: **RCP Core (tool services)** on the r
 |---|---|---|---|---|
 | SO100 | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/so100/` | Minimal runnable example + configuration wizard |
 | SO101 | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/so101/` | Minimal runnable example + configuration wizard |
+| LeKiwi | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/lekiwi/` | Minimal runnable example + configuration wizard |
 
-> The SO100/SO101 configurations support zero-code integration: users only need to configure the serial port, cameras, and platform device triplet to run. The robot control logic is provided by the built-in `controller` in `rcp_motion` (no need to write SDK calls). Meanwhile, `rcp_motion` (RCP Motion) converts low-frequency discrete outputs from the cloud/model into high-frequency continuous control signals executable by the robot, and provides tooling such as MuJoCo simulation, real-robot debugging & replay, data collection, and trajectory visualization.
+> The SO100/SO101/LeKiwi configurations support zero-code integration: users only need to configure the serial port, cameras, and platform device triplet to run. The robot control logic is provided by the built-in `controller` in `rcp_motion` (no need to write SDK calls). Meanwhile, `rcp_motion` (RCP Motion) converts low-frequency discrete outputs from the cloud/model into high-frequency continuous control signals executable by the robot, and provides tooling such as MuJoCo simulation, real-robot debugging & replay, data collection, and trajectory visualization.
 
 ## Services (RCP Core)
 
@@ -70,7 +71,7 @@ This project mainly consists of two parts: **RCP Core (tool services)** on the r
 | Plugin | Status | Protocol | Description |
 |---|---|---|---|
 | RynnBot Plugin | ✅ | MQTT + WebSocket | RynnBot platform integration: device claim/release, action dispatch, image/state fetching, and device property reporting |
-| MCP Plugin | 🚧 | JSON-RPC (MCP-style) | Standardized tools/list / tools/call integration for local/LAN/WAN connectivity with external apps and model services |
+| MCP Plugin | ✅ | JSON-RPC (MCP-style) | Standardized tools/list / tools/call integration for local/LAN/WAN connectivity with external apps and model services |
 
 
 # Installation & Usage
@@ -123,7 +124,7 @@ python scripts/gen_lcm_msg.py   # May need to skip on Windows
 
 ## Run
 
-This project supports multiple robot arms/configurations. For robot-specific configuration, calibration, and launch instructions (SO100/SO101, etc.), see:
+This project supports multiple robot arms/configurations. For robot-specific configuration, calibration, and launch instructions (SO100/SO101/LeKiwi, etc.), see:
 - robots/<robot_name>/README.md
 - robots/<robot_name>/config/*.yaml
 - robots/<robot_name>/run_rcp_*.py launch scripts
@@ -160,6 +161,6 @@ For more detailed instructions and examples, please refer to: [RynnRCP Tutorials
 # Todo
 - [x] Release **RynnRCP** 1.0 version
 - [ ] Release Technical Report
-- [ ] ActionServer and SensorServer support MCP
+- [x] ActionServer and SensorServer support MCP
 - [ ] Complete the rest of RynnRCP framework
 - [ ] Support for robots with more structural types

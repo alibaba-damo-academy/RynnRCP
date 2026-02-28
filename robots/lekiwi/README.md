@@ -1,28 +1,28 @@
-# Minimal Example: SO101 to RynnBot (RynnRCP)
-This directory provides a minimal runnable project to connect the **SO101** robotic arm to **RynnRCP**, including:
+# Minimal Example: lekiwi to RynnBot (RynnRCP)
+This directory provides a minimal runnable project to connect the **lekiwi** robotic arm to **RynnRCP**, including:
 
 - Config files:
-  - `config/so101_config.yaml`: **RcpCore** configuration (inputs/outputs for Action/Sensor/DeviceMonitor)
+  - `config/lekiwi_config.yaml`: **RcpCore** configuration (inputs/outputs for Action/Sensor/DeviceMonitor)
   - `config/rynnbot_config.yaml`: RynnBot (cloud platform) device credentials (triplet/URL)
   - `config/mcp_config.yaml`: **MCP server** configuration (exposes RCP tools over HTTP)
 - Launch script:
-  - `run_rcp_so101.py`: starts **RcpCore + RynnBot (plugin) + McpPlugin**
+  - `run_rcp_lekiwi.py`: starts **RcpCore + RynnBot (plugin) + McpPlugin**
     - **RynnBot**: connects to the cloud platform (MQTT/WS)
     - **McpPlugin**: starts an MCP HTTP service and exposes RCP tools
 - Configuration wizard:
-  - `configure_so101.py`: interactive setup (Chinese/English), which can configure cameras, serial port, calibration, and RynnBot device triplet
+  - `configure_lekiwi.py`: interactive setup (Chinese/English), which can configure cameras, serial port, calibration, and RynnBot device triplet
 
 
 ## Directory Structure
 
 ```text
-robots/so101/
+robots/lekiwi/
 ├── config/
 │   ├── rynnbot_config.yaml     # RynnBot device triplet / URL
-│   ├── so100_config.yaml       # RcpCore config: Action/Sensor/DeviceMonitor
+│   └── lekiwi_config.yaml       # RcpCore config: Action/Sensor/DeviceMonitor
 │   └── mcp_config.yaml         # MCP Server configDeviceMonitor
-├── configure_so101.py          # Interactive configuration wizard (CN/EN)
-├── run_rcp_so101.py            # Launch: RcpCore + RynnBot(plugin)
+├── configure_lekiwi.py          # Interactive configuration wizard (CN/EN)
+├── run_rcp_lekiwi.py            # Launch: RcpCore + RynnBot(plugin)
 ├── README.md                   # Documentation (English)
 └── README_cn.md                # Documentation (Chinese)
 ```
@@ -31,7 +31,7 @@ robots/so101/
 ## Prerequisites
 
 1. Project is installed (Python environment ready, dependencies installed, and venv activated)
-2. SO101 controller is connected (serial port)
+2. LeKiwi controller is connected (serial port)
 3. Cameras are connected (USB cameras; two cameras recommended: front / wrist)
 4. RynnBot device credentials (triplet):
    - product_key
@@ -91,18 +91,18 @@ Note: If you configure via environment variables, you can omit `rynnbot_config.y
 Enter this directory and run the configuration wizard:
 
 ```bash
-cd RynnRCP/robots/so101
-python configure_so101.py
+cd RynnRCP/robots/lekiwi
+python configure_lekiwi.py
 ```
 
 After selecting a language (Chinese/English), the wizard provides the following menu:
 1. Device settings: fill in RynnBot device credentials and save to config/rynnbot_config.yaml
-2. Camera settings: detect cameras by plug/unplug and write to config/so101_config.yaml
+2. Camera settings: detect cameras by plug/unplug and write to config/lekiwi_config.yaml
 3. Robot serial settings: detect serial devices, update serial permissions, and write to the rcp_motion config file
 4. Arm calibration: run the calibration procedure and write calibration output
 5. Configure all: execute steps 1 → 2 → 3 → 4 in order
 
-> Calibration guide reference: [SO101 Calibration Guide](../../docs/so101_calibrate.md)
+> Calibration guide reference: [lekiwi Calibration Guide](../../docs/lekiwi_calibrate.md)
 
 
 ## Launch Edge-side Server
@@ -110,11 +110,11 @@ After selecting a language (Chinese/English), the wizard provides the following 
 After configuration, start the server in this directory:
 
 ```bash
-python run_rcp_so101.py
+python run_rcp_lekiwi.py
 ```
 
 This script reads:
-- ./config/so101_config.yaml
+- ./config/lekiwi_config.yaml
 - ./config/rynnbot_config.yaml
 - ./config/mcp_config.yaml
 

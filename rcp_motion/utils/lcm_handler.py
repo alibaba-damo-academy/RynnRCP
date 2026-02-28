@@ -212,13 +212,14 @@ class LCMHandler:
         msg.utime = int(time.time() * 1000000)
         msg.seq = self.feedback_sequence_number
 
-        msg.numJoint = len(joint_positions) - 1
-        msg.qFb = joint_positions[: msg.numJoint].tolist()
+        msg.numJoint = 5  # len(joint_positions) - 1
+        arm_joint = joint_positions[: 5]
+        msg.qFb = arm_joint.tolist()
         msg.qdFb = [0.0] * msg.numJoint
         msg.tauFb = [0.0] * msg.numJoint
 
-        msg.numGripper = 1
-        msg.gripperPosFb = joint_positions[msg.numJoint :].tolist()
+        msg.numGripper = len(joint_positions) - 5
+        msg.gripperPosFb = joint_positions[5:].tolist()
 
         msg.numFTsensor = 1
         msg.ftSensorFb = [[0.0] * 6 for _ in range(msg.numFTsensor)]

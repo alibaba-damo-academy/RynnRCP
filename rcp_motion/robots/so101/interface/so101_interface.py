@@ -271,7 +271,7 @@ class LeRobotInterface(RobotInterfaceBase):
             )
             self.robot = SO101Follower(real_robot_config)
         elif self.name == "lekiwi":
-            real_robot_config = LeKiwiConfig(port=port)
+            real_robot_config = LeKiwiConfig(port=port, calibration_dir=calibration_dir, id=robot_id)
             self.robot = LeKiwi(real_robot_config)
 
         self.robot.connect()
@@ -337,7 +337,8 @@ class LeRobotInterface(RobotInterfaceBase):
                 positions = np.array(
                     [positions_dict[name] for name in self.joint_names]
                 )
-                positions[:-1] *= np.pi / 180.0
+                positions[0:5] *= np.pi / 180.0
+                positions[5] /= 100.0
                 return positions
 
             elif self.mode == "mock" and self.motor_bus is not None:
@@ -371,7 +372,8 @@ class LeRobotInterface(RobotInterfaceBase):
             positions_copy = positions.copy()
 
             if self.mode == "real" and self.robot is not None:
-                positions_copy[:-1] *= 180.0 / np.pi
+                positions_copy[0:5] *= 180.0 / np.pi
+                positions_copy[5] *= 100.0
 
                 data = {}
                 for i, name in enumerate(self.joint_names):

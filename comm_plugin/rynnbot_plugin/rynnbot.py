@@ -162,19 +162,50 @@ class RynnBot(RcpPlugin):
         http_url: Optional[str],
         config_file: Optional[str],
     ) -> RynnBotConfig:
-        """
-        Resolve RynnBot config from various sources:
-          - args
-          - config_file
-          - env vars
-            RYNNBOT_PRODUCT_KEY / RYNNBOT_DEVICE_NAME / RYNNBOT_DEVICE_SECRET / RYNNBOT_HTTP_URL
-        """
-        cfg = RynnBotConfig(
-            product_key=os.getenv("RYNNBOT_PRODUCT_KEY"),
-            device_name=os.getenv("RYNNBOT_DEVICE_NAME"),
-            device_secret=os.getenv("RYNNBOT_DEVICE_SECRET"),
-            http_url=os.getenv("RYNNBOT_HTTP_URL"),
+
+        # ---- args XOR config_file ----
+        any_args_specified = any(
+            v is not None for v in (product_key, device_name, device_secret, http_url)
         )
+        if config_file and any_args_specified:
+            raise ValueError(
+                "RynnBot config conflict: provide either explicit args "
+                "or config_file, not both. (Env vars are allowed and take priority.)"
+            )
+
+        # ---- env all-or-nothing (required trio) ----
+        env_required = [
+            "RYNNBOT_PRODUCT_KEY",
+            "RYNNBOT_DEVICE_NAME",
+            "RYNNBOT_DEVICE_SECRET",
+        ]
+        env_optional = ["RYNNBOT_HTTP_URL"]
+
+        present_required = {k: (os.getenv(k) not in (None, "")) for k in env_required}
+        present_optional = {k: (os.getenv(k) not in (None, "")) for k in env_optional}
+
+        any_env = any(present_required.values()) or any(present_optional.values())
+        if any_env and not all(present_required.values()):
+            missing = [k for k, ok in present_required.items() if not ok]
+            raise ValueError(
+                "Incomplete RynnBot env config: since some RYNNBOT_* env var is set, "
+                f"the required env vars must all be set: {env_required}. Missing: {missing}"
+            )
+
+        # 1) env has top priority
+        if any_env:
+            cfg = RynnBotConfig(
+                product_key=os.getenv("RYNNBOT_PRODUCT_KEY"),
+                device_name=os.getenv("RYNNBOT_DEVICE_NAME"),
+                device_secret=os.getenv("RYNNBOT_DEVICE_SECRET"),
+                http_url=os.getenv("RYNNBOT_HTTP_URL"),
+            )
+            if not cfg.http_url:
+                cfg.http_url = "https://robot-access.damo-academy.com"
+            return cfg
+
+        # 2) otherwise use args XOR config_file
+        cfg = RynnBotConfig()
 
         if config_file:
             if not os.path.exists(config_file):
@@ -188,15 +219,16 @@ class RynnBot(RcpPlugin):
                 v = from_file(k)
                 if v is not None and v != "":
                     setattr(cfg, k, v)
-
-        if product_key is not None:
-            cfg.product_key = product_key
-        if device_name is not None:
-            cfg.device_name = device_name
-        if device_secret is not None:
-            cfg.device_secret = device_secret
-        if http_url is not None:
-            cfg.http_url = http_url
+        else:
+            # args
+            if product_key is not None:
+                cfg.product_key = product_key
+            if device_name is not None:
+                cfg.device_name = device_name
+            if device_secret is not None:
+                cfg.device_secret = device_secret
+            if http_url is not None:
+                cfg.http_url = http_url
 
         if not cfg.http_url:
             cfg.http_url = "https://robot-access.damo-academy.com"

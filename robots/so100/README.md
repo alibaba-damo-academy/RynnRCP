@@ -3,9 +3,12 @@ This directory provides a minimal runnable project to connect the **SO100** robo
 
 - Config files:
   - `config/so100_config.yaml`: **RcpCore** configuration (inputs/outputs for Action/Sensor/DeviceMonitor)
-  - `config/rynnbot_config.yaml`: RynnBot (cloud platform) device credentials (triplet/URL)
+  - `config/rynnbot_config.yaml`: **RynnBot** (cloud platform) device credentials (triplet/URL)
+  - `config/mcp_config.yaml`: **MCP server** configuration (exposes RCP tools over HTTP)
 - Launch script:
-  - `run_rcp_so100.py`: starts **RcpCore + RynnBot (plugin)** to connect to RynnBot / the cloud services
+  - `run_rcp_so100.py`: starts **RcpCore + RynnBot (plugin) + McpPlugin**
+    - **RynnBot**: connects to the cloud platform (MQTT/WS)
+    - **McpPlugin**: starts an MCP HTTP service and exposes RCP tools
 - Configuration wizard:
   - `configure_so100.py`: interactive setup (Chinese/English), which can configure cameras, serial port, calibration, and RynnBot device triplet
 
@@ -15,9 +18,10 @@ This directory provides a minimal runnable project to connect the **SO100** robo
 robots/so100/
 ├── config/
 │   ├── rynnbot_config.yaml     # RynnBot device triplet / URL
-│   └── so100_config.yaml       # RcpCore config: Action/Sensor/DeviceMonitor
+│   ├── so100_config.yaml       # RcpCore config: Action/Sensor/DeviceMonitor
+│   └── mcp_config.yaml         # MCP Server config
 ├── configure_so100.py          # Interactive configuration wizard (CN/EN)
-├── run_rcp_so100.py            # Launch: RcpCore + RynnBot(plugin)
+├── run_rcp_so100.py            # Launch: RcpCore + RynnBot + McpPlugin
 ├── README.md                   # Documentation (English)
 └── README_cn.md                # Documentation (Chinese)
 ```
@@ -33,6 +37,52 @@ robots/so100/
    - device_name
    - device_secret
    - http_url (platform access URL; keep the default value)
+ - If you enable MCP, make sure the port is reachable (example: 8000)
+
+## Configure via Environment Variables (Optional)
+
+### RynnBot Environment Variables
+Required (device triplet):
+- `RYNNBOT_PRODUCT_KEY`
+- `RYNNBOT_DEVICE_NAME`
+- `RYNNBOT_DEVICE_SECRET`
+
+Optional:
+- `RYNNBOT_HTTP_URL` (default: `https://robot-access.damo-academy.com`)
+
+Example:
+```bash
+export RYNNBOT_PRODUCT_KEY="put_product_key_here"
+export RYNNBOT_DEVICE_NAME="put_device_name_here"
+export RYNNBOT_DEVICE_SECRET="put_device_secret_here"
+# optional
+export RYNNBOT_HTTP_URL="https://robot-access.damo-academy.com"
+```
+
+### MCP Environment Variables
+Required:
+- `MCP_SERVER_NAME`
+- MCP_HOST
+- MCP_PORT
+
+
+Optional:
+- MCP_PATH (default: /mcp)
+- MCP_TRANSPORT (default: streamable-http)
+
+
+Example:
+```bash
+export MCP_SERVER_NAME="rcp_server"
+export MCP_HOST="0.0.0.0"
+export MCP_PORT="8000"
+# optional
+export MCP_PATH="/mcp"
+export MCP_TRANSPORT="streamable-http"
+```
+
+Note: If you configure via environment variables, you can omit `rynnbot_config.yaml` / `mcp_config.yaml`. When environment variables are set, they take priority.
+
 
 ## Quick Start
 
@@ -61,5 +111,6 @@ python run_rcp_so100.py
 This script reads:
 - ./config/so100_config.yaml
 - ./config/rynnbot_config.yaml
+- ./config/mcp_config.yaml
 
-Then it starts the edge-side server node and connects to RynnBot / the cloud services.
+Then it starts the edge-side server node and connects to RynnBot / the cloud services, while also starting the MCP service (McpPlugin).

@@ -45,12 +45,13 @@ def get_models_root():
     return Path(__file__).parent.parent.parent.parent / "models"
 
 
-def get_config_path():
+def get_config_path(robot_name):
     """Get the path to the so101.yaml config file."""
     import rcp_motion
 
     package_dir = Path(rcp_motion.__file__).parent
-    return package_dir / "robots" / "so101" / "configs" / "so101.yaml"
+    config_filename = str(robot_name) + ".yaml"
+    return package_dir / "robots" / "so101" / "configs" / config_filename
 
 
 def handle_signal(signum, frame):
@@ -67,11 +68,12 @@ signal.signal(signal.SIGTERM, handle_signal)
 class SO101Inference:
     """SO101 LCM inference controller for policy execution."""
 
-    def __init__(self, mode: str = "sim", frequency: int = 100):
+    def __init__(self, mode: str = "sim", frequency: int = 100, robot_name: str = "so101"):
         self.mode = mode
         self.frequency = max(30, min(frequency, 250))
+        self.robot_name = robot_name
         self.timestep = 1.0 / self.frequency
-        self.config_path = str(get_config_path())
+        self.config_path = str(get_config_path(self.robot_name))
         self.calibration_dir = None  # Use calibration_dir from config file
 
         self._init_config()
@@ -172,11 +174,15 @@ class SO101Inference:
     def _init_interface(self):
         if self.mode == "sim":
             models_root = get_models_root()
-            scene_path = str(models_root / "lerobot/so101/scene/scene.xml")
-            pino_path = str(models_root / "lerobot/so101/mjcf/so101_pinocchio.xml")
+            if self.robot_name == "so101":
+                scene_path = str(models_root / "lerobot/so101/scene/scene.xml")
+                pino_path = str(models_root / "lerobot/so101/mjcf/so101_pinocchio.xml")
+            elif self.robot_name == "lekiwi":
+                scene_path = str(models_root / "lerobot/lekiwi/scene/scene.xml")
+                pino_path = str(models_root / "lerobot/lekiwi/urdf/LeKiwi.xml")
 
             robot_config = {
-                "robot_name": "so101",
+                "robot_name": self.robot_name,
                 "robot_control_freq": self.frequency,
                 "robot_mjcf": scene_path,
                 "pino_mjcf": pino_path,
@@ -190,7 +196,7 @@ class SO101Inference:
             self.initial_joint_positions = np.array(robot_state.joint_pos)
         else:
             self.interface = create_robot_interface(
-                name="so101",
+                name=self.robot_name,
                 mode=self.mode,
                 config_path=self.config_path,
             )
@@ -423,7 +429,13 @@ class SO101Inference:
         if not self.lcm_handler:
             return
         if self.lcm_handler.check_robot_feedback_request():
-            self.lcm_handler.publish_robot_feedback(self.qPos_feedback)
+            self.lcm_handler.publish_robot_feedback(self.qPos_feedback, None)
+            if self.interface.name == "lekiwi":
+                if self.qPos_command is not None:
+                    self.qPos_command[6] = 0
+                    self.qPos_command[7] = 0
+                    self.qPos_command[8] = 0
+                    self.interface.set_joint_positions(self.qPos_command)
         if self.lcm_handler.check_state_feedback_request():
             self.lcm_handler.publish_state_feedback()
 
@@ -570,9 +582,10 @@ def main():
     )
     parser.add_argument("-m", "--mode", choices=["sim", "real", "mock"], default="sim")
     parser.add_argument("-f", "--frequency", type=int, default=100)
+    parser.add_argument("-n", "--robot_name", type=str, default="so101")
     args = parser.parse_args()
 
-    controller = SO101Inference(mode=args.mode, frequency=args.frequency)
+    controller = SO101Inference(mode=args.mode, frequency=args.frequency, robot_name=args.robot_name)
     controller.run()
     return 0
 

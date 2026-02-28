@@ -1,9 +1,10 @@
-from rynnrcp import RynnRCP, RcpCore, RynnBot
+from rynnrcp import RynnRCP, RcpCore, RynnBot, McpPlugin
 
 app = RynnRCP(
     rcp_core=RcpCore(config_file="./config/so101_config.yaml"),
     plugins=[
         RynnBot(config_file="./config/rynnbot_config.yaml"),
+        McpPlugin(config_file="./config/mcp_config.yaml"),
     ],
 )
 

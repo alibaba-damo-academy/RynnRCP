@@ -29,6 +29,7 @@ dependencies = [
     "psutil>=5.0.0",
     "msgpack>=1.0.0",
     "dearpygui>=2.0.0; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
+    "fastmcp>=0.2.0",
 
     # Robot-specific dependency groups
     # NOTE: franka and realman require ROS2 (rclpy) which cannot be installed via pip.
@@ -68,7 +69,7 @@ so101-show-joint-angles = "rcp_motion.robots.so101.scripts.show_joint_angles:mai
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["rcp_motion*", "common*", "rynnrcp*", "comm_plugin*", "rcp_core*", "rcp_sensor*", "rcp_model*"]
+include = ["rcp_motion*", "common*", "rynnrcp*", "comm_plugin*", "rcp_core*", "rcp_sensor*", "rcp_skill*", "rcp_model*"]
 
 [tool.setuptools.package-data]
 "common.lcm" = ["*.lcm"]
