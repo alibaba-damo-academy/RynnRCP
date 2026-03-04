@@ -338,7 +338,8 @@ class LeRobotInterface(RobotInterfaceBase):
                     [positions_dict[name] for name in self.joint_names]
                 )
                 positions[0:5] *= np.pi / 180.0
-                positions[5] /= 100.0
+                if self.name == "lekiwi":
+                    positions[5] /= 100.0
                 return positions
 
             elif self.mode == "mock" and self.motor_bus is not None:
@@ -373,7 +374,8 @@ class LeRobotInterface(RobotInterfaceBase):
 
             if self.mode == "real" and self.robot is not None:
                 positions_copy[0:5] *= 180.0 / np.pi
-                positions_copy[5] *= 100.0
+                if self.name == "lekiwi":
+                    positions_copy[5] *= 100.0
 
                 data = {}
                 for i, name in enumerate(self.joint_names):

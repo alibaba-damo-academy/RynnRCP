@@ -412,6 +412,12 @@ class SO101Inference:
                 self.interface.qCmd[:] = self.qPos_command
                 self.interface.set_joint_commands()
             else:
+                if self.interface.name == "lekiwi" and self.last_external_command_time is not None:
+                    if (time.time() - self.last_external_command_time) > 0.1:
+                        if self.qPos_command is not None:
+                            self.qPos_command[6] = 0
+                            self.qPos_command[7] = 0
+                            self.qPos_command[8] = 0
                 self.interface.set_joint_positions(self.qPos_command)
 
     def _offline_joint_plot(self):
