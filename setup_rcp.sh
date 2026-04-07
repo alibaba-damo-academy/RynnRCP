@@ -251,6 +251,12 @@ if [[ "$(which pip)" != *"$VENV_DIR"* ]]; then
 fi
 
 # ----------------------------
+# Ensure build tools are available for LCM wheel building
+# ----------------------------
+msg "🔧 Ensuring 'build' package is available..." "🔧 正在确保 'build' 包可用..."
+uv pip install build
+
+# ----------------------------
 # Build Protocol and LCM Messages   
 # ----------------------------
 echo ""
@@ -269,7 +275,7 @@ else
     # On Unix-like systems, lcm-gen should work, so treat failure as error
     python ./scripts/gen_lcm_msg.py || {
         msg "❌ LCM Messages generation failed." "❌ LCM消息生成失败。"
-        exit 1
+        msg "💡  You may need to install lcm and run python ./scripts/gen_lcm_msg.py manually." "💡  如果需要 LCM 功能，您可能需要单独安装 lcm 并手动执行 python ./scripts/gen_lcm_msg.py。"
     }
 fi
 
