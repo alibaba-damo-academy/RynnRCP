@@ -47,8 +47,10 @@ detect_python_path() {
 }
 
 # ----------------------------
-# Linux prerequisites (LCM + build tools)
+# Platform-specific LCM prerequisites
 # ----------------------------
+
+# Linux: Install LCM via apt
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     if command -v sudo >/dev/null 2>&1; then
         echo "🔧 Installing Linux prerequisites: liblcm-dev, build-essential ..."
@@ -58,6 +60,42 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         echo "❌ sudo not found. Please install prerequisites manually:"
         echo "  apt-get update && apt-get install -y liblcm-dev build-essential"
         exit 1
+    fi
+fi
+
+# macOS Intel: Install LCM via Homebrew and setup symlink
+if [[ "$OSTYPE" == "darwin"* ]] && [[ "$(uname -m)" == "x86_64" ]]; then
+    msg "🍎 Intel Mac detected: Setting up LCM via Homebrew..." "🍎 检测到 Intel Mac：通过 Homebrew 设置 LCM..."
+    
+    if ! command -v brew &> /dev/null; then
+        msg "❌ Homebrew not found. Please install Homebrew first: https://brew.sh" "❌ 未找到 Homebrew。请先安装 Homebrew：https://brew.sh"
+        exit 1
+    fi
+    
+    # Install LCM if not already installed
+    if ! brew list lcm &>/dev/null; then
+        msg "🔧 Installing LCM via Homebrew..." "🔧 通过 Homebrew 安装 LCM..."
+        brew install lcm
+    else
+        msg "✅ LCM already installed via Homebrew" "✅ LCM 已通过 Homebrew 安装"
+    fi
+    
+    # Find LCM Python module installed by Homebrew
+    # Homebrew may install LCM for different Python versions, search for it
+    LCM_PYTHON_PATH=""
+    for py_dir in /usr/local/lib/python3.*/site-packages/lcm $(brew --prefix)/lib/python3.*/site-packages/lcm; do
+        if [[ -d "$py_dir" ]]; then
+            LCM_PYTHON_PATH="$py_dir"
+            break
+        fi
+    done
+    
+    if [[ -d "$LCM_PYTHON_PATH" ]]; then
+        export INTEL_MAC_LCM_PATH="$LCM_PYTHON_PATH"
+        msg "✅ Found LCM Python module at: $LCM_PYTHON_PATH" "✅ 找到 LCM Python 模块：$LCM_PYTHON_PATH"
+    else
+        msg "⚠️  Could not find LCM Python module. You may need to link it manually." "⚠️  未找到 LCM Python 模块。您可能需要手动链接。"
+        msg "   Expected path: /usr/local/lib/python3.*/site-packages/lcm" "   预期路径：/usr/local/lib/python3.*/site-packages/lcm"
     fi
 fi
 
@@ -166,6 +204,23 @@ msg "✅ Virtual environment activated: $(basename $VIRTUAL_ENV)" "✅ 虚拟环
 
 export PATH="$VIRTUAL_ENV/bin:$PATH"
 export UV_VIRTUAL_ENV="$(pwd)/$VENV_DIR"
+
+# ----------------------------
+# Intel Mac: Add LCM to Python path via .pth file
+# ----------------------------
+if [[ "$OSTYPE" == "darwin"* ]] && [[ "$(uname -m)" == "x86_64" ]] && [[ -n "$INTEL_MAC_LCM_PATH" ]]; then
+    VENV_SITE_PACKAGES="$VENV_DIR/lib/python3.10/site-packages"
+    LCM_PARENT_DIR=$(dirname "$INTEL_MAC_LCM_PATH")
+    
+    if [[ -d "$VENV_SITE_PACKAGES" ]]; then
+        # Check if already configured
+        if [[ ! -f "$VENV_SITE_PACKAGES/lcm_homebrew.pth" ]]; then
+            msg "🔗 Adding Homebrew LCM to Python path..." "🔗 添加 Homebrew LCM 到 Python 路径..."
+            echo "$LCM_PARENT_DIR" > "$VENV_SITE_PACKAGES/lcm_homebrew.pth"
+            msg "✅ LCM path configured: $LCM_PARENT_DIR" "✅ LCM 路径已配置：$LCM_PARENT_DIR"
+        fi
+    fi
+fi
 
 # ----------------------------
 # Install RCP Package
