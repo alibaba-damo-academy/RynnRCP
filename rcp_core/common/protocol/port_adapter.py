@@ -63,6 +63,9 @@ logger = server_logger()
 
 PORT_AVAILABLE = True
 
+# Global lock for RealSense camera initialization to avoid USB bandwidth competition
+_REALSENSE_START_LOCK = threading.Lock()
+
 
 def _camel_to_snake(name: str) -> str:
     s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
@@ -180,14 +183,17 @@ class PortAdapter(BaseProtocolAdapter):
         if not hasattr(inst, "stop") or not callable(getattr(inst, "stop")):
             raise TypeError(f"[PortAdapter] {port_type} has no callable stop()")
 
-        inst.start()
+        # Use global lock for RealSense cameras to avoid USB bandwidth competition
+        if port_type == "RealSenseCamera":
+            with _REALSENSE_START_LOCK:
+                logger.info(f"[PortAdapter] Acquired RealSense lock for {inst_key}")
+                inst.start()
+                time.sleep(0.5)  # Delay after start to ensure device is fully initialized
+        else:
+            inst.start()
 
         self._instances[inst_key] = inst
         self._running[inst_key] = True
-
-        # optional fps pacing (if present)
-        fps = init_args.get("fps", None)
-        period = (1.0 / float(fps)) if fps else 0.0
 
         def loop():
             while self._running.get(inst_key, False):
@@ -197,9 +203,6 @@ class PortAdapter(BaseProtocolAdapter):
                 except Exception as e:
                     logger.error(f"[PortAdapter] read() failed ({inst_key}): {e}")
                     time.sleep(0.01)
-
-                if period > 0:
-                    time.sleep(period)
 
         th = threading.Thread(target=loop, daemon=True)
         th.start()

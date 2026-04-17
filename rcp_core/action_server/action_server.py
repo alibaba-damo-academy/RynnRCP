@@ -20,8 +20,10 @@ registered as tools (``get_state`` / ``run_action_chunk``) for other components 
 """
 
 import time
+import threading
 from array import array
-from typing import Dict, Any, List
+from collections import deque
+from typing import Optional, Any, Dict, Tuple
 
 from ..common.server.base_server import BaseServer
 from ..common.bus.rcp_bus import RcpBus
@@ -41,11 +43,80 @@ class ActionServer(BaseServer):
         """Initialize the action server with the given configuration."""
         super().__init__(config, "action_server")
 
+        self._last_executed_action_ts: Optional[float] = None
+
+        action_inputs = [
+            inp
+            for inp in self.server_config.get("inputs", [])
+            if inp.get("params", {}).get("out_key") == "action"
+        ]
+        if action_inputs:
+            fps = int(
+                1.0 / float(action_inputs[0].get("params", {}).get("interval", 0.033))
+            )
+        else:
+            fps = 30
+
+        t = threading.Thread(
+            target=self._action_watch_loop,
+            kwargs={"fps": fps},
+            daemon=True,
+        )
+        t.start()
+
+    def _action_watch_loop(self, fps: float = 30) -> None:
+        """Watch for new actions and run them."""
+        tiny_sleep = 0.001
+
+        while True:
+            try:
+                snap = self.get_buffer()  # Dict[str, Deque[(ts, value)]]
+                dq: deque[Tuple[float, Any]] | None = snap.get("action")
+
+                if not dq:
+                    time.sleep(tiny_sleep)
+                    continue
+
+                ts, last_action = dq[-1]
+
+                if (
+                    self._last_executed_action_ts is not None
+                    and ts <= self._last_executed_action_ts
+                ):
+                    time.sleep(tiny_sleep)
+                    continue
+
+                if isinstance(last_action, (list, tuple, array)):
+                    frame = (
+                        list(last_action) if isinstance(last_action, array) else last_action
+                    )
+                    action_chunk = {"action": [frame]}
+
+                    res = self.run_action_chunk(
+                        action_chunk=action_chunk, fps=fps, post_delay_s=0.0,
+                        _skip_buffer_write=True,  # Already in buffer from input callback
+                    )
+                    if res.get("success"):
+                        self._last_executed_action_ts = ts
+                    else:
+                        logger.error(f"[ActionServer] auto-run action failed: {res}")
+                else:
+                    logger.error(
+                        f"[ActionServer] latest 'action' type not supported: {type(last_action)}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[ActionServer] Exception in _action_watch_loop: {e}",
+                    exc_info=True,
+                )
+                time.sleep(tiny_sleep)
+
     def get_state(self) -> Dict[str, Any]:
         """Synchronize all keys in the local buffer and return the state."""
         snap = self.get_buffer()  # Dict[str, Deque[(ts, value)]]
 
-        aligned = sync_by_trigger_time(buffers=snap)
+        obs_keys = [k for k in snap.keys() if str(k).startswith("observation.")]
+        aligned = sync_by_trigger_time(buffers=snap, out_keys=obs_keys)
 
         if aligned is None:
             return self.bus.make_result(
@@ -107,6 +178,7 @@ class ActionServer(BaseServer):
         action_chunk: Dict[str, Any],
         fps: int = 30,
         post_delay_s: float | None = None,
+        _skip_buffer_write: bool = False,
     ) -> Dict[str, Any]:
         """
         Publish a sequence of actions (an action chunk) at a given frame rate.
@@ -119,6 +191,8 @@ class ActionServer(BaseServer):
                 - Only one key is allowed and it must be "action".
                 - Each frame_i is a single action frame (e.g., joint + gripper control).
             fps: Target publishing rate in frames per second.
+            _skip_buffer_write: Internal flag. If True, skip writing to buffer
+                (used by watch_loop to avoid duplicate writes).
 
         Adapter convention:
             - GenericStepOutputAdapter:
@@ -155,6 +229,11 @@ class ActionServer(BaseServer):
             logger.error(msg)
             return self._make_result(False, message=msg)
 
+        if len(action_chunk["action"]) == 0:
+            msg = "[ActionServer] action_chunk['action'] cannot be empty"
+            logger.error(msg)
+            return self._make_result(False, message=msg)
+
         outputs = self.server_config.get("outputs", [])
         if not outputs:
             msg = "[ActionServer] outputs configuration is empty"
@@ -184,13 +263,21 @@ class ActionServer(BaseServer):
         frames_sent = 0
 
         start_time = time.time()
+        action_frames = action_chunk["action"]
 
         for frame_idx, triplets in enumerate(frames_msgs):
             try:
                 protocol, params, msg, interval, step = triplets[0]
 
                 self.protocol_factory.pub(protocol, params, msg)
-                logger.info(f"Sent frame {frame_idx}: {msg}")
+                # logger.info(f"Sent frame {frame_idx}: {msg}")
+
+                # Write action frame to buffer for DataServer collection
+                # Skip if called from watch_loop (action already in buffer from input callback)
+                if not _skip_buffer_write and frame_idx < len(action_frames):
+                    action_ts = time.time()
+                    self._push_to_buffer("action", action_ts, action_frames[frame_idx])
+                    self._last_executed_action_ts = action_ts
 
                 frames_sent += step
 
@@ -209,9 +296,9 @@ class ActionServer(BaseServer):
                 errors = err
 
         end_time = time.time()
-        logger.info(
-            f"[ActionServer] Publishing completed, time elapsed: {end_time - start_time}s"
-        )
+        # logger.info(
+        #     f"[ActionServer] Publishing completed, time elapsed: {end_time - start_time}s"
+        # )
 
         outputs_cfg = self.server_config.get("outputs", []) or []
         out0_params = (outputs_cfg[0].get("params", {}) if outputs_cfg else {}) or {}
@@ -224,10 +311,10 @@ class ActionServer(BaseServer):
 
         success = (frames_sent == logical_frames) and errors == ""
 
-        logger.info(
-            f"[ActionServer] Execution result: {success}, "
-            f"frames_sent: {frames_sent}, expect_frames: {logical_frames}, errors: {errors}"
-        )
+        # logger.info(
+        #     f"[ActionServer] Execution result: {success}, "
+        #     f"frames_sent: {frames_sent}, expect_frames: {logical_frames}, errors: {errors}"
+        # )
 
         return self._make_result(
             success=success,
@@ -237,41 +324,53 @@ class ActionServer(BaseServer):
         )
 
     def bind_bus(self, bus: RcpBus):
-        """Register get_state and run_action_chunk tools on the bus."""
+        """Register tools on the bus based on the active configuration.
+
+        - ``get_state`` is registered only when ``inputs`` is non-empty.
+        - ``run_action_chunk`` is registered only when ``outputs`` is non-empty.
+        """
         super().bind_bus(bus)
-        bus.add_tool(
-            "get_state",
-            self.get_state,
-            input_schema=None,
-            output_schema={
-                "success": "bool",
-                "message": "str",
-                "result": {
-                    "<buffer_key>": "Any  # aligned value from buffer (dict/list/number/...)",
+
+        if self.server_config.get("inputs"):
+            bus.add_tool(
+                "get_state",
+                self.get_state,
+                input_schema=None,
+                output_schema={
+                    "success": "bool",
+                    "message": "str",
+                    "result": {
+                        "<buffer_key>": "Any  # aligned value from buffer (dict/list/number/...)",
+                    },
                 },
-            },
-            description="Get an aligned observation snapshot from internal buffer.",
-        )
-        bus.add_tool(
-            "run_action_chunk",
-            self.run_action_chunk,
-            input_schema={
-                "action_chunk": {
-                    "action": [
-                        "[j0, j1, j2, j3, j4, j5]  # one frame: joint positions (list[float])",
-                        "[j0, j1, j2, j3, j4, j5]",
-                    ]
+                description="Get an aligned observation snapshot from internal buffer.",
+            )
+        else:
+            logger.info("[ActionServer] 'inputs' not configured, skipping get_state tool registration.")
+
+        if self.server_config.get("outputs"):
+            bus.add_tool(
+                "run_action_chunk",
+                self.run_action_chunk,
+                input_schema={
+                    "action_chunk": {
+                        "action": [
+                            "[j0, j1, j2, j3, j4, j5]  # one frame: joint positions (list[float])",
+                            "[j0, j1, j2, j3, j4, j5]",
+                        ]
+                    },
+                    "fps": "int  # Publishing frame rate (frames per second), e.g. 30",
+                    "post_delay_s": "float | None  # Optional delay after chunk; e.g. 0.0",
                 },
-                "fps": "int  # Publishing frame rate (frames per second), e.g. 30",
-                "post_delay_s": "float | None  # Optional delay after chunk; e.g. 0.0",
-            },
-            output_schema={
-                "success": "bool",
-                "message": "str | None",
-                "result": {
-                    "frames_sent": "int  # frames actually sent",
-                    "expect_frames": "int  # expected frames (len(action_chunk['action']))",
+                output_schema={
+                    "success": "bool",
+                    "message": "str | None",
+                    "result": {
+                        "frames_sent": "int  # frames actually sent",
+                        "expect_frames": "int  # expected frames (len(action_chunk['action']))",
+                    },
                 },
-            },
-            description="Publish an action chunk at a given FPS using the configured output adapter.",
-        )
+                description="Publish an action chunk at a given FPS using the configured output adapter.",
+            )
+        else:
+            logger.info("[ActionServer] 'outputs' not configured, skipping run_action_chunk tool registration.")

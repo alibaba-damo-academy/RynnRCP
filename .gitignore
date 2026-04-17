@@ -35,6 +35,7 @@ env/
 *.swp
 *.swo
 *~
+.qoder
 
 # OS
 .DS_Store
@@ -57,3 +58,6 @@ logs/
 *.log
 plots/
 .cache/
+
+tmp/
+robots/so101copy

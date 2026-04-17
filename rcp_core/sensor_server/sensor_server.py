@@ -282,47 +282,54 @@ class SensorServer(BaseServer):
         )
 
     def bind_bus(self, bus: RcpBus):
-        """Register get_image on the bus for external image requests."""
+        """Register tools on the bus based on the active configuration.
+
+        - ``get_image`` and ``get_image_info`` are registered only when ``inputs`` is non-empty.
+        """
         super().bind_bus(bus)
-        bus.add_tool(
-            "get_image",
-            self.get_image,
-            input_schema={
-                "image_opts": {
-                    "observation.images.<camera_name>": {
-                        "encoding": "str  # 'jpeg' or 'png' (default: jpeg)",
-                        "width": "int  # optional resize width",
-                        "height": "int  # optional resize height",
+
+        if self.server_config.get("inputs"):
+            bus.add_tool(
+                "get_image",
+                self.get_image,
+                input_schema={
+                    "image_opts": {
+                        "observation.images.<camera_name>": {
+                            "encoding": "str  # 'jpeg' or 'png' (default: jpeg)",
+                            "width": "int  # optional resize width",
+                            "height": "int  # optional resize height",
+                        }
                     }
-                }
-            },
-            output_schema={
-                "success": "bool",
-                "message": "str",
-                "result": {
-                    "observation.images.<camera_name>": "bytes  # encoded image bytes (jpeg/png)",
                 },
-            },
-            description=(
-                "Get encoded images from internal buffer for specified camera keys and options; "
-                "if no options are provided, return all 'observation.images.*' keys."
-            ),
-        )
-        bus.add_tool(
-            "get_image_info",
-            self.get_image_info,
-            input_schema=None,
-            output_schema={
-                "success": "bool",
-                "message": "str",
-                "result": {
-                    "observation.images.<camera_name>": {
-                        "encoding": "str  # 'jpeg'/'png'",
-                        "width": "int | None  # image width",
-                        "height": "int | None  # image height",
-                        "brand": "str | None  # camera brand",
+                output_schema={
+                    "success": "bool",
+                    "message": "str",
+                    "result": {
+                        "observation.images.<camera_name>": "bytes  # encoded image bytes (jpeg/png)",
                     },
                 },
-            },
-            description="Get per-camera image metadata for keys 'observation.images.*'.",
-        )
+                description=(
+                    "Get encoded images from internal buffer for specified camera keys and options; "
+                    "if no options are provided, return all 'observation.images.*' keys."
+                ),
+            )
+            bus.add_tool(
+                "get_image_info",
+                self.get_image_info,
+                input_schema=None,
+                output_schema={
+                    "success": "bool",
+                    "message": "str",
+                    "result": {
+                        "observation.images.<camera_name>": {
+                            "encoding": "str  # 'jpeg'/'png'",
+                            "width": "int | None  # image width",
+                            "height": "int | None  # image height",
+                            "brand": "str | None  # camera brand",
+                        },
+                    },
+                },
+                description="Get per-camera image metadata for keys 'observation.images.*'.",
+            )
+        else:
+            logger.info("[SensorServer] 'inputs' not configured, skipping get_image/get_image_info tool registration.")

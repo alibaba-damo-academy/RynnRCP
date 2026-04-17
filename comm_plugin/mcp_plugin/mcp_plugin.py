@@ -40,18 +40,71 @@ Notes
 
 from __future__ import annotations
 
+import asyncio
 import os
 import json
+import time
 import yaml
 import base64
 from dataclasses import dataclass
 from collections.abc import Mapping, Sequence, Set
-from typing import Any
+from typing import Any, Optional
 
 from fastmcp import FastMCP, Context
 
 from ..base_plugin.base import RcpPlugin
 from rcp_core import RcpCore
+
+
+class McpProgressAdapter:
+    """Bridges a synchronous ``(current, total, message)`` progress callback to
+    an async MCP ``notifications/progress`` notification.
+
+    The tool handler runs in a thread-pool executor while FastMCP's event loop
+    runs in the main thread.  :meth:`__call__` is invoked from the worker thread
+    and uses :func:`asyncio.run_coroutine_threadsafe` to schedule the async send
+    without blocking the worker.
+
+    A simple rate-limiter (1 % change **or** 0.5 s elapsed) prevents notification
+    flooding for tools that report very frequently.
+    """
+
+    _MIN_DELTA_PCT: float = 1.0   # minimum progress change to trigger a send
+    _MIN_INTERVAL_S: float = 0.5  # minimum seconds between sends
+
+    def __init__(self, ctx: Context, loop: asyncio.AbstractEventLoop) -> None:
+        self._ctx = ctx
+        self._loop = loop
+        self._last_progress: float = -1.0
+        self._last_time: float = 0.0
+
+    def __call__(self, current: float, total: float, message: str) -> None:
+        """Synchronous entry point called from the worker thread."""
+        now = time.monotonic()
+        delta = abs(current - self._last_progress)
+        if delta < self._MIN_DELTA_PCT and (now - self._last_time) < self._MIN_INTERVAL_S:
+            return  # throttle
+
+        self._last_progress = current
+        self._last_time = now
+
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self._async_report(current, total, message),
+                self._loop,
+            )
+        except Exception:
+            pass  # never let progress errors affect the tool result
+
+    async def _async_report(self, current: float, total: float, message: str) -> None:
+        try:
+            await self._ctx.report_progress(
+                progress=current,
+                total=total,
+                message=message[:200],
+            )
+        except Exception:
+            pass  # ignore send failures silently
 
 
 def to_json_safe(obj: Any, _seen: set[int] | None = None) -> Any:
@@ -313,7 +366,16 @@ class McpPlugin(RcpPlugin):
                 async def _tool(ctx: Context, params: dict[str, Any] | None = None):
                     params = params or {}
                     try:
-                        result = rcp_core.tool_call(name, **params)
+                        loop = asyncio.get_running_loop()
+                        adapter = McpProgressAdapter(ctx, loop)
+                        result = await loop.run_in_executor(
+                            None,
+                            lambda: rcp_core.bus.call_tool(
+                                name,
+                                _progress_callback=adapter,
+                                **params,
+                            ),
+                        )
                         return to_json_safe(result)
                     except Exception as e:
                         return {

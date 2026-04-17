@@ -83,3 +83,4 @@ servers:
 - name: device_monitor_server
   robot_info:
     robot_name: so100
+- name: data_server

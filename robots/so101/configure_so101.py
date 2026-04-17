@@ -69,6 +69,8 @@ SO101_LOWLEVEL_CONFIG_PATH = (
     / "configs"
     / "so101.yaml"
 )
+# so101.yaml is shared by follower and leader; leader port is stored under leader.port
+SO101_LEADER_LOWLEVEL_CONFIG_PATH = SO101_LOWLEVEL_CONFIG_PATH
 SO101_ROBOT_DIR = SCRIPT_DIR.parent.parent / "rcp_motion" / "robots" / "so101"
 
 # ----------------------------
@@ -98,11 +100,14 @@ I18N: Dict[str, Dict[str, str]] = {
     },
     "menu_1": {"zh": "  1. 设备设置 (RynnBot)", "en": "  1. Device settings (RynnBot)"},
     "menu_2": {"zh": "  2. 相机设置", "en": "  2. Camera settings"},
-    "menu_3": {"zh": "  3. 机器人串口设置", "en": "  3. Robot serial settings"},
-    "menu_4": {"zh": "  4. 机械臂标定", "en": "  4. Robot arm calibration"},
-    "menu_5": {"zh": "  5. 一键配置全部", "en": "  5. Configure all"},
+    "menu_3": {"zh": "  3. 从臂串口设置", "en": "  3. Follower arm serial settings"},
+    "menu_4": {"zh": "  4. 从臂标定", "en": "  4. Follower arm calibration"},
+    "menu_5": {"zh": "  5. 主臂串口设置", "en": "  6. Leader arm serial settings"},
+    "menu_6": {"zh": "  6. 主臂标定", "en": "  7. Leader arm calibration"},
+    "menu_7": {"zh": "  7. 一键配置全部", "en": "  5. Configure all"},
+
     "menu_q": {"zh": "  q. 退出", "en": "  q. Quit"},
-    "menu_prompt": {"zh": "请输入选项(1-5/q): ", "en": "Enter your choice (1-5/q): "},
+    "menu_prompt": {"zh": "请输入选项(1-7/q): ", "en": "Enter your choice (1-7/q): "},
     "invalid_choice": {"zh": "无效选项：{choice}", "en": "Invalid choice: {choice}"},
     "exit": {"zh": "退出配置工具。", "en": "Exiting configuration tool."},
     "load_cfg": {"zh": "加载配置文件：{path}", "en": "Loading configuration: {path}"},
@@ -177,7 +182,7 @@ I18N: Dict[str, Dict[str, str]] = {
         "zh": "❌ 没有相机设备可以成功采集图像",
         "en": "❌ No camera devices could capture images",
     },
-    "robot_title": {"zh": "机器人串口配置", "en": "ROBOT SERIAL CONFIGURATION"},
+    "robot_title": {"zh": "从臂串口配置", "en": "FOLLOWER ARM SERIAL CONFIGURATION"},
     "unplug_serial": {
         "zh": "请拔掉串口设备，然后按回车...",
         "en": "Please unplug the serial device, then press Enter...",
@@ -222,7 +227,7 @@ I18N: Dict[str, Dict[str, str]] = {
         "zh": "✅ 串口配置完成。端口：{dev}",
         "en": "✅ Serial configuration done. Port: {dev}",
     },
-    "calib_title": {"zh": "机械臂标定", "en": "ROBOT ARM CALIBRATION"},
+    "calib_title": {"zh": "从臂标定", "en": "FOLLOWER ARM CALIBRATION"},
     "calib_tip1": {
         "zh": "标定会生成该机械臂专属的标定参数文件。",
         "en": "Calibration will generate robot-specific calibration parameters.",
@@ -237,6 +242,21 @@ I18N: Dict[str, Dict[str, str]] = {
     "calib_fail": {
         "zh": "❌ 标定失败，返回码：{code}",
         "en": "❌ Calibration failed, return code: {code}",
+    },
+    "leader_robot_title": {"zh": "主臂串口配置", "en": "LEADER ARM SERIAL CONFIGURATION"},
+    "leader_calib_title": {"zh": "主臂标定", "en": "LEADER ARM CALIBRATION"},
+    "leader_calib_tip1": {
+        "zh": "主臂标定会生成驱动主臂所需的标定参数文件。",
+        "en": "Leader calibration generates parameters required to read leader arm state.",
+    },
+    "leader_calib_tip2": {
+        "zh": "请将主臂调到零位后再开始标定。",
+        "en": "Please move the leader arm to zero position before starting calibration.",
+    },
+    "leader_calib_confirm": {"zh": "开始主臂标定？(y/N): ", "en": "Start leader arm calibration? (y/N): "},
+    "leader_robot_done": {
+        "zh": "✅ 主臂串口配置完成。端口：{dev}",
+        "en": "✅ Leader arm serial configuration done. Port: {dev}",
     },
     "dir_missing": {
         "zh": "目录不存在：{path}",
@@ -1371,6 +1391,110 @@ def calibrate_robot_arm() -> None:
         raise SystemExit(0)
 
 
+# ----------------------------
+# Option 6: Leader arm serial settings
+# ----------------------------
+
+def configure_leader_robot() -> None:
+    """
+    Detect the leader arm serial port and write it to so101.yaml under leader.port.
+
+    The SO101LeaderReader (``rcp_motion/robots/so101/controller/so101_leader_reader.py``)
+    reads the leader arm via ``create_robot_interface(mode='teleop')``, which picks
+    up the port from so101.yaml → ``leader.port``.
+    """
+    print("\n" + "=" * 50)
+    print(f"        {t('leader_robot_title')}")
+    print("=" * 50)
+
+    dev: Optional[str] = None
+
+    try:
+        log_info("serial_try_gui")
+        dev = configure_serial_gui_hotplug(refresh_interval=0.1)
+    except Exception:
+        dev = None
+
+    if dev:
+        log_info("serial_gui_done", dev=dev)
+    else:
+        log_info("serial_gui_unavailable")
+        dev = wait_for_serial_device_change_linux()
+
+    low_cfg = load_yaml_config(SO101_LEADER_LOWLEVEL_CONFIG_PATH)
+    # Write to teleoperate.port — this is what create_robot_interface(mode='teleop')
+    # reads when SO101LeaderReader.start() is called.
+    teleop_sect = low_cfg.get("teleoperate")
+    if not isinstance(teleop_sect, dict):
+        teleop_sect = {}
+        low_cfg["teleoperate"] = teleop_sect
+    teleop_sect["port"] = dev
+
+    save_yaml_config(SO101_LEADER_LOWLEVEL_CONFIG_PATH, low_cfg)
+    print(t("saved", path=str(SO101_LEADER_LOWLEVEL_CONFIG_PATH)))
+    print(t("leader_robot_done", dev=dev))
+
+    if sys.platform.startswith("linux"):
+        try:
+            print(t("chmod_serial", dev=dev))
+            subprocess.run(["sudo", "chmod", "666", dev], check=True)
+        except Exception:
+            pass
+
+
+# ----------------------------
+# Option 7: Leader arm calibration
+# ----------------------------
+
+def calibrate_leader_arm() -> None:
+    """
+    Run the leader arm calibration script.
+
+    The calibration output is stored in the directory specified by
+    ``so101.yaml → teleoperate.calibration_dir`` (default:
+    ``~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader``).
+    ``SO101LeaderReader`` reads this directory when starting.
+    """
+    print("\n" + "=" * 50)
+    print(f"        {t('leader_calib_title')}")
+    print("=" * 50)
+    print(t("leader_calib_tip1"))
+    print(t("leader_calib_tip2"))
+
+    try:
+        confirm = prompt_input(t("leader_calib_confirm")).strip().lower()
+        if confirm not in ["y", "yes"]:
+            print(t("calib_cancel"))
+            return
+
+        if not SO101_ROBOT_DIR.exists():
+            raise SystemExit(t("dir_missing", path=str(SO101_ROBOT_DIR)))
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "scripts.calibrate",
+                "--robot_type",
+                "so101",
+                "--arm",
+                "leader",
+                "--lang",
+                LANG,
+            ],
+            cwd=str(SO101_ROBOT_DIR),
+        )
+
+        if result.returncode == 0:
+            print(t("calib_ok"))
+        else:
+            raise SystemExit(t("calib_fail", code=result.returncode))
+
+    except KeyboardInterrupt:
+        print(t("cancelled"))
+        raise SystemExit(0)
+
+
 def main():
     global LANG
     LANG = choose_language()
@@ -1390,6 +1514,8 @@ def main():
         print(t("menu_3"))
         print(t("menu_4"))
         print(t("menu_5"))
+        print(t("menu_6"))
+        print(t("menu_7"))
         print(t("menu_q"))
         print("-" * 50)
 
@@ -1406,10 +1532,16 @@ def main():
             elif choice == "4":
                 calibrate_robot_arm()
             elif choice == "5":
+                configure_leader_robot()
+            elif choice == "6":
+                calibrate_leader_arm()
+            elif choice == "7":
                 configure_device_settings()
                 configure_cameras()
                 configure_robot()
                 calibrate_robot_arm()
+                configure_leader_robot()
+                calibrate_leader_arm()
             elif choice == "q":
                 print(t("exit"))
                 break

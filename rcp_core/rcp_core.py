@@ -59,6 +59,7 @@ from .common.protocol.protocol_factory import ProtocolFactory
 from .sensor_server.sensor_server import SensorServer
 from .action_server.action_server import ActionServer
 from .device_monitor_server.device_monitor_server import DeviceMonitorServer
+from .data_server.data_server import DataServer
 from .common.utils.logger import init_process_logging
 from .common.utils.logger import server_logger
 
@@ -103,11 +104,13 @@ class RcpCore:
         self.sensor_server = SensorServer(self.config)
         self.action_server = ActionServer(self.config)
         self.device_monitor_server = DeviceMonitorServer(self.config)
+        self.data_server = DataServer(self.config)
 
         # 4. Bind servers to bus
         self.sensor_server.bind_bus(self.bus)
         self.action_server.bind_bus(self.bus)
         self.device_monitor_server.bind_bus(self.bus)
+        self.data_server.bind_bus(self.bus)
 
         # 5. Bind middleware (subscribe to ROS2 / LCM)
         self.sensor_server.bind_adapter(self.protocol_factory)
@@ -162,14 +165,6 @@ class RcpCore:
                         "height": 240,
                     }
                 },
-            )
-            rcp_core.tool_call(
-                "execute_policy",
-                policy_name="Pi0",
-                prompt="Place the strawberries from the table into the cup.",
-                env="lerobot",
-                mode="sync",
-                steps=3,
             )
         """
         return self.bus.call_tool(tool_name, *args, **kwargs)

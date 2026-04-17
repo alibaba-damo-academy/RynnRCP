@@ -21,7 +21,8 @@ Buffers are partitioned by ``server_name``:
     }
 
 Each server partition has its own mutex in ``_locks``. A separate ``_meta_lock`` protects
-creation of new server partitions.
+creation of new server partitions. Within a server partition, each key has its own
+per-key lock so that concurrent writers to different keys do not block each other.
 
 Core operations
 ---------------
@@ -48,40 +49,45 @@ from __future__ import annotations
 
 import threading
 import time
-from collections import deque
-from typing import Any, Dict, Deque, Tuple, Optional
+from collections import deque, defaultdict
+from typing import Any, Dict, Deque, List, Tuple, Optional
 
 
 class GlobalBuffer:
     """
     Global shared buffer.
 
-    Top-level partitioned by server_name. Each partition has its own buffer and lock:
+    Top-level partitioned by server_name. Within each partition every key has its
+    own lock so concurrent writers to different keys (e.g. three camera threads)
+    do not block each other:
 
-        {
-          server_name0: { key: Deque[(ts, value)], ... },
-          server_name1: { key: Deque[(ts, value)], ... },
-          ...
-        }
-
-    And:
-        _locks: { server_name: Lock }
+        _buffers : { server_name: { key: Deque[(ts, value)] } }
+        _key_locks: { server_name: { key: Lock } }
+        _meta_lock: protects creation of new server_name entries
     """
 
     _instance: Optional["GlobalBuffer"] = None
     _instance_lock = threading.Lock()
 
+    # FPS report interval (seconds)
+    FPS_REPORT_INTERVAL: float = 5.0
+
     def __init__(self, queue_len: Optional[int] = 100, expire_seconds: float = 1.0):
         # server_name -> (key -> deque[(ts, value)])
         self._buffers: Dict[str, Dict[str, Deque[Tuple[float, Any]]]] = {}
-        # server_name -> Lock
-        self._locks: Dict[str, threading.Lock] = {}
-        # Protects the structure of _buffers/_locks themselves (creating new
-        # server partitions)
+        # server_name -> (key -> Lock)  — per-key locks for fine-grained concurrency
+        self._key_locks: Dict[str, Dict[str, threading.Lock]] = {}
+        # Protects the structure of _buffers/_key_locks themselves (creating new
+        # server partitions or new keys within a partition)
         self._meta_lock = threading.Lock()
 
         self.max_queue_len: Optional[int] = queue_len
         self.expire_seconds: float = expire_seconds
+
+        # FPS tracking: (server_name, key) -> push count in current window
+        self._fps_counts: Dict[Tuple[str, str], int] = defaultdict(int)
+        self._fps_window_start: float = time.time()
+        self._fps_lock = threading.Lock()
 
     @classmethod
     def get(
@@ -98,38 +104,71 @@ class GlobalBuffer:
 
     def _ensure_server_structs(self, server_name: str) -> None:
         """
-        Ensure that the given server_name has a corresponding buffer and lock.
-        Only called inside _meta_lock.
+        Ensure that the given server_name has a corresponding buffer dict and
+        key-lock dict. Only called inside _meta_lock.
         """
         if server_name not in self._buffers:
             self._buffers[server_name] = {}
-        if server_name not in self._locks:
-            self._locks[server_name] = threading.Lock()
+        if server_name not in self._key_locks:
+            self._key_locks[server_name] = {}
 
-    def _get_server_buffer_and_lock(
-        self, server_name: str
-    ) -> Tuple[Dict[str, Deque[Tuple[float, Any]]], threading.Lock]:
+    def _get_key_lock(self, server_name: str, key: str) -> Tuple[Deque, threading.Lock]:
         """
-        Return (buffer, lock) for the given server_name, where:
-          buffer: { key: Deque[(ts, value)] }
-          lock:   mutex protecting that buffer
+        Return (deque, lock) for (server_name, key), creating them if needed.
+        Uses _meta_lock only for the creation step; the returned lock is per-key.
         """
         with self._meta_lock:
             self._ensure_server_structs(server_name)
             buf = self._buffers[server_name]
-            lock = self._locks[server_name]
-        return buf, lock
+            kl = self._key_locks[server_name]
+            if key not in buf:
+                buf[key] = deque()
+                kl[key] = threading.Lock()
+            return buf[key], kl[key]
+
+    def _maybe_report_fps(self, now: float) -> None:
+        """Print per-key FPS report if the reporting interval has elapsed."""
+        elapsed = now - self._fps_window_start
+        if elapsed < self.FPS_REPORT_INTERVAL:
+            return
+
+        # Import lazily to avoid circular imports
+        from rcp_core.common.utils.logger import server_logger
+        _logger = server_logger()
+
+        lines: List[str] = []
+        for (sname, key), count in sorted(self._fps_counts.items()):
+            fps = count / elapsed if elapsed > 0 else 0.0
+            lines.append(f"  [{sname}] {key}: {fps:.1f} fps ({count} frames / {elapsed:.1f}s)")
+
+        self._fps_counts.clear()
+        self._fps_window_start = now
+
+        if lines:
+            _logger.info(
+                "[GlobalBuffer] FPS report (last {:.1f}s):\n{}".format(
+                    elapsed, "\n".join(lines)
+                )
+            )
 
     def push(self, server_name: str, key: str, ts: float, value: Any):
-        """Append a record to buffer[key] for the given server."""
-        buf, lock = self._get_server_buffer_and_lock(server_name)
-        with lock:
-            q = buf.setdefault(key, deque())
-            q.append((ts, value))
+        """Append a record to buffer[key] for the given server.
 
+        Uses a per-key lock so concurrent pushes to different keys
+        (e.g. three camera threads) do not block each other.
+        """
+        q, lock = self._get_key_lock(server_name, key)
+        with lock:
+            q.append((ts, value))
             if self.max_queue_len is not None:
                 while len(q) > self.max_queue_len:
                     q.popleft()
+
+        # FPS tracking
+        now = time.time()
+        with self._fps_lock:
+            self._fps_counts[(server_name, key)] += 1
+            self._maybe_report_fps(now)
 
     def snapshot(self, server_name: str) -> Dict[str, Deque[Tuple[float, Any]]]:
         """
@@ -140,16 +179,22 @@ class GlobalBuffer:
           The returned value is a reference to internal structures, and should
           be treated as read-only by callers.
         """
-        buf, lock = self._get_server_buffer_and_lock(server_name)
-        with lock:
-            now = time.time()
-            expire_before = now - self.expire_seconds
+        with self._meta_lock:
+            self._ensure_server_structs(server_name)
+            buf = self._buffers[server_name]
+            kl = self._key_locks[server_name]
 
-            for key, q in list(buf.items()):
+        now = time.time()
+        expire_before = now - self.expire_seconds
+        for key, q in list(buf.items()):
+            lock = kl.get(key)
+            if lock is None:
+                continue
+            with lock:
                 while q and q[0][0] < expire_before:
                     q.popleft()
 
-            return buf
+        return buf
 
     def snapshot_all(self) -> Dict[str, Dict[str, Deque[Tuple[float, Any]]]]:
         """

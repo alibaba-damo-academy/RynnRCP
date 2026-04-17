@@ -144,9 +144,14 @@ def sync_by_trigger_time(
     now_ts = time.time()
     diff = now_ts - trigger_time
     if diff > 0.07:  # 70 ms
+        # Find which key is the bottleneck (the one with the smallest latest_ts)
+        key_ts_pairs = [(k, buffers[k][-1][0]) for k in trigger_keys if buffers.get(k)]
+        slowest_key = min(key_ts_pairs, key=lambda x: x[1])[0] if key_ts_pairs else "unknown"
+        key_ts_str = ", ".join(f"{k}={ts:.6f}" for k, ts in key_ts_pairs)
         logger.warning(
             f"[sync_by_trigger_time] WARNING: trigger_time is too old: "
-            f"now={now_ts:.6f}, trigger_time={trigger_time:.6f}, diff={diff*1000:.1f} ms"
+            f"now={now_ts:.6f}, trigger_time={trigger_time:.6f}, diff={diff*1000:.1f} ms | "
+            f"slowest_key={slowest_key} | key_latest_ts=[{key_ts_str}]"
         )
 
     # 4. For each out_key, find the first sample with ts >= trigger_time

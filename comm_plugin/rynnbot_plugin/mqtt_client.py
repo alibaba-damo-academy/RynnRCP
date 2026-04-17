@@ -93,6 +93,11 @@ class RynnMqttClient:
         self._sub_topics = [
             self._topic_prefix + "rrpc/request/+/acquire_device",
             self._topic_prefix + "rrpc/request/+/release_device",
+            self._topic_prefix + "rrpc/request/+/tele_data_coll:start_round",
+            self._topic_prefix + "rrpc/request/+/tele_data_coll:stop_round",
+            self._topic_prefix + "rrpc/request/+/tele_data_coll:upload",
+            self._topic_prefix + "rrpc/request/+/skill_execute_record_coll:start_record",
+            self._topic_prefix + "rrpc/request/+/skill_execute_record_coll:stop_record",
         ]
 
     def _on_connect(

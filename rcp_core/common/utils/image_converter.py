@@ -85,12 +85,12 @@ class ImageConverter:
                 f"[ImageConverter] Expected img_msg to be dict, actual type={type(img_msg)}"
             )
 
-        logger.info(
-            f"[ImageConverter] in: type={img_type}, "
-            f"encoding={img_msg.get('encoding', '')}, "
-            f"format={img_msg.get('format', '')}, "
-            f"size={len(img_msg['data'])} bytes"
-        )
+        # logger.info(
+        #     f"[ImageConverter] in: type={img_type}, "
+        #     f"encoding={img_msg.get('encoding', '')}, "
+        #     f"format={img_msg.get('format', '')}, "
+        #     f"size={len(img_msg['data'])} bytes"
+        # )
 
         img_type = "jpeg" if img_type == "jpg" else img_type
 
@@ -123,10 +123,10 @@ class ImageConverter:
         out_bytes = self.backend.encode_image(img, img_type)
 
         out_h, out_w = img.shape[:2]
-        logger.info(
-            f"[DictImage] in: {w}x{h}, encoding={encoding} -> "
-            f"out: {out_w}x{out_h}, format={img_type}, size={len(out_bytes)} bytes"
-        )
+        # logger.info(
+        #     f"[DictImage] in: {w}x{h}, encoding={encoding} -> "
+        #     f"out: {out_w}x{out_h}, format={img_type}, size={len(out_bytes)} bytes"
+        # )
         return out_bytes
 
     def _dict_compressed_to_bytes(
@@ -142,9 +142,6 @@ class ImageConverter:
 
         # If already in target format and no resize is needed, passthrough
         if (width is None or height is None) and fmt == img_type:
-            logger.info(
-                f"[DictCompressed] passthrough: format={fmt}, size={len(data)} bytes (no resize)"
-            )
             return data
 
         img = self.backend.compressed_to_ndarray(data, fmt)

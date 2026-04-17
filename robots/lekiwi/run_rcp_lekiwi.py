@@ -8,5 +8,5 @@ app = RynnRCP(
     ],
 )
 
-print("✅ 启动 RynnRCP 启动，接入乐云平台")
+print("✅ RynnRCP 启动，接入乐云平台")
 app.start()

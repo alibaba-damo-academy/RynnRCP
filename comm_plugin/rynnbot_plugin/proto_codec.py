@@ -77,6 +77,8 @@ class RynnProtoCodec:
             msg = self.ReqState()
         elif pkg_type == self.PackageType.ACTION_FINISH:
             msg = self.FinishActionChunk()
+        elif pkg_type == self.PackageType.RESV:
+            return pkg_type, packet.data
         else:
             return pkg_type, None
 

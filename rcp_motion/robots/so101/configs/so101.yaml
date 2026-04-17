@@ -43,7 +43,7 @@ teleoperate:
   calibration_dir_2: ~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader_2
   inference_rate: 30.0
   model: sts3215
-  port: /dev/ttyACM1
+  port: /dev/ttyACM0
   port_2: /dev/ttyACM0
   timeout_seconds: 30.0
 leader:

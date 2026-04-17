@@ -160,8 +160,16 @@ def build_and_install_wheel(lcm_types_dir: Path) -> Path:
     try:
         import build  # noqa: F401
     except ImportError:
-        print("[INFO] build not installed, installing build ...")
-        run([sys.executable, "-m", "pip", "install", "build"])
+        print("[INFO] build not installed, trying to install build ...")
+        # Prefer uv pip (works in uv-managed venvs that may lack pip)
+        uv_bin = shutil.which("uv")
+        if uv_bin:
+            try:
+                run([uv_bin, "pip", "install", "build"])
+            except subprocess.CalledProcessError:
+                run([sys.executable, "-m", "pip", "install", "build"])
+        else:
+            run([sys.executable, "-m", "pip", "install", "build"])
 
     run(
         [sys.executable, "-m", "build", "--wheel", "--outdir", "dist"],
@@ -176,10 +184,23 @@ def build_and_install_wheel(lcm_types_dir: Path) -> Path:
     print(f"[INFO] Built wheel: {wheel_path.name}")
 
     print("[INFO] Installing wheel with pip (--force-reinstall) ...")
-    run(
-        [sys.executable, "-m", "pip", "install", "--force-reinstall", str(wheel_path)],
-        cwd=str(lcm_types_dir),
-    )
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        try:
+            run(
+                [uv_bin, "pip", "install", "--force-reinstall", str(wheel_path)],
+                cwd=str(lcm_types_dir),
+            )
+        except subprocess.CalledProcessError:
+            run(
+                [sys.executable, "-m", "pip", "install", "--force-reinstall", str(wheel_path)],
+                cwd=str(lcm_types_dir),
+            )
+    else:
+        run(
+            [sys.executable, "-m", "pip", "install", "--force-reinstall", str(wheel_path)],
+            cwd=str(lcm_types_dir),
+        )
 
     return wheel_path
 
