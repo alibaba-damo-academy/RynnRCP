@@ -1017,8 +1017,17 @@ class TeleopPlugin(RcpPlugin):
                 data, _ = self._sock.recvfrom(65535)
             except socket.timeout:
                 continue
+            except ConnectionResetError:
+                # Windows: ICMP "Port Unreachable" (errno 10054) when the
+                # peer hasn't started yet.  Safe to ignore and retry.
+                continue
             except OSError:
-                break
+                if self._stop_event.is_set():
+                    break
+                # Transient OS-level error; log and retry instead of dying.
+                logger.debug("[TeleopPlugin] recvfrom OSError, retrying...")
+                time.sleep(0.1)
+                continue
 
             hdr = _unpack_header(data)
             if hdr is None:
