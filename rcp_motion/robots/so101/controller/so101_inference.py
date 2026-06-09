@@ -87,7 +87,7 @@ class SO101Inference:
 
     def _init_config(self):
         try:
-            with open(self.config_path, "r") as f:
+            with open(self.config_path, "r", encoding="utf-8") as f:
                 self.config = yaml.safe_load(f)
         except FileNotFoundError:
             self.config = {}

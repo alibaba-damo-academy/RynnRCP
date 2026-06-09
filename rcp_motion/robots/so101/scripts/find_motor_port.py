@@ -51,7 +51,7 @@ def find_available_ports():
 def check_user_in_dialout():
     """Check if current user is already in dialout group."""
     try:
-        result = subprocess.run(['groups'], capture_output=True, text=True)
+        result = subprocess.run(['groups'], capture_output=True, text=True, encoding='utf-8', errors='replace')
         groups = result.stdout.strip().split()
         return 'dialout' in groups
     except Exception:
@@ -117,7 +117,7 @@ def update_config_with_ports(detected_ports, port_type="follower"):
 
     try:
         if config_path.exists():
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
         else:
             config = {}
@@ -136,8 +136,8 @@ def update_config_with_ports(detected_ports, port_type="follower"):
                 config["teleoperate"]["port"] = port
                 print(t("updated_leader_port", config_path=config_path, port=port))
 
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
     except Exception as e:
         print(t("config_update_failed", error=e))

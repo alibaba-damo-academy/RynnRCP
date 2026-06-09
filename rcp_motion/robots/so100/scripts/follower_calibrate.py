@@ -27,7 +27,7 @@ from robot_devices.motors.configs import FeetechMotorsBusConfig
 
 def load_config(config_path):
     """Load configuration from YAML file."""
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return config
 
@@ -108,7 +108,7 @@ def check_torque_disabled(motor_bus: FeetechMotorsBus):
     try:
         torque_status = motor_bus.read("Torque_Enable")
         if (torque_status != TorqueMode.DISABLED.value).any():
-            print("❌ Error: Torque must be disabled on all motors before calibration!")
+            print("[ERR] Error: Torque must be disabled on all motors before calibration!")
             print("Current torque status:", torque_status)
             print("\nTo disable torque, manually power cycle the arm or run:")
             print(
@@ -134,13 +134,13 @@ def run_auto_calibration(motor_bus: FeetechMotorsBus) -> Dict:
     Returns:
         Calibration dictionary
     """
-    print("\n" + "🤖" * 20)
+    print("\n" + "[*] " * 20)
     print("AUTOMATIC CALIBRATION MODE")
-    print("🤖" * 20)
+    print("[*] " * 20)
     print("\nThis will automatically calibrate the SO100 follower arm.")
     print("The arm will move automatically to find joint limits.")
-    print("\n⚠️  WARNING: Make sure the workspace is clear!")
-    print("⚠️  WARNING: Stay ready to power off if needed!")
+    print("\n[WARN] WARNING: Make sure the workspace is clear!")
+    print("[WARN] WARNING: Stay ready to power off if needed!")
 
     # Import the calibration function
     try:
@@ -159,7 +159,7 @@ def run_auto_calibration(motor_bus: FeetechMotorsBus) -> Dict:
         calibration = run_arm_auto_calibration_so100(motor_bus, "so100", "main", "follower")  # type: ignore
         return calibration
     except Exception as e:
-        print(f"❌ Auto calibration failed: {e}")
+        print(f"[ERR] Auto calibration failed: {e}")
         raise
 
 
@@ -172,9 +172,9 @@ def run_manual_calibration(motor_bus: FeetechMotorsBus) -> Dict:
     Returns:
         Calibration dictionary
     """
-    print("\n" + "🔧" * 20)
+    print("\n" + "[FIX] " * 20)
     print("MANUAL CALIBRATION MODE")
-    print("🔧" * 20)
+    print("[FIX] " * 20)
     print("\nThis will manually calibrate the SO100 follower arm.")
     print("You will need to manually position the arm at specific poses.")
 
@@ -195,7 +195,7 @@ def run_manual_calibration(motor_bus: FeetechMotorsBus) -> Dict:
         calibration = run_arm_manual_calibration(motor_bus, "so100", "main", "follower")  # type: ignore
         return calibration
     except Exception as e:
-        print(f"❌ Manual calibration failed: {e}")
+        print(f"[ERR] Manual calibration failed: {e}")
         raise
 
 
@@ -216,10 +216,10 @@ def save_calibration(
 
     calib_file = calib_dir / "main_follower.json"
 
-    with open(calib_file, "w") as f:
-        json.dump(calibration, f, indent=2)
+    with open(calib_file, "w", encoding="utf-8") as f:
+        json.dump(calibration, f, indent=2, ensure_ascii=False)
 
-    print(f"✅ Calibration saved to: {calib_file}")
+    print(f"[OK] Calibration saved to: {calib_file}")
     return calib_file
 
 
@@ -239,14 +239,14 @@ def load_existing_calibration(
 
     if calib_file.exists():
         try:
-            with open(calib_file, "r") as f:
+            with open(calib_file, "r", encoding="utf-8") as f:
                 calibration = json.load(f)
-            print(f"✅ Found existing calibration: {calib_file}")
+            print(f"[OK] Found existing calibration: {calib_file}")
             return calibration
         except Exception as e:
-            print(f"❌ Error loading calibration file {calib_file}: {e}")
+            print(f"[ERR] Error loading calibration file {calib_file}: {e}")
     else:
-        print(f"❌ Calibration file not found: {calib_file}")
+        print(f"[ERR] Calibration file not found: {calib_file}")
         print(
             "   The calibration file 'main_follower.json' is required for robot operation."
         )
@@ -265,9 +265,9 @@ def apply_calibration_to_bus(motor_bus: FeetechMotorsBus, calibration: Dict):
     """
     try:
         motor_bus.set_calibration(calibration)
-        print("✅ Calibration applied to motor bus")
+        print("[OK] Calibration applied to motor bus")
     except Exception as e:
-        print(f"❌ Error applying calibration: {e}")
+        print(f"[ERR] Error applying calibration: {e}")
         raise
 
 
@@ -309,7 +309,7 @@ def main():
         if args.mode == "load":
             existing_calib = load_existing_calibration(args.calibration_dir)
             if existing_calib is None:
-                print("❌ No existing calibration found!")
+                print("[ERR] No existing calibration found!")
                 print("Please run calibration with --mode auto or --mode manual first.")
                 return
 
@@ -319,7 +319,7 @@ def main():
             # Test the calibration by connecting and applying it
             motor_bus = FeetechMotorsBus(config)
             motor_bus.connect()
-            print("✅ Connected to SO100 follower arm")
+            print("[OK] Connected to SO100 follower arm")
 
             apply_calibration_to_bus(motor_bus, existing_calib)
 
@@ -335,7 +335,7 @@ def main():
         # Connect to the arm
         print(f"\nAttempting to connect to port: {config.port}")
         motor_bus.connect()
-        print("✅ Successfully connected to SO100 follower arm!")
+        print("[OK] Successfully connected to SO100 follower arm!")
 
         # Get joint names
         joint_names = list(config.motors.keys())
@@ -362,7 +362,7 @@ def main():
             calibration = run_manual_calibration(motor_bus)
 
         if calibration is None:
-            print("❌ Calibration failed - no calibration data returned")
+            print("[ERR] Calibration failed - no calibration data returned")
             return
 
         # Save calibration
@@ -376,17 +376,17 @@ def main():
             motor_bus, joint_names, "Post-Calibration Joint Positions"
         )
 
-        print("\n" + "🎉" * 20)
+        print("\n" + "[*] " * 20)
         print("CALIBRATION COMPLETED SUCCESSFULLY!")
-        print("🎉" * 20)
-        print(f"✅ Calibration file saved: {calib_file}")
-        print("✅ Calibration applied to motor bus")
+        print("[*] " * 20)
+        print(f"[OK] Calibration file saved: {calib_file}")
+        print("[OK] Calibration applied to motor bus")
         print("\nYou can now use the follower arm with calibrated positions!")
 
     except KeyboardInterrupt:
-        print("\n\n⏹️  Calibration cancelled by user")
+        print("\n\n[STOP] Calibration cancelled by user")
     except Exception as e:
-        print(f"\n❌ Error during calibration: {e}")
+        print(f"\n[ERR] Error during calibration: {e}")
         print("\nTroubleshooting tips:")
         print("1. Check that the SO100 arm is connected via USB")
         print("2. Verify the USB port in lerobot/configs/config.yaml")
@@ -403,7 +403,7 @@ def main():
             try:
                 print("\nDisconnecting from arm...")
                 motor_bus.disconnect()
-                print("✅ Disconnected successfully")
+                print("[OK] Disconnected successfully")
             except Exception as e:
                 print(f"Error during disconnect: {e}")
 

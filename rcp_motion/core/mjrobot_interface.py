@@ -226,7 +226,7 @@ class MujocoRobotInterface(RobotInterfaceBase):
         # Don't close viewer - let Python GC handle it (avoids malloc corruption)
         # Don't close mjModel/mjData - let Python GC handle them
 
-        print("✓ MuJoCo simulation disconnected")
+        print("[OK] MuJoCo simulation disconnected")
 
         # Call parent disconnect
         super().disconnect()

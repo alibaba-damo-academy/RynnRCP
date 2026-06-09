@@ -113,14 +113,9 @@ class RynnRCP:
                     t.start()
                     self._threads.append(t)
 
-                # Poll instead of blocking join().
-                # Also break when all plugin threads have exited (e.g. web UI
-                # quit button calls plugin.stop() which only sets the plugin's
-                # own stop event, not RynnRCP's).
+                # Poll instead of blocking join()
                 while not self._stop_event.is_set():
                     self._stop_event.wait(timeout=0.5)
-                    if all(not t.is_alive() for t in self._threads):
-                        break
             except KeyboardInterrupt:
                 # Fallback (unlikely but safe)
                 print("\n[RynnRCP] KeyboardInterrupt caught on Windows")

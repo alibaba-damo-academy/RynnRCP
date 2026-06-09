@@ -44,7 +44,7 @@ def load_config(config_path: str = None):
     if config_path is None:
         config_path = get_config_path()
     try:
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         return config if config else {}
     except FileNotFoundError:

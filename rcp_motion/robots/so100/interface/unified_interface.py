@@ -238,13 +238,13 @@ class UnifiedRobotInterface(BaseRobotInterface):
 
         if self.calibration_file:
             if os.path.exists(self.calibration_file):
-                with open(self.calibration_file) as f:
+                with open(self.calibration_file, encoding="utf-8") as f:
                     calibration = json.load(f)
                     self.motor_bus.set_calibration(calibration)
                     self.logger.info(f"Loaded calibration from {self.calibration_file}")
             else:
                 error_msg = (
-                    f"❌ CALIBRATION FILE NOT FOUND: {self.calibration_file}\n"
+                    f"[ERR] CALIBRATION FILE NOT FOUND: {self.calibration_file}\n"
                     f"   This is required for real robot operation.\n"
                     f"   Please run calibration first:\n"
                     f"   python -m scripts.follower_calibrate --mode manual"
@@ -253,7 +253,7 @@ class UnifiedRobotInterface(BaseRobotInterface):
                 raise FileNotFoundError(error_msg)
         else:
             self.logger.warning(
-                "⚠️  No calibration file specified for real robot. "
+                "[WARN]  No calibration file specified for real robot. "
                 "Robot may not function correctly without calibration."
             )
 
@@ -335,7 +335,7 @@ class UnifiedRobotInterface(BaseRobotInterface):
             self.data.qacc[:] = 0
             self.data.ctrl[:] = q
             mujoco.mj_forward(self.model, self.data)
-            self.logger.info("✓ Random initial pose set successfully")
+            self.logger.info("[OK] Random initial pose set successfully")
 
         except Exception as e:
             self.logger.error(f"Failed to set random pose: {e}")
@@ -638,7 +638,7 @@ def check_calibration_file(calibration_file: Optional[str], mode: str) -> bool:
     if mode == "real":
         if not calibration_file:
             error_msg = (
-                "❌ CALIBRATION FILE REQUIRED: No calibration file specified for real robot mode.\n"
+                "[ERR] CALIBRATION FILE REQUIRED: No calibration file specified for real robot mode.\n"
                 "   Please specify a calibration file or run calibration first:\n"
                 "   python -m scripts.follower_calibrate --mode manual"
             )
@@ -646,7 +646,7 @@ def check_calibration_file(calibration_file: Optional[str], mode: str) -> bool:
 
         if not os.path.exists(calibration_file):
             error_msg = (
-                f"❌ CALIBRATION FILE NOT FOUND: {calibration_file}\n"
+                f"[ERR] CALIBRATION FILE NOT FOUND: {calibration_file}\n"
                 f"   This file is required for real robot operation.\n"
                 f"   Please run calibration first:\n"
                 f"   python -m scripts.follower_calibrate --mode manual\n"

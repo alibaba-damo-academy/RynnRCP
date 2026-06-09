@@ -307,7 +307,7 @@ class JointPlotter:
             # Verify the file was actually created
             if os.path.exists(plot_path):
                 file_size = os.path.getsize(plot_path)
-                print(f"✓ Joint Plot file: {plot_path}")
+                print(f"[OK] Joint Plot file: {plot_path}")
                 self.logger.info(f"Joint plot saved: {plot_path} ({file_size} bytes)")
                 return plot_path
             else:

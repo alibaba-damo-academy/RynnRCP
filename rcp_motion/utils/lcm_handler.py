@@ -86,10 +86,10 @@ class LCMHandler:
             self.lcm_instance = lcm.LCM()
             self.lcm_instance.subscribe("rcp_robotmotion", self.handle_policy_commands)
             self.lcm_instance.subscribe("rcp_request_feedback", self.handle_requests)
-            self.logger.info("✓ LCM communication ready")
+            self.logger.info("[OK] LCM communication ready")
             return True
         except Exception as e:
-            self.logger.warning(f"⚠ LCM setup failed: {e}")
+            self.logger.warning(f"[WARN] LCM setup failed: {e}")
             self.lcm_instance = None
             return False
 
@@ -97,7 +97,7 @@ class LCMHandler:
         """Disconnect LCM."""
         if self.lcm_instance:
             self.lcm_instance = None
-            self.logger.info("✓ LCM disconnected")
+            self.logger.info("[OK] LCM disconnected")
 
     def is_connected(self):
         """Check if LCM is connected."""

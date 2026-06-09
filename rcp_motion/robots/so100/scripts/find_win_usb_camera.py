@@ -12,18 +12,18 @@ for i in range(len(devices)):
     print(f"\nTrying to open camera {i}...")
     cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
     if cap.isOpened():
-        print(f"  ✅ Success")
+        print(f"  [OK] Success")
         cap.release()
     else:
-        print(f"  ❌ Failed")
+        print(f"  [ERR] Failed")
 
 
 def test_camera(cam_id, name=""):
     cap = cv2.VideoCapture(cam_id, cv2.CAP_DSHOW)
     if not cap.isOpened():
-        print(f"❌ Camera {cam_id} ({name}) failed")
+        print(f"[ERR] Camera {cam_id} ({name}) failed")
         return
-    print(f"✅ Showing Camera {cam_id}: {name}. Press 'q' to quit.")
+    print(f"[OK] Showing Camera {cam_id}: {name}. Press 'q' to quit.")
     cv2.namedWindow(f'Camera {cam_id} - {name}', cv2.WINDOW_NORMAL)
 
     time.sleep(1)
@@ -34,7 +34,7 @@ def test_camera(cam_id, name=""):
         ret, frame = cap.read()
         timeout_cnt -= 1
         if timeout_cnt <= 0:
-            print(f"❌ Camera {cam_id} ({name}) timeout")
+            print(f"[ERR] Camera {cam_id} ({name}) timeout")
             break
         if not ret:
             break

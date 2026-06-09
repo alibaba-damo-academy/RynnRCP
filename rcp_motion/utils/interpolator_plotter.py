@@ -281,7 +281,7 @@ class InterpolatorPlotter:
             trajectories_plotted = stats.get("stored_trajectories", 0)
 
             if trajectories_plotted > 0:
-                print(f"✓ Interpolator Plot file: {plot_path}")
+                print(f"[OK] Interpolator Plot file: {plot_path}")
                 self.logger.info(
                     f"Interpolator plots saved: {plot_path} ({trajectories_plotted} trajectories)"
                 )

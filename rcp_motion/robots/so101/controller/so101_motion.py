@@ -70,7 +70,7 @@ class SO101MotionController:
 
     def _load_config(self) -> dict:
         try:
-            with open(self.config_path, "r") as f:
+            with open(self.config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
             return config if config else {}
         except FileNotFoundError:

@@ -162,7 +162,7 @@ class WebCalibrationController:
         """Load configuration from YAML file."""
         config_path = self._get_config_path()
         try:
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
             return config if config else {}
         except Exception as e:
@@ -224,7 +224,7 @@ class WebCalibrationController:
                 self._device.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
             
             self._state = CalibrationState.CONNECTED
-            self._log("info", "✅ 连接成功，请将机械臂移动到中间位置")
+            self._log("info", "[OK] 连接成功，请将机械臂移动到中间位置")
             
             return {
                 "success": True,
@@ -256,7 +256,7 @@ class WebCalibrationController:
             self._homing_offsets = self._device.bus.set_half_turn_homings()
             
             self._state = CalibrationState.MIDDLE_RECORDED
-            self._log("info", "✅ 中间位置已记录，请开始移动各关节到极限位置")
+            self._log("info", "[OK] 中间位置已记录，请开始移动各关节到极限位置")
             
             return {
                 "success": True,
@@ -298,7 +298,7 @@ class WebCalibrationController:
             )
             self._recording_thread.start()
             
-            self._log("info", "✅ 正在记录运动范围，请移动各关节到极限位置，完成后点击结束按钮")
+            self._log("info", "[OK] 正在记录运动范围，请移动各关节到极限位置，完成后点击结束按钮")
             
             return {
                 "success": True,
@@ -395,7 +395,7 @@ class WebCalibrationController:
             
             calibration_path = str(self._device.calibration_fpath)
             self._state = CalibrationState.DONE
-            self._log("info", f"✅ 标定完成！标定文件已保存到: {calibration_path}")
+            self._log("info", f"[OK] 标定完成！标定文件已保存到: {calibration_path}")
             
             # Convert calibration data to serializable format
             calibration_data = {}
@@ -440,7 +440,7 @@ class WebCalibrationController:
                 self._device = None
             
             self._state = CalibrationState.IDLE
-            self._log("info", "✅ 已断开连接")
+            self._log("info", "[OK] 已断开连接")
             
             return {"success": True, "message": "已断开连接"}
             

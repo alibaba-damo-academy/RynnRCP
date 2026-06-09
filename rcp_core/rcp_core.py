@@ -85,7 +85,7 @@ class RcpCore:
         try:
             self.config = RcpCore.load_config(config_file)
         except FileNotFoundError:
-            print("❌ Config file not found")
+            print("[ERR] Config file not found")
             raise SystemExit(1)
 
         init_process_logging(robot_config_path=config_file, appid_default=0)
@@ -116,7 +116,7 @@ class RcpCore:
         self.sensor_server.bind_adapter(self.protocol_factory)
         self.action_server.bind_adapter(self.protocol_factory)
 
-        self.logger.info("✅ RcpCore initialized, available tools:")
+        self.logger.info("[OK] RcpCore initialized, available tools:")
         # print(json.dumps(self.bus.list_tool(), indent=2, ensure_ascii=False))
 
     @staticmethod

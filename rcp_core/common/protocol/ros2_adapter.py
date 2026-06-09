@@ -122,6 +122,6 @@ class ROS2Adapter(BaseProtocolAdapter):
             if getattr(self, "context", None) is not None and self.context.ok():
                 rclpy.shutdown(context=self.context)
         except Exception as e:
-            logger.warning(f"⚠️ Error shutting down ROS2: {e}")
+            logger.warning(f"[WARN] Error shutting down ROS2: {e}")
 
         logger.info("[ROS2Adapter] Stop complete")

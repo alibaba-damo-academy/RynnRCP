@@ -267,7 +267,7 @@ class TeleopPlugin(RcpPlugin):
         config_file: str,
         role: str,
         enable_web_ui: bool = False,
-        web_port: int = 5000,
+        web_port: int = 5001,
         open_browser: bool = True,
     ) -> None:
         """
@@ -278,7 +278,7 @@ class TeleopPlugin(RcpPlugin):
             launch script command-line argument rather than stored in the config.
         :param enable_web_ui: If True and role is 'leader', start a web UI server
             for browser-based control.
-        :param web_port: Port for the web UI server (default: 5000).
+        :param web_port: Port for the web UI server (default: 5001).
         :param open_browser: Whether to automatically open a browser when web UI starts.
         :raises ValueError: If ``role`` is invalid or required hosts are missing.
         """
@@ -1017,17 +1017,8 @@ class TeleopPlugin(RcpPlugin):
                 data, _ = self._sock.recvfrom(65535)
             except socket.timeout:
                 continue
-            except ConnectionResetError:
-                # Windows: ICMP "Port Unreachable" (errno 10054) when the
-                # peer hasn't started yet.  Safe to ignore and retry.
-                continue
             except OSError:
-                if self._stop_event.is_set():
-                    break
-                # Transient OS-level error; log and retry instead of dying.
-                logger.debug("[TeleopPlugin] recvfrom OSError, retrying...")
-                time.sleep(0.1)
-                continue
+                break
 
             hdr = _unpack_header(data)
             if hdr is None:
@@ -2020,7 +2011,7 @@ class TeleopPlugin(RcpPlugin):
                     frames = 0
                     try:
                         if has_ep_meta:
-                            with open(os.path.join(ep_path, "episode_meta.json"), "r") as f:
+                            with open(os.path.join(ep_path, "episode_meta.json"), "r", encoding="utf-8") as f:
                                 ep_meta = json.load(f)
                                 frames = ep_meta.get("frames_written", 0)
                     except Exception as e:

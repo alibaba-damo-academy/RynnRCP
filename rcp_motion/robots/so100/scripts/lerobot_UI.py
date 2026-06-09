@@ -165,7 +165,7 @@ class InterfaceController:
             print("Enabling torque on all motors...")
             # Enable torque on all motors (1 = enabled, 0 = disabled)
             motor_bus.write("Torque_Enable", np.array([1] * len(joint_names)), joint_names)
-            print("✓ Torque enabled on all motors")
+            print("[OK] Torque enabled on all motors")
         except Exception as e:
             print(f"Error enabling torque: {e}")
             raise
@@ -182,7 +182,7 @@ class InterfaceController:
             print("Disabling torque on all motors...")
             # Disable torque on all motors (0 = disabled)
             motor_bus.write("Torque_Enable", np.array([0] * len(joint_names)), joint_names)
-            print("✓ Torque disabled on all motors")
+            print("[OK] Torque disabled on all motors")
         except Exception as e:
             print(f"Error disabling torque: {e}")
 
@@ -227,7 +227,7 @@ class InterfaceController:
             # Connect to the arm
             print(f"Attempting to connect to port: {config.port}")
             motor_bus.connect()
-            print("✓ Successfully connected to SO100 follower arm!")
+            print("[OK] Successfully connected to SO100 follower arm!")
 
             # Get joint names
             joint_names = list(config.motors.keys())
@@ -252,18 +252,18 @@ class InterfaceController:
                 raise Exception("Failed to read initial positions")
             
             # Warning and confirmation
-            print("\n" + "⚠️ " * 20)
+            print("\n" + "[WARN] " * 20)
             print("WARNING: The arm will start moving!")
             print("Make sure the workspace is clear and safe.")
             print("Press Ctrl+C at any time to stop the motion.")
-            print("⚠️ " * 20)
+            print("[WARN] " * 20)
 
             print("\nStarting control real robot move...")
             print("Press Ctrl+C to stop")
             return joint_mapping, joint_range, joint_range_rad, motor_bus, config
             
         except Exception as e:
-            print(f"\n❌ Error: {e}")
+            print(f"\n[ERR] Error: {e}")
             print("\nTroubleshooting tips:")
             print("1. Check that the SO100 arm is connected via USB")
             print("2. Verify the USB port (default: /dev/ttyACM0)")
@@ -348,7 +348,7 @@ class InterfaceController:
                     joint_i += 1
                 if not continue_moving:
                     break
-            print("✓ Moved to rest position successfully")
+            print("[OK] Moved to rest position successfully")
         except Exception as e:
             print(f"Error moving to rest position: {e}")
 
@@ -366,7 +366,7 @@ class InterfaceController:
 
                 print("\nDisconnecting from arm...")
                 motor_bus.disconnect()
-                print("✓ Disconnected successfully")
+                print("[OK] Disconnected successfully")
 
             except Exception as e:
                 print(f"Error during cleanup: {e}")

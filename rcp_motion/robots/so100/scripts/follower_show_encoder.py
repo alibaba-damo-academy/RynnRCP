@@ -115,7 +115,7 @@ def main():
         # Connect to the arm
         print(f"Attempting to connect to port: {config.port}")
         motor_bus.connect()
-        print("✓ Successfully connected to SO100 follower arm!")
+        print("[OK] Successfully connected to SO100 follower arm!")
 
         # Get joint names
         joint_names = list(config.motors.keys())
@@ -164,7 +164,7 @@ def main():
                 time.sleep(1.0)
 
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n[ERR] Error: {e}")
         print("\nTroubleshooting tips:")
         print("1. Check that the SO100 arm is connected via USB")
         print("2. Verify the USB port in lerobot/configs/config.yaml")
@@ -180,7 +180,7 @@ def main():
             try:
                 print("\nDisconnecting from arm...")
                 motor_bus.disconnect()
-                print("✓ Disconnected successfully")
+                print("[OK] Disconnected successfully")
             except Exception as e:
                 print(f"Error during disconnect: {e}")
 

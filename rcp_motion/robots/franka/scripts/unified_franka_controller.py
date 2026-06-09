@@ -105,7 +105,7 @@ class FrankaController:
         )
 
         self.logger = logging.getLogger(__name__)
-        print(f"✓ Log file: {log_path}")
+        print(f"[OK] Log file: {log_path}")
 
     def init_signal_state(self):
         """Initialize signal state variables."""
@@ -140,7 +140,7 @@ class FrankaController:
         elif self.signal_source == "policy":
             self.signal_handler = None
 
-        self.logger.info(f"✓ signal ready in {self.signal_source} mode")
+        self.logger.info(f"[OK] signal ready in {self.signal_source} mode")
         self.logger.info(f"      signal freq: {self.inference_rate}")
         self.logger.info(f"      chunk size: {self.signal_chunk_size}")
         # self.logger.info(f"      block size: {self.block_count}")
@@ -166,7 +166,7 @@ class FrankaController:
             acceleration_limits=np.multiply(joint_acc_limit, ratio),
             jerk_limits=np.multiply(joint_jerk_limit, ratio),
         )
-        self.logger.info(f"✓ real-time trajecory generation seccessfully!")
+        self.logger.info(f"[OK] real-time trajecory generation seccessfully!")
         self.logger.info(f"       velocity limit: {joint_vel_limit}")
         self.logger.info(f"       acceleration limit: {joint_acc_limit}")
         self.logger.info(f"       jerk limit: {joint_jerk_limit}")
@@ -206,23 +206,23 @@ class FrankaController:
                 self.robot_interface.enable_torque(True)
 
             self.logger.info(f"Initial joint positions: {self.initial_joint_positions}")
-            self.logger.info(f"✓ Robot interface ready in {self.mode} mode")
+            self.logger.info(f"[OK] Robot interface ready in {self.mode} mode")
 
         except FileNotFoundError as e:
-            self.logger.error(f"✗ Setup failed - missing calibration file:")
+            self.logger.error(f"[ERR] Setup failed - missing calibration file:")
             self.logger.error(str(e))
             raise
         except Exception as e:
-            self.logger.error(f"✗ Failed to setup interface: {e}")
+            self.logger.error(f"[ERR] Failed to setup interface: {e}")
             raise
 
     def init_communication(self):
         """Setup LCM communication handler."""
         self.lcm_handler = LCMHandler(self.logger)
         if self.lcm_handler.connect():
-            self.logger.info("✓ LCM handler initialized")
+            self.logger.info("[OK] LCM handler initialized")
         else:
-            self.logger.warning("⚠ LCM handler initialization failed")
+            self.logger.warning("[WARN] LCM handler initialization failed")
 
     def init_joint_plotting(self):
         """Initialize offline joint plotting if enabled."""
@@ -240,7 +240,7 @@ class FrankaController:
         joint_names = self.robot_interface.joint_names
         log_dir = self.config.get("logging", {}).get("log_dir", "~/logs/lerobot")
         self.joint_plotter = JointPlotter(joint_names, log_dir=log_dir)
-        self.logger.info("✓ Offline joint plotting initialized")
+        self.logger.info("[OK] Offline joint plotting initialized")
 
     def load_config(self, config_path):
         """Load configuration from YAML file."""
@@ -450,12 +450,12 @@ class FrankaController:
 
         if self.robot_interface:
             self.robot_interface.disconnect()
-            self.logger.info("✓ Robot disconnected")
+            self.logger.info("[OK] Robot disconnected")
 
         if self.lcm_handler:
             self.lcm_handler.disconnect()
 
-        self.logger.info("✓ Cleanup completed")
+        self.logger.info("[OK] Cleanup completed")
 
     def gen_joint_plots(self):
         """Generate joint plots."""

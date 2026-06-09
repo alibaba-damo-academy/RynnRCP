@@ -9,5 +9,5 @@ app = RynnRCP(
     ],
 )
 
-print("✅ 遥操 Follower 已启动")
+print("[OK] 遥操 Follower 已启动")
 app.start()

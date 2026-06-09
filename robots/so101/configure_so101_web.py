@@ -1678,6 +1678,8 @@ class SO101ConfigWebUI:
                             input=sudo_password + "\n",
                             capture_output=True,
                             text=True,
+                            encoding="utf-8",
+                            errors="replace",
                             timeout=10
                         )
                         if result.returncode != 0:
@@ -1685,7 +1687,7 @@ class SO101ConfigWebUI:
                             logger.warning(f"[从臂串口] 权限设置失败: {error_msg}")
                             return jsonify({"success": False, "message": error_msg})
                         permission_set = True
-                        logger.info(f"[从臂串口] ✅ 权限设置成功")
+                        logger.info(f"[从臂串口] [OK] 权限设置成功")
                     except subprocess.TimeoutExpired:
                         logger.error("[从臂串口] 权限设置超时")
                         return jsonify({"success": False, "message": "权限设置超时"})
@@ -1693,7 +1695,7 @@ class SO101ConfigWebUI:
                         logger.error(f"[从臂串口] 权限设置异常: {e}")
                         return jsonify({"success": False, "message": str(e)})
                 
-                logger.info(f"[从臂串口] ✅ 配置保存成功" + ("，权限已设置" if permission_set else ""))
+                logger.info(f"[从臂串口] [OK] 配置保存成功" + ("，权限已设置" if permission_set else ""))
                 return jsonify({
                     "success": True, 
                     "permission_set": permission_set,
@@ -1740,6 +1742,8 @@ class SO101ConfigWebUI:
                             input=sudo_password + "\n",
                             capture_output=True,
                             text=True,
+                            encoding="utf-8",
+                            errors="replace",
                             timeout=10
                         )
                         if result.returncode != 0:
@@ -1747,7 +1751,7 @@ class SO101ConfigWebUI:
                             logger.warning(f"[主臂串口] 权限设置失败: {error_msg}")
                             return jsonify({"success": False, "message": error_msg})
                         permission_set = True
-                        logger.info(f"[主臂串口] ✅ 权限设置成功")
+                        logger.info(f"[主臂串口] [OK] 权限设置成功")
                     except subprocess.TimeoutExpired:
                         logger.error("[主臂串口] 权限设置超时")
                         return jsonify({"success": False, "message": "权限设置超时"})
@@ -1755,7 +1759,7 @@ class SO101ConfigWebUI:
                         logger.error(f"[主臂串口] 权限设置异常: {e}")
                         return jsonify({"success": False, "message": str(e)})
                 
-                logger.info(f"[主臂串口] ✅ 配置保存成功" + ("，权限已设置" if permission_set else ""))
+                logger.info(f"[主臂串口] [OK] 配置保存成功" + ("，权限已设置" if permission_set else ""))
                 return jsonify({
                     "success": True, 
                     "permission_set": permission_set,

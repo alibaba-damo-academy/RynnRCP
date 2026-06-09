@@ -27,7 +27,7 @@
 │                                  │                     │                       │
 │  run_teleop_leader.py            │                     │  run_teleop_follower.py│
 │  ├── TeleopPlugin(role="leader") │                     │  ├── TeleopPlugin      │
-│  │   ├── Web UI (http://...:5000)│                     │  │   (role="follower") │
+│  │   ├── Web UI (http://...:5001)│                     │  │   (role="follower") │
 │  │   ├── 发送关节状态 → 从臂执行  │────关节状态──────►  │  │   ├── 接收并执行动作 │
 │  │   ├── 接收从臂状态            │◄───从臂状态/图像─── │  │   ├── 发送状态/图像  │
 │  │   └── 数据采集控制            │────采集指令────────►│  │   └── 数据采集/回放  │
@@ -61,7 +61,7 @@ python run_teleop_leader.py
 主臂启动后浏览器将自动打开控制面板，访问地址：
 
 ```
-http://127.0.0.1:5000
+http://127.0.0.1:5001
 ```
 
 > 若主臂和从臂在不同机器上，请修改 `config/teleop_config.yaml` 中的 IP 地址。
@@ -98,7 +98,7 @@ teleop = TeleopPlugin(
     config_file="./config/teleop_config.yaml",
     role="leader",
     enable_web_ui=True,    # 启用 Web UI
-    web_port=5000,         # Web UI 端口
+    web_port=5001,         # Web UI 端口
     open_browser=True,     # 自动打开浏览器
 )
 
@@ -127,7 +127,7 @@ app.start()
 
 ## Web UI 使用指南
 
-访问 `http://127.0.0.1:5000`，界面包含以下区域：
+访问 `http://127.0.0.1:5001`，界面包含以下区域：
 
 ### 遥操控制区
 

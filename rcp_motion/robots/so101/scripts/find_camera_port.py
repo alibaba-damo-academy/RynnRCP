@@ -120,7 +120,7 @@ def update_camera_config_yaml(front_camera_id=None, wrist_camera_id=None, config
 
     try:
         if Path(config_path).exists():
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
         else:
             config = {}
@@ -155,8 +155,8 @@ def update_camera_config_yaml(front_camera_id=None, wrist_camera_id=None, config
             config["cameras"]["wrist"]["index_or_path"] = wrist_camera_id
             print(t("updated_wrist_camera", camera_id=wrist_camera_id))
 
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
         print(t("camera_config_saved", config_path=config_path))
 

@@ -142,7 +142,7 @@ class ControllerBase(ABC):
         )
 
         self.logger = logging.getLogger(__name__)
-        print(f"✓ Log file: {log_path}")
+        print(f"[OK] Log file: {log_path}")
 
     def init_state(self):
         """Initialize controller state variables."""
@@ -167,7 +167,7 @@ class ControllerBase(ABC):
         self.executing_ACT = None
         self.last_processed_seq = -1
         self.current_action_count = 0
-        self.logger.info("✓ Interpolator initialized")
+        self.logger.info("[OK] Interpolator initialized")
 
     @abstractmethod
     def init_interface(self):
@@ -178,9 +178,9 @@ class ControllerBase(ABC):
         """Setup LCM communication handler."""
         self.lcm_handler = LCMHandler(self.logger)
         if self.lcm_handler.connect():
-            self.logger.info("✓ LCM handler initialized")
+            self.logger.info("[OK] LCM handler initialized")
         else:
-            self.logger.warning("⚠ LCM handler initialization failed")
+            self.logger.warning("[WARN] LCM handler initialization failed")
 
     def init_joint_plotting(self):
         """Initialize offline joint plotting if enabled."""
@@ -191,7 +191,7 @@ class ControllerBase(ABC):
         joint_names = self.interface.joint_names
         log_dir = self.config.get("logging", {}).get("log_dir", "~/logs/lerobot")
         self.joint_plotter = JointPlotter(joint_names, log_dir=log_dir)
-        self.logger.info("✓ Offline joint plotting initialized")
+        self.logger.info("[OK] Offline joint plotting initialized")
 
     def init_interpolator_plotting(self):
         """Initialize offline interpolator plotting if enabled."""
@@ -202,7 +202,7 @@ class ControllerBase(ABC):
         joint_names = self.interface.joint_names
         log_dir = self.config.get("logging", {}).get("log_dir", "~/logs/lerobot")
         self.interpolator_plotter = InterpolatorPlotter(joint_names, log_dir=log_dir)
-        self.logger.info("✓ Offline interpolator plotting initialized")
+        self.logger.info("[OK] Offline interpolator plotting initialized")
 
     def load_config(self, config_path):
         """Load configuration from YAML file."""
@@ -515,11 +515,11 @@ class ControllerBase(ABC):
             if self.mode == "real":
                 self.go_home_in_cleanup()
             self.interface.disconnect()
-            self.logger.info("✓ Robot disconnected")
+            self.logger.info("[OK] Robot disconnected")
 
         self.lcm_handler.disconnect()
 
-        self.logger.info("✓ Cleanup completed")
+        self.logger.info("[OK] Cleanup completed")
 
     def go_home_in_cleanup(self):
         self.go_home_start_position = self.interface.get_joint_positions()

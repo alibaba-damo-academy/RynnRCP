@@ -165,7 +165,7 @@ python run_teleop_leader.py
 This reads `config/teleop_config.yaml` and `config/so101_leader_config.yaml`, starts the leader arm, and opens a web control panel at:
 
 ```
-http://127.0.0.1:5000
+http://127.0.0.1:5001
 ```
 
 The Web UI lets you:

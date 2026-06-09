@@ -29,6 +29,7 @@ import json
 import time
 import threading
 import re
+import subprocess
 from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np
@@ -43,6 +44,11 @@ import zipfile
 from ..common.server.base_server import BaseServer
 from ..common.bus.rcp_bus import RcpBus
 from ..common.bus.progress import ProgressStage, ProgressTracker, ProgressCallback
+from rcp_core.common.utils.hardware_codec import (
+    get_pyav_codec,
+    get_system_vaapi_encoder,
+    get_video_encoder_mode,
+)
 from rcp_core.common.utils.logger import server_logger
 
 logger = server_logger()
@@ -107,6 +113,153 @@ class DataServer(BaseServer):
     def _write_json(self, path: str, obj: Any) -> None:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False, indent=2)
+
+    def _encode_video_pyav(
+        self,
+        output_path: str,
+        frame_payloads: List[bytes],
+        image_meta: Dict[str, Any],
+        fps: int,
+        width: int,
+        height: int,
+        codec_name: str,
+        codec_pix_fmt: str,
+    ) -> None:
+        with av.open(output_path, mode="w") as out:
+            stream_enc = out.add_stream(codec_name, rate=fps)
+            stream_enc.pix_fmt = codec_pix_fmt
+            stream_enc.width = width
+            stream_enc.height = height
+
+            for img_data in frame_payloads:
+                try:
+                    im = self._decode_image_to_pil(img_data, image_meta)
+                    if im.size != (width, height):
+                        im = im.resize((width, height), Image.Resampling.BILINEAR)
+                    vf = av.VideoFrame.from_image(im)
+                    for packet in stream_enc.encode(vf):
+                        out.mux(packet)
+                except Exception as e:
+                    logger.warning(f"[DataServer] encode frame failed: {e}")
+
+            for packet in stream_enc.encode():
+                out.mux(packet)
+
+    def _encode_video_ffmpeg_vaapi(
+        self,
+        output_path: str,
+        frame_payloads: List[bytes],
+        image_meta: Dict[str, Any],
+        fps: int,
+        width: int,
+        height: int,
+        vaapi_device: str,
+    ) -> None:
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{width}x{height}",
+            "-r",
+            str(fps),
+            "-i",
+            "pipe:0",
+            "-vaapi_device",
+            vaapi_device,
+            "-vf",
+            "format=nv12,hwupload",
+            "-c:v",
+            "h264_vaapi",
+            "-movflags",
+            "+faststart",
+            output_path,
+        ]
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        assert proc.stdin is not None
+        try:
+            for img_data in frame_payloads:
+                im = self._decode_image_to_pil(img_data, image_meta).convert("RGB")
+                if im.size != (width, height):
+                    im = im.resize((width, height), Image.Resampling.BILINEAR)
+                proc.stdin.write(im.tobytes())
+            proc.stdin.close()
+            stderr = proc.stderr.read() if proc.stderr else b""
+            returncode = proc.wait()
+        except Exception:
+            if proc.stdin is not None and not proc.stdin.closed:
+                proc.stdin.close()
+            proc.kill()
+            proc.communicate()
+            raise
+        if returncode != 0:
+            err = stderr.decode("utf-8", errors="replace") if stderr else ""
+            raise RuntimeError(f"ffmpeg vaapi failed with code {returncode}: {err}")
+
+    def _encode_video(
+        self,
+        output_path: str,
+        frame_payloads: List[bytes],
+        image_meta: Dict[str, Any],
+        fps: float,
+        width: int,
+        height: int,
+        label: str,
+    ) -> str:
+        fps_int = max(1, int(round(fps)))
+        codec_name, codec_pix_fmt = get_pyav_codec()
+        vaapi = get_system_vaapi_encoder()
+        mode = get_video_encoder_mode()
+        if vaapi and mode != "pyav" and codec_name != "h264_vaapi":
+            vaapi_device, vaapi_codec = vaapi
+            try:
+                logger.info(
+                    f"[DataServer] encoding {label} via ffmpeg VAAPI frames={len(frame_payloads)} "
+                    f"fps={fps_int} codec={vaapi_codec} device={vaapi_device}"
+                )
+                self._encode_video_ffmpeg_vaapi(
+                    output_path,
+                    frame_payloads,
+                    image_meta,
+                    fps_int,
+                    width,
+                    height,
+                    vaapi_device,
+                )
+                return vaapi_codec
+            except Exception as e:
+                if mode == "ffmpeg_vaapi":
+                    raise
+                logger.warning(f"[DataServer] ffmpeg VAAPI encode failed, falling back to PyAV: {e}")
+
+        if mode == "software":
+            codec_name, codec_pix_fmt = "libx264", "yuv420p"
+        logger.info(
+            f"[DataServer] encoding {label} via PyAV frames={len(frame_payloads)} "
+            f"fps={fps_int} codec={codec_name}"
+        )
+        self._encode_video_pyav(
+            output_path,
+            frame_payloads,
+            image_meta,
+            fps_int,
+            width,
+            height,
+            codec_name,
+            codec_pix_fmt,
+        )
+        return codec_name
 
     def _make_episode_dir(
         self, task_prompt: str, round_number: int, data_coll_id: Optional[str] = None
@@ -896,11 +1049,11 @@ class DataServer(BaseServer):
             raise RuntimeError("no frames survived alignment")
 
         # Build timeseries.parquet from aligned frames
-        # timestamp column is relative to the first aligned frame (seconds from start)
-        t0 = aligned_rows[0][0]
+        # timestamp column uses index-based time (0, interval, 2*interval, ...)
+        # rather than real wall-clock time, ensuring uniform spacing
         rows = []
         for frame_index, (t, key_indices) in enumerate(aligned_rows):
-            row: Dict[str, Any] = {"frame_index": frame_index, "timestamp": round(t - t0, 9)}
+            row: Dict[str, Any] = {"frame_index": frame_index, "timestamp": round(frame_index * interval, 9)}
             for key, stream in array_streams.items():
                 idx = key_indices[key]
                 val = stream["data"][idx]
@@ -981,28 +1134,11 @@ class DataServer(BaseServer):
                         continue
 
             # --- Aligned video: one frame per aligned_rows entry, selected by nearest timestamp ---
-            logger.info(f"[DataServer] encoding aligned video for {key} frames={total_frames}")
-            with av.open(vp, mode="w") as out:
-                stream_enc = out.add_stream("libx264", rate=fps)
-                stream_enc.pix_fmt = "yuv420p"
-                stream_enc.width = w
-                stream_enc.height = h
-
-                for t, key_indices in aligned_rows:
-                    img_idx = key_indices[key]  # already validated within interval
-                    try:
-                        im = self._decode_image_to_pil(all_frames[img_idx][1], first_meta)
-                        vf = av.VideoFrame.from_image(im)
-                        for packet in stream_enc.encode(vf):
-                            out.mux(packet)
-                    except Exception as e:
-                        logger.warning(f"[DataServer] encode aligned frame failed: {e}")
-
-                for packet in stream_enc.encode():
-                    out.mux(packet)
+            aligned_payloads = [all_frames[key_indices[key]][1] for _t, key_indices in aligned_rows]
+            used_codec = self._encode_video(vp, aligned_payloads, first_meta, fps, w, h, f"aligned video for {key}")
 
             videos.append(os.path.basename(vp))
-            logger.info(f"[DataServer] encoded aligned video {vp}")
+            logger.info(f"[DataServer] encoded aligned video {vp} codec={used_codec}")
 
             # --- Original video: all captured frames, fps inferred from actual timestamps ---
             if is_skill_record:
@@ -1016,30 +1152,19 @@ class DataServer(BaseServer):
                 else:
                     original_fps = fps
 
-                logger.info(
-                    f"[DataServer] encoding original video for {key} "
-                    f"frames={len(all_frames)} fps={original_fps:.2f}"
+                original_payloads = [img_data for _ts, img_data in all_frames]
+                used_original_codec = self._encode_video(
+                    original_vp,
+                    original_payloads,
+                    first_meta,
+                    original_fps,
+                    w,
+                    h,
+                    f"original video for {key}",
                 )
-                with av.open(original_vp, mode="w") as out:
-                    stream_enc = out.add_stream("libx264", rate=int(round(original_fps)))
-                    stream_enc.pix_fmt = "yuv420p"
-                    stream_enc.width = w
-                    stream_enc.height = h
-
-                    for _ts, img_data in all_frames:
-                        try:
-                            im = self._decode_image_to_pil(img_data, first_meta)
-                            vf = av.VideoFrame.from_image(im)
-                            for packet in stream_enc.encode(vf):
-                                out.mux(packet)
-                        except Exception as e:
-                            logger.warning(f"[DataServer] encode original frame failed: {e}")
-
-                    for packet in stream_enc.encode():
-                        out.mux(packet)
 
                 original_videos.append(os.path.basename(original_vp))
-                logger.info(f"[DataServer] encoded original video {original_vp}")
+                logger.info(f"[DataServer] encoded original video {original_vp} codec={used_original_codec}")
 
         # Write metadata.json
         meta_out = {

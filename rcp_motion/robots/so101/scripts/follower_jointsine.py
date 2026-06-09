@@ -85,7 +85,7 @@ def create_motor_bus():
 
 def load_config(config_path):
     """Load configuration from YAML file."""
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return config
 
@@ -141,7 +141,7 @@ def enable_torque(motor_bus: FeetechMotorsBus, joint_names: list):
         print("Enabling torque on all motors...")
         # Enable torque on all motors (1 = enabled, 0 = disabled)
         motor_bus.sync_write("Torque_Enable", 1)
-        print("✓ Torque enabled on all motors")
+        print("[OK] Torque enabled on all motors")
     except Exception as e:
         print(f"Error enabling torque: {e}")
         raise
@@ -158,7 +158,7 @@ def disable_torque(motor_bus: FeetechMotorsBus, joint_names: list):
         print("Disabling torque on all motors...")
         # Disable torque on all motors (0 = disabled)
         motor_bus.sync_write("Torque_Enable", 0)
-        print("✓ Torque disabled on all motors")
+        print("[OK] Torque disabled on all motors")
     except Exception as e:
         print(f"Error disabling torque: {e}")
 
@@ -215,7 +215,7 @@ def main():
     calibration_dir = config_data.get("robot", {}).get("calibration_dir", None)
     default_flag = False
     try:
-        with open(calibration_dir) as f:
+        with open(calibration_dir, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         start_pos_gripper = data[target_joint]["range_min"]
@@ -258,7 +258,7 @@ def main():
         # Connect to the arm
         print(f"Attempting to connect to port: {motor_bus.port}")
         motor_bus.connect()
-        print("✓ Successfully connected to SO101 follower arm!")
+        print("[OK] Successfully connected to SO101 follower arm!")
 
         # Get joint names
         joint_names = list(motor_bus.motors.keys())
@@ -292,11 +292,11 @@ def main():
             print(f"Motion range: {min_pos:.2f} to {max_pos:.2f}")
 
         # Warning and confirmation
-        print("\n" + "⚠️ " * 20)
+        print("\n" + "[WARN] " * 20)
         print("WARNING: The arm will start moving!")
         print("Make sure the workspace is clear and safe.")
         print("Press Ctrl+C at any time to stop the motion.")
-        print("⚠️ " * 20)
+        print("[WARN] " * 20)
 
         input("\nPress Enter to start sine motion, or Ctrl+C to cancel...")
 
@@ -373,7 +373,7 @@ def main():
                 break
 
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n[ERR] Error: {e}")
         print("\nTroubleshooting tips:")
         print("1. Check that the SO101 arm is connected via USB")
         print("2. Verify the USB port (default: /dev/ttyACM0)")
@@ -405,7 +405,7 @@ def main():
 
                 print("\nDisconnecting from arm...")
                 motor_bus.disconnect()
-                print("✓ Disconnected successfully")
+                print("[OK] Disconnected successfully")
 
             except Exception as e:
                 print(f"Error during cleanup: {e}")

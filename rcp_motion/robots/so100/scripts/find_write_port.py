@@ -33,7 +33,7 @@ def update_config_with_port(port_name):
 
     try:
         if os.path.exists(config_path):
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f) or {}
         else:
             config = {}
@@ -42,13 +42,13 @@ def update_config_with_port(port_name):
             config["robot"] = {}
 
         config["robot"]["port"] = port_name
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
-        print(f"✓ Updated {config_path} with port: {port_name}")
+        print(f"[OK] Updated {config_path} with port: {port_name}")
 
     except Exception as e:
-        print(f"⚠ Warning: Could not update config file: {e}")
+        print(f"[WARN] Warning: Could not update config file: {e}")
         print(f"  Please manually set port: '{port_name}' in {config_path}")
 
 

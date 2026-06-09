@@ -133,7 +133,7 @@ class UnifiedRobotController:
         )
 
         self.logger = logging.getLogger(__name__)
-        print(f"✓ Log file: {log_path}")
+        print(f"[OK] Log file: {log_path}")
 
     def init_state(self):
         """Initialize controller state variables."""
@@ -163,7 +163,7 @@ class UnifiedRobotController:
         self.executing_ACT = None
         self.last_processed_seq = -1
         self.current_action_count = 0
-        self.logger.info("✓ Interpolator initialized")
+        self.logger.info("[OK] Interpolator initialized")
 
     def init_interface(self):
         """Setup interface - now unified for all modes!"""
@@ -188,23 +188,23 @@ class UnifiedRobotController:
                 radians=True
             )
             self.logger.info(f"Initial joint positions: {self.initial_joint_positions}")
-            self.logger.info(f"✓ Robot interface ready in {self.mode} mode")
+            self.logger.info(f"[OK] Robot interface ready in {self.mode} mode")
 
         except FileNotFoundError as e:
-            self.logger.error(f"✗ Setup failed - missing calibration file:")
+            self.logger.error(f"[ERR] Setup failed - missing calibration file:")
             self.logger.error(str(e))
             raise
         except Exception as e:
-            self.logger.error(f"✗ Failed to setup interface: {e}")
+            self.logger.error(f"[ERR] Failed to setup interface: {e}")
             raise
 
     def init_communication(self):
         """Setup LCM communication handler."""
         self.lcm_handler = LCMHandler(self.logger)
         if self.lcm_handler.connect():
-            self.logger.info("✓ LCM handler initialized")
+            self.logger.info("[OK] LCM handler initialized")
         else:
-            self.logger.warning("⚠ LCM handler initialization failed")
+            self.logger.warning("[WARN] LCM handler initialization failed")
 
     def init_joint_plotting(self):
         """Initialize offline joint plotting if enabled."""
@@ -215,7 +215,7 @@ class UnifiedRobotController:
         joint_names = self.interface.joint_names
         log_dir = self.config.get("logging", {}).get("log_dir", "~/logs/lerobot")
         self.joint_plotter = JointPlotter(joint_names, log_dir=log_dir)
-        self.logger.info("✓ Offline joint plotting initialized")
+        self.logger.info("[OK] Offline joint plotting initialized")
 
     def init_interpolator_plotting(self):
         """Initialize offline interpolator plotting if enabled."""
@@ -226,7 +226,7 @@ class UnifiedRobotController:
         joint_names = self.interface.joint_names
         log_dir = self.config.get("logging", {}).get("log_dir", "~/logs/lerobot")
         self.interpolator_plotter = InterpolatorPlotter(joint_names, log_dir=log_dir)
-        self.logger.info("✓ Offline interpolator plotting initialized")
+        self.logger.info("[OK] Offline interpolator plotting initialized")
 
     def notify_command_received(self):
         """Mark that a command was received from ANY source (API or LCM)."""
@@ -678,11 +678,11 @@ class UnifiedRobotController:
             if self.mode == "real":
                 self.go_home_in_cleanup()
             self.interface.disconnect()
-            self.logger.info("✓ Robot disconnected")
+            self.logger.info("[OK] Robot disconnected")
 
         self.lcm_handler.disconnect()
 
-        self.logger.info("✓ Cleanup completed")
+        self.logger.info("[OK] Cleanup completed")
 
     def go_home_in_cleanup(self):
         self.go_home_start_position = self.interface.get_joint_positions(radians=True)

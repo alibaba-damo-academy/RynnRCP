@@ -43,7 +43,7 @@ def lerp(q0, q1, tNow, tDur):
 def create_cubic_spline_with_boundary_conditions(x_values, y_values, config_path):
     """Create a cubic spline with boundary conditions."""
     try:
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         boundary_condition = config.get("spline", {}).get(
             "boundary_condition", "natural"

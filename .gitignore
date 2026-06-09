@@ -58,6 +58,3 @@ logs/
 *.log
 plots/
 .cache/
-
-tmp/
-robots/so101copy

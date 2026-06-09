@@ -1107,7 +1107,7 @@ HTML_TEMPLATE = '''
                     const zipPath = d.result?.zip_path || '';
                     showToast(t('msg-export-ep-success') + exported.length, 'success');
                     if (zipPath) {
-                        showToast('ZIP: ' + zipPath, 'info', 5000);
+                        showToast('ZIP: ' + zipPath, 'info', 5001);
                     }
                     refreshRecords();
                 } else {
@@ -1344,7 +1344,7 @@ class TeleopWebUI:
         self,
         plugin: "TeleopPlugin",
         host: str = "0.0.0.0",
-        port: int = 5000,
+        port: int = 5001,
         open_browser: bool = True,
         quit_callback: Optional[Callable[[], None]] = None,
     ) -> None:

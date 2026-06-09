@@ -159,7 +159,7 @@ python run_teleop_leader.py
 读取 `config/teleop_config.yaml` 和 `config/so101_leader_config.yaml`，启动主臂并在浏览器中打开控制面板：
 
 ```
-http://127.0.0.1:5000
+http://127.0.0.1:5001
 ```
 
 Web UI 支持：

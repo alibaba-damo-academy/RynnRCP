@@ -333,7 +333,7 @@ class MuJoCoInterface(InterfaceBase):
             self.camera_save_executor = None
 
         self.is_connected = False
-        self.logger.info("✓ MuJoCo simulation disconnected")
+        self.logger.info("[OK] MuJoCo simulation disconnected")
 
     def get_joint_positions(self) -> np.ndarray:
         """
@@ -539,7 +539,7 @@ class MuJoCoInterface(InterfaceBase):
             self.data.qacc[:] = 0
             self.data.ctrl[:] = q[ctrl_start : ctrl_start + self.model.nu]
             mujoco.mj_forward(self.model, self.data)
-            self.logger.info("✓ Random initial pose set successfully")
+            self.logger.info("[OK] Random initial pose set successfully")
 
         except Exception as e:
             self.logger.error(f"Failed to set random pose: {e}")

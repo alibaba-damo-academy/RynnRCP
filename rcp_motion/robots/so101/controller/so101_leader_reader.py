@@ -35,7 +35,7 @@ class SO101LeaderReader:
 
     def _load_config(self):
         try:
-            with open(self.config_path, "r") as f:
+            with open(self.config_path, "r", encoding="utf-8") as f:
                 self.config = yaml.safe_load(f) or {}
         except FileNotFoundError:
             logger.warning(f"Config not found: {self.config_path}, using defaults")
