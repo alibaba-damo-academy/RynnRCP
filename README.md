@@ -1,166 +1,234 @@
-# Overview
+# RynnRCP
 
-**RynnRCP** provides a service-oriented capability framework for robot embodiments and an external communication protocol (Robotics Context Protocol). Its goal is to encapsulate robot-side capabilities—such as motion control, sensor acquisition, and device monitoring—into a unified set of **Tools**, and expose them to external applications / cloud platforms via **communication plugins (Plugins)**.
+[简体中文](README.zh-CN.md)
 
-This project mainly consists of two parts: **RCP Core (tool services)** on the robot side and **Comm Plugin (external protocol/transport)**:
-- **RCP Core**: integrates robot hardware and sensors, maintains buffers, aligns observations, executes actions, and exposes capabilities as Tools.
-- **Comm Plugin**: exposes Tools to external systems via specific protocols and transports such as MQTT, WebSocket, MCP (JSON-RPC), etc. Currently, a plugin for the Leyun cloud platform (**RynnBot**) is implemented.
+RynnRCP is a Robotics Capability Protocol (RCP) for robot capability and
+experience loops in embodied-agent systems. This repository contains the
+standard Python implementation of that protocol.
 
-> With RynnRCP, users can clearly understand the end-to-end pipeline from sensor data acquisition to model inference and robot action execution. Meanwhile, the layered architecture and standardized communication protocol make it easier to migrate the system to specific application scenarios.
+RCP standardizes how robots expose Manifest, Observation, Action, Policy,
+Health, Resource, and Data Collection objects. Apps, agents, MCP tools, and
+cloud systems only need to understand those protocol objects; they do not need
+to know each robot's SDK, serial ports, camera IDs, or internal channel layout.
 
+In short:
 
-# Directory Structure
+> MCP defines how agents call tools. RCP defines how robot execution becomes
+> data, how local policies become reusable skills, and how those skills can be
+> called safely by agents.
 
-```bash
-.
-├── setup_rcp.sh                 # One-click installation/setup (recommended)
-├── pyproject.toml               # Python package configuration
-├── README.md / README_cn.md     # Project documentation
-├── rynnrcp/                     # Top-level entry: RynnRCP
-├── rcp_core/                    # RCP Core: tool service core
-│   ├── rcp_core.py              # RcpCore initialization entry
-│   ├── action_server/           # Action-related servers
-│   ├── sensor_server/           # Sensor-related servers
-│   ├── device_monitor_server/   # Device monitoring server
-│   └── common/                  # bus / adapter / protocol / utils, etc.
-├── comm_plugin/                 # Communication plugins: external protocol/transport
-│   ├── base_plugin/             # Plugin interface definitions
-│   ├── mcp_plugin/              # Mcp plugin
-│   └── rynnbot_plugin/          # RynnBot plugin (MQTT + WebSocket)
-├── rcp_sensor/                  # Port devices / sensor implementations
-│   └── camera/                  # Camera implementation
-├── robots/                      # Minimal runnable projects & docs for each robot
-|   ├── lekiwi/
-│   ├── so100/
-│   └── so101/
-├── rcp_motion/                  # Motion control + simulation/toolchain
-├── common/                      # Shared files (configs, LCM messages, etc.)
-├── scripts/                     # Scripts
-└── docs/                        # Documentation
+RCP does not replace ROS, robot SDKs, or low-level controllers. Hard real-time
+control, interpolation, force control, emergency handling, and safety limits
+must stay inside the robot-side controller or safety layer.
 
+## What This Repository Provides
+
+This repository is a concrete implementation of the protocol:
+
+- a Python runtime that loads robot configs and runs standard robot services;
+- standalone apps for Teleop, MCP, RynnBot cloud access, and protocol debugging,
+  with shared recording, encoding, Resource transfer, and export helpers;
+- robot integration packages, currently including SO101, Aero Hand, and Atom01;
+- documentation for App integration, robot integration, policy service, protocol
+  objects, and config writing;
+- tests for the implementation boundaries.
+
+## Who It Is For
+
+- Robot integrators expose real robots, cameras, ROS2/LCM systems, or Python
+  SDKs as RCP Servers.
+- Agent or application developers call robots through a unified Interface
+  instead of per-robot SDK details.
+- Data and training users collect episodes, replay runs, export datasets, and
+  keep intervention records.
+- Cloud integrators connect cloud workflows to an RCP Server through the
+  RynnBot App.
+
+## Start Here
+
+RynnRCP Runtime, official apps, and robot packages are maintained in this
+repository. When using a specific robot package, start from that package README
+and use the setup script it provides.
+
+| Goal | Start with |
+| --- | --- |
+| Use SO101 | [robots/so101/README.md](robots/so101/README.md) |
+| Use Aero Hand | [robots/aero_hand/README.md](robots/aero_hand/README.md) |
+| Use Atom01 | [robots/atom01/README.md](robots/atom01/README.md) |
+| Use Teleop / MCP / RynnBot | [apps/README.zh-CN.md](apps/README.zh-CN.md), then the app README |
+| Debug one Server protocol | [apps/protocol_debug/README.zh-CN.md](apps/protocol_debug/README.zh-CN.md) |
+| Build a new App | [docs/RCP App 接入 Server 指南.html](docs/RCP%20App%20接入%20Server%20指南.html) |
+| Add a new robot package | [docs/RCP 机器人构型接入指南.html](docs/RCP%20机器人构型接入指南.html) |
+| Add local policies | [docs/RCP 策略服务接入指南.html](docs/RCP%20策略服务接入指南.html) |
+| Check protocol objects and methods | [docs/RCP使用场景及协议.md](docs/RCP使用场景及协议.md) |
+| Check config fields | [docs/RCP配置文件说明.md](docs/RCP配置文件说明.md) |
+| Find the right long-lived doc | [docs/README.zh-CN.md](docs/README.zh-CN.md) |
+
+When adding a robot, do not start by writing config files. First make the robot's
+native SDK, ROS2/LCM path, serial tool, or camera tool work with minimal
+hardware behavior. Then wrap those working abilities as controller/source
+definitions and write the RCP config.
+
+## Server And App
+
+RynnRCP keeps the runtime boundary simple:
+
+- Server: runs near the robot capability, loads robot config, connects
+  controllers, cameras, ROS2/LCM, or Python SDKs, and exposes protocol tools.
+- App: runs on the user or cloud side, calls a Server through RCP Interface, and
+  does not touch robot SDKs, serial ports, camera IDs, or internal channels.
+
+```text
+App / Agent / MCP / Cloud
+        |
+        v
+RCP Interface
+        |
+        v
+RCP Server
+        |
+        v
+controller / camera / ROS2 / LCM / SDK
 ```
 
-# Compatibility Support Status
+## Install Runtime And Official Apps
 
+Run the commands below from the repository root.
 
-## Robot Configurations
-| Robot | Platform/Plugin | Typical Integration | Directory | Notes |
-|---|---|---|---|---|
-| SO100 | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/so100/` | Minimal runnable example + configuration wizard |
-| SO101 | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/so101/` | Minimal runnable example + configuration wizard |
-| LeKiwi | RynnBot platform (MQTT + WebSocket) | Action: module | Sensor: port	 | `robots/lekiwi/` | Minimal runnable example + configuration wizard |
-
-> The SO100/SO101/LeKiwi configurations support zero-code integration: users only need to configure the serial port, cameras, and platform device triplet to run. The robot control logic is provided by the built-in `controller` in `rcp_motion` (no need to write SDK calls). Meanwhile, `rcp_motion` (RCP Motion) converts low-frequency discrete outputs from the cloud/model into high-frequency continuous control signals executable by the robot, and provides tooling such as MuJoCo simulation, real-robot debugging & replay, data collection, and trajectory visualization.
-
-## Services (RCP Core)
-
-| Server | Status | Tools | Description |
-|---|---|---|---|
-| ActionServer | ✅ | `get_state`、`run_action_chunk` | Observation alignment and action execution; exposes state snapshot and action chunk execution |
-| SensorServer | ✅ | `get_image`、`get_image_info` | Sensor data service (currently camera-focused): image capture/encoding and camera capability enumeration |
-| DeviceMonitorServer | ✅ | `get_device_info` | Device/system monitoring: CPU/memory/system info and camera list, etc. |
-| Skill Server | 🚧 | - | Skill encapsulation and execution |
-| Data Manager Server | 🚧 | - | Data collection, replay, and management |
-| Infer Server | 🚧  | - | Inference service: supports multiple models (e.g., VLA/RL) for local or remote inference; calls Action/Sensor via BUS at runtime |
-| Model Manager Server | 🚧 | - | Model management: provides model management services |
-| Agent Server | 🚧 | - | Workflow/task orchestration: parses and executes a unified workflow spec; can call Skills or low-level Tools; will integrate planning models and support cross-robot collaboration after secure pairing |
-
-
-## Communication Plugins (Comm Plugin)
-
-| Plugin | Status | Protocol | Description |
-|---|---|---|---|
-| RynnBot Plugin | ✅ | MQTT + WebSocket | RynnBot platform integration: device claim/release, action dispatch, image/state fetching, and device property reporting |
-| MCP Plugin | ✅ | JSON-RPC (MCP-style) | Standardized tools/list / tools/call integration for local/LAN/WAN connectivity with external apps and model services |
-
-
-# Installation & Usage
-
-## Clone
-```bash
-git clone https://github.com/alibaba-damo-academy/RynnRCP.git
-```
-
-## Quick Setup (Recommended)
-
-We provide a unified setup script with bilingual support (English/Chinese):
+Create and activate a Python environment:
 
 ```bash
-cd RynnRCP
-bash setup_rcp.sh
-```
-
-It will guide you through:
-1. Language selection (English / 中文)
-2. Installing uv (if not installed)
-3. Creating and activating a virtual environment (venv/)
-4. Installing RynnRCP and development dependencies
-5. Generating protocol and message code (protobuf + LCM; on Windows, LCM failures will be reported and skipped)
-6. Import checks (rynnrcp / rcp_motion / mujoco)
-
-
-## Manual Installation
-
-
-### Python Environment
-```bash
-cd RynnRCP
-
-# Using venv
-python3 -m venv venv
+python -m venv venv
 source venv/bin/activate
-pip install -e .
-
-# Or using Conda
-conda create --name venv python=3.10
-conda activate venv
-pip install -e .
-
-# Generate protocol & message code
-python scripts/gen_proto_msg.py
-python scripts/gen_lcm_msg.py   # May need to skip on Windows
+python -m pip install --upgrade pip setuptools wheel
 ```
-> Python 3.10 is the minimum required version.
 
-## Run
+Install the RynnRCP implementation and official apps:
 
-This project supports multiple robot arms/configurations. For robot-specific configuration, calibration, and launch instructions (SO100/SO101/LeKiwi, etc.), see:
-- robots/<robot_name>/README.md
-- robots/<robot_name>/config/*.yaml
-- robots/<robot_name>/run_rcp_*.py launch scripts
+```bash
+python -m pip install -e . -e apps/common -e apps/mcp -e apps/rynnbot -e apps/teleop
+```
 
-Typical workflow:
-1. Go to the target robot directory (e.g., robots/so100/)
-2. Follow its README to finish configuration (camera/serial/plugin settings)
-3. Run the example launch script (typically run_rcp_*.py)
+After installation, the current Python environment has these commands:
 
+```bash
+rynnrcp-server
+rynnrcp-teleop-app
+rynnrcp-mcp-app
+rynnrcp-rynnbot-app
+rynnrcp-protocol-debug
+```
 
-## Advanced Development
-Advanced development is supported, including:
-- Adding a new robot configuration
-- Adding a custom `Server`
-- Adding a new `Comm Plugin`
+Use `-h` to inspect command arguments.
 
-For more detailed instructions and examples, please refer to: [RynnRCP Tutorials](https://rynnrcp.github.io/)
+For a concrete robot package, prefer that package's setup script. SO101 uses
+[`robots/so101/setup_so101.sh`](robots/so101/setup_so101.sh), and Aero Hand uses
+[`robots/aero_hand/setup_aero_hand.sh`](robots/aero_hand/setup_aero_hand.sh).
+Atom01 uses [`robots/atom01/setup_atom01.sh`](robots/atom01/setup_atom01.sh).
+These scripts install Runtime, official apps, and the robot package together.
 
+## Included Packages
 
-## Notes
+- `rynnrcp`: protocol runtime implementation.
+- `rynnkit`: shared implementation helpers installed with `rynnrcp`.
+- Python package `rynnrcp-app-common`: shared recording, encoding, Resource
+  transfer, and export helpers; no standalone command.
+- Python package `rynnrcp-app-mcp`: MCP-facing app that provides
+  `rynnrcp-mcp-app`.
+- Python package `rynnrcp-app-teleop`: teleoperation Web app that provides
+  `rynnrcp-teleop-app`.
+- Python package `rynnrcp-app-rynnbot`: RynnBot cloud workflow app that provides
+  `rynnrcp-rynnbot-app`.
+- `rynnrcp-protocol-debug`: browser protocol debug app installed with `rynnrcp`.
+- Python package `rynnrcp-robot-so101`: SO101 robot integration package that
+  provides `rynnrcp-so101-configure`.
+- Python package `rynnrcp-robot-aero-hand`: Aero Hand integration package that
+  provides `rynnrcp-aero-hand-configure`.
+- Python package `rynnrcp-robot-atom01`: Atom01 humanoid integration package
+  that provides `rynnrcp-atom01-configure` and `rynnrcp-atom01-test-policy`.
 
-**Linux：**
-- Some setup steps may require sudo privileges
-- UDP buffer settings will be adjusted in /etc/sysctl.conf to meet LCM image transmission requirements
+## Repository Layout
 
-**macOS：**
-- Supports Apple Silicon (M1/M2/M3/M4) and Intel Macs
-- For LCM multicast: sudo route -nv add -net 224.0.0.0/4 -interface lo0
+```text
+pyproject.toml          RynnRCP implementation package metadata
+README.zh-CN.md         Chinese README
 
-**Windows：**
-- Cameras must not be connected through the same USB hub/expander; otherwise, multiple cameras cannot be opened simultaneously.
-- It is recommended to use Git Bash as the terminal for running setup_rcp.sh to configure the environment. When installing Git, pay attention to the line-ending configuration and select "Checkout as-is, commit Unix-style line endings" (i.e., use Unix-style line endings).
+rynnrcp/                protocol runtime implementation
+  adapters/             payload adapters
+  config/               config loading and expansion
+  connectors/           protocol and module connectors
+  interface/            gRPC transport and protocol client
+  ipc/                  channels and shared-memory transport
+  native/               native helpers
+  process/              process lifecycle helpers
+  protocol/             protocol method definitions
+  robot/                robot controller abstractions
+  runtime/              runtime orchestration
+  services/             built-in services
+  utils/                shared utilities
 
-# Todo
-- [x] Release **RynnRCP** 1.0 version
-- [ ] Release Technical Report
-- [x] ActionServer and SensorServer support MCP
-- [ ] Complete the rest of RynnRCP framework
-- [ ] Support for robots with more structural types
+rynnkit/                helpers installed with RynnRCP
+  cameras/              camera interfaces and USB camera support
+
+apps/                   official standalone app packages
+  common/               shared recording and export helpers
+  mcp/                  MCP app
+  protocol_debug/       browser protocol debug app
+  rynnbot/              RynnBot cloud app
+  teleop/               teleoperation Web app
+
+robots/                 robot integration packages
+  so101/                SO101 integration
+  aero_hand/            Aero Hand integration
+  atom01/               Atom01 integration
+
+docs/                   long-lived implementation documentation
+tests/                  implementation tests
+```
+
+## Testing
+
+Run the implementation test suite:
+
+```bash
+python -m pytest tests -q
+```
+
+Hardware validation needs real devices and local machine configuration. Follow
+the corresponding robot README for its runtime validation flow.
+
+## License
+
+RynnRCP is licensed under the Apache License 2.0 unless otherwise noted in a
+file header or package README.
+
+The Atom01 robot package includes GPL-3.0 C++ control binding sources under
+`robots/atom01/rynnrcp_robot_atom01/atom_control/`. Those files remain under
+GPL-3.0 as marked by their SPDX headers.
+
+Third-party code and asset notices are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Documentation
+
+- [RCP protocol](docs/RCP使用场景及协议.md): external protocol contract,
+  standard objects, tools, and data/resource flow.
+- [Robot integration guide](docs/RCP%20机器人构型接入指南.html): how to
+  add a robot package after validating hardware abilities.
+- [Configuration guide](docs/RCP配置文件说明.md): config field reference for
+  server config, robot integration, source, and codec.
+- [Policy service guide](docs/RCP%20策略服务接入指南.html): how to add
+  local policies and expose policy tools.
+- [App integration guide](docs/RCP%20App%20接入%20Server%20指南.html):
+  how apps call an RCP Server through Interface and Resource tools.
+- [Apps README](apps/README.zh-CN.md): official app entry point.
+- [Robots README](robots/README.zh-CN.md): robot package entry point.
+- [SO101 README](robots/so101/README.md): SO101 installation, configuration,
+  runtime commands, and hardware notes.
+- [Aero Hand README](robots/aero_hand/README.md): Aero Hand single/dual setup,
+  runtime commands, and RynnBot notes.
+- [Atom01 README](robots/atom01/README.md): Atom01 setup, zero calibration,
+  runtime commands, and RynnBot notes.
+- [Protocol Debug README](apps/protocol_debug/README.zh-CN.md): browser UI for
+  direct protocol inspection and raw requests.
+- [Test guide](tests/README.md): test suite ownership and recommended commands.

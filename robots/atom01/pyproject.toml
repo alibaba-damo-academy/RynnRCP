@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-atom01"
+version = "0.1.0"
+description = "Atom01 humanoid integration for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp>=0.1.0",
+    "onnxruntime>=1.16",
+    "pybind11>=2.11",
+]
+
+[project.scripts]
+rynnrcp-atom01-configure = "rynnrcp_robot_atom01.configure_atom01_web:main"
+rynnrcp-atom01-test-policy = "rynnrcp_robot_atom01.test_policy_effect:main"
+
+[project.entry-points."rynnrcp.robots"]
+atom01 = "rynnrcp_robot_atom01"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_robot_atom01*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_atom01" = [
+    "config/*.yaml",
+    "atom_control/CMakeLists.txt",
+    "atom_control/*.png",
+    "atom_control/bindings/*.cpp",
+    "atom_control/config/*.yaml",
+    "atom_control/core/include/**/*.h",
+    "atom_control/core/include/**/*.hpp",
+    "atom_control/core/src/**/*.c",
+    "atom_control/core/src/**/*.cpp",
+    "atom_control/python/*.py",
+    "policies/*/*.py",
+    "policies/*/*.yaml",
+    "policies/*/*.onnx",
+    "policies/*/*.npz",
+]

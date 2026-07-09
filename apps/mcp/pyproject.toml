@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-app-mcp"
+version = "0.1.0"
+description = "MCP protocol bridge app for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp>=0.1.0",
+    "fastmcp>=0.1",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+rynnrcp-mcp-app = "rynnrcp_app_mcp.mcp_app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_app_mcp*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_app_mcp" = ["default_config.yaml"]

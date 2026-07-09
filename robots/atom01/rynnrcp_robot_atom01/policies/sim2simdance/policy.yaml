@@ -1,0 +1,15 @@
+policy_id: sim2simdance
+name: Sim2Sim Dance
+entrypoint: policy.py:Policy
+
+inputs:
+  observations:
+    - component: robot
+      name: joint_state
+    - component: robot
+      name: imu
+
+outputs:
+  actions:
+    - component: robot
+      name: joint_position

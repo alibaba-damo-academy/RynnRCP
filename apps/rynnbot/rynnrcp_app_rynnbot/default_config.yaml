@@ -1,0 +1,23 @@
+config_type: rynnrcp_app_config
+version: 1
+
+app:
+  name: rynnbot
+  app_id: rynnbot_app
+
+defaults:
+  http_url: https://robot-access.damo-academy.com
+  udp_port: 8085
+  auth_timeout_s: 5
+  auth_max_attempts: 3
+  mqtt_connect_timeout_s: 10
+  mqtt_connect_attempts: 3
+  device_monitor_interval_s: 5
+  max_capture_duration_s: 600
+  video_backend: auto
+  video_encoder: null
+  video_encoder_smoke_test: true
+  delete_uploaded_package: true
+  delete_uploaded_raw_captures: true
+  image_upload_codec: jpeg
+  image_jpeg_quality: 90

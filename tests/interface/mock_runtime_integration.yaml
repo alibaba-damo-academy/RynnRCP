@@ -1,0 +1,84 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: single_arm
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata: {}
+
+components:
+  - name: robot
+    type: arm
+    parent_component: null
+    dof: 6
+    frame: base
+    description: Mock arm
+    enabled: ${components.robot.enabled}
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Mock joint state
+        frame_rate: 100
+        source:
+          connector: module
+          module_name: mock_runtime_support.MockEmbodiment
+          sys_path: ${components.robot.sys_path}
+          init:
+            values: ${components.robot.state_values}
+          start: start
+          stop: stop
+          method_name: read_state
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: Mock joint action
+        frame_rate: 100
+        source:
+          connector: module
+          module_name: mock_runtime_support.MockEmbodiment
+          sys_path: ${components.robot.sys_path}
+          init:
+            values: ${components.robot.state_values}
+          start: start
+          stop: stop
+          method_name: write_action
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+  - name: mock_camera
+    type: camera
+    parent_component: robot
+    frame: mock_camera
+    description: Mock camera
+    enabled: ${components.mock_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Mock RGB image
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: mock_runtime_support.MockPortCamera
+          sys_path: ${components.mock_camera.sys_path}
+          init:
+            width: ${components.mock_camera.image_width}
+            height: ${components.mock_camera.image_height}
+            fps: ${components.mock_camera.image_fps}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter

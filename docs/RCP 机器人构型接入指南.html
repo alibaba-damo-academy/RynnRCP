@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>RCP 机器人构型接入指南</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
+    main { max-width: 980px; margin: 0 auto; padding: 40px 24px 64px; }
+    h1 { margin: 0 0 8px; font-size: 32px; }
+    h2 { margin-top: 34px; padding-top: 10px; border-top: 1px solid #dbe3ef; font-size: 22px; }
+    h3 { margin-top: 24px; font-size: 18px; }
+    p, li { line-height: 1.75; }
+    code { padding: 2px 5px; border-radius: 5px; background: #e5e7eb; }
+    pre { overflow: auto; padding: 16px; border-radius: 8px; background: #111827; color: #e5e7eb; line-height: 1.55; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; background: white; }
+    th, td { padding: 10px 12px; border: 1px solid #dbe3ef; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .note { padding: 12px 14px; border-left: 4px solid #16a34a; background: #dcfce7; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>RCP 机器人构型接入指南</h1>
+  <p>本文说明如何新增一个机器人构型包。目标是让用户只写 controller、硬件配置和 robot integration，框架负责生成 Manifest、Observation、Action 和运行时通道。</p>
+
+  <div class="note">
+    新增机器人时，不修改 RCP 协议层、Service、ToolBus 或 App。机器人包只描述“这个机器人有什么部件、如何读取、如何执行”。本文是接入流程指南；字段是否必写、字段类型和完整配置字典看 <code>RCP配置文件说明.md</code>；协议对象和接口格式看 <code>RCP使用场景及协议.md</code>。
+  </div>
+
+  <h2>阅读方式</h2>
+  <p>第一次接入机器人时，不建议一上来就写配置文件。配置文件只是把“已经跑通的硬件能力”登记给 RCP；如果还不知道怎么读机器人状态、怎么发控制、怎么读相机，先不用看配置字段。</p>
+  <table>
+    <tr><th>当前状态</th><th>应该先做什么</th><th>需要查哪个文档</th></tr>
+    <tr><td>还不知道怎么连接机器人</td><td>先看机器人 SDK、厂商文档或已有 ROS2/LCM 系统，写一个最小脚本连接硬件。</td><td>暂时不用看 RCP 配置。</td></tr>
+    <tr><td>已经能读状态、发控制、读图像</td><td>把这些能力整理成 controller 方法，或确认已有 topic/端口能提供这些数据。</td><td>看本文的 controller 和 source 章节。</td></tr>
+    <tr><td>已经知道要暴露哪些 observation/action</td><td>把它们映射成 RCP 的 component、observation、action。</td><td>查 <code>RCP使用场景及协议.md</code> 的协议对象和 value 示例。</td></tr>
+    <tr><td>已经知道 controller/source 怎么写</td><td>再写 <code>robot_integration.yaml</code> 和 server config。</td><td>查 <code>RCP配置文件说明.md</code> 的字段是否必写和字段类型。</td></tr>
+  </table>
+  <p>本文不会重复完整协议字段表，也不会重复配置文件字段字典。本文里的 YAML 只用来说明“这些能力如何接入 RCP”，不是让你逐字段照抄。字段是否必写、可选字段怎么写，以 <code>RCP配置文件说明.md</code> 为准。</p>
+
+  <h2>先看结论</h2>
+  <p>新增机器人不是从配置开始，而是从最小硬件闭环开始。推荐顺序如下：</p>
+  <ol>
+    <li>先用机器人原生 SDK、串口工具、ROS2/LCM topic 或相机工具，确认硬件能连接。</li>
+    <li>写最小脚本，分别验证：读取状态、发送一个安全动作、读取一帧图像、断开连接。</li>
+    <li>把最小脚本整理成 controller 方法，或确认 topic/端口可以直接作为 source。</li>
+    <li>把 controller/source 返回值整理成 RCP 协议 value，例如 <code>{"joint_positions": [...]}</code>。</li>
+    <li>最后写 <code>robot_integration.yaml</code> 和 server config，让 RCP Runtime 自动生成 Manifest、Observation、Action。</li>
+  </ol>
+
+  <table>
+    <tr><th>你已经跑通的能力</th><th>接入 RCP 时怎么表示</th><th>通常使用</th></tr>
+    <tr><td>Python SDK 可以读状态/发控制</td><td>整理成 controller 方法。</td><td><code>connector: module</code></td></tr>
+    <tr><td>USB 相机可以读图像</td><td>作为 camera component 的 image observation。</td><td><code>connector: port</code></td></tr>
+    <tr><td>ROS2 topic 已经在发布状态或接收动作</td><td>把 topic 映射成 observation/action。</td><td><code>connector: ros2</code></td></tr>
+    <tr><td>LCM channel 已经在传数据</td><td>用 RCP 协议 JSON 作为 payload。</td><td><code>connector: lcm</code></td></tr>
+  </table>
+
+  <h2>一、推荐目录结构</h2>
+  <p>目录可以先建好，但真正开始写配置前，应先完成下一节的硬件最小验证。</p>
+  <pre>robots/my_robot/
+  pyproject.toml
+  README.zh-CN.md
+  setup_my_robot.sh
+  rynnrcp_robot_my_robot/
+    __init__.py
+    controller.py
+    config/
+      robot_integration.yaml
+      my_robot_server.yaml
+      my_robot_teleop_source_server.yaml</pre>
+
+  <h2>二、先跑通机器人本身</h2>
+  <p>在写 RCP 配置前，先确认你能用最小代码控制机器人。这个阶段和 RCP 无关，只验证机器人本身可用。</p>
+  <table>
+    <tr><th>要验证的能力</th><th>最小验证方式</th><th>成功标准</th></tr>
+    <tr><td>连接机器人</td><td>用 SDK、串口、网络 API、ROS2 或 LCM 建立连接。</td><td>可以连接和断开，失败时能看到明确错误。</td></tr>
+    <tr><td>读取状态</td><td>调用 SDK 或订阅 topic 读取一次关节状态、位姿或夹爪状态。</td><td>能得到稳定数值，单位和关节顺序清楚。</td></tr>
+    <tr><td>发送安全动作</td><td>发送一个很小的关节位置变化、速度命令或预定义 home 动作。</td><td>机器人按预期动作，停止和断开是安全的。</td></tr>
+    <tr><td>读取图像</td><td>读取一帧相机图像，确认宽、高、编码。</td><td>能拿到有效图像 bytes 或标准图像消息。</td></tr>
+    <tr><td>健康状态</td><td>读取 SDK 错误、硬件连接状态或 topic 状态。</td><td>能区分正常、断连、读帧失败、控制失败。</td></tr>
+  </table>
+
+  <p>如果这些最小能力还没跑通，先不要写 <code>robot_integration.yaml</code>。RCP 不负责猜测你的机器人怎么连接，也不替代机器人 SDK 或底层驱动。</p>
+
+  <p>建议先写一个和 RCP 无关的最小验证脚本，例如：</p>
+  <pre># standalone_check.py
+from my_robot_sdk import MyRobotSDK
+
+robot = MyRobotSDK(port="/dev/ttyUSB0")
+robot.connect()
+
+# 1. 读状态：确认单位、关节顺序、数值范围
+positions = robot.read_joint_positions()
+print("joint_positions:", positions)
+
+# 2. 发一个安全动作：只移动很小的幅度，确认控制链路正常
+target = list(positions)
+target[0] += 0.01
+robot.command_joint_positions(target)
+
+# 3. 读图像：确认宽、高、编码
+image = robot.read_front_camera_jpeg()
+print("image bytes:", len(image))
+
+# 4. 安全关闭
+robot.close()</pre>
+
+  <p>这个脚本成功后，再把其中的连接、读状态、发控制、读图像、关闭逻辑整理成 controller 方法。配置文件只引用这些已经验证过的方法。</p>
+
+  <h2>三、再决定要暴露什么</h2>
+  <p>机器人本身跑通后，再把能力整理成 RCP 的 component、observation 和 action。这个阶段才需要参考协议文档。</p>
+  <table>
+    <tr><th>你已经跑通的能力</th><th>RCP 里通常写成</th><th>例子</th></tr>
+    <tr><td>机械臂本体</td><td>component</td><td><code>name: robot</code>、<code>type: arm</code></td></tr>
+    <tr><td>读取关节状态</td><td>observation</td><td><code>name: joint_state</code>、<code>type: joint_state</code></td></tr>
+    <tr><td>读取前置相机</td><td>observation</td><td><code>component.name: front</code>、<code>name: image</code>、<code>type: image</code></td></tr>
+    <tr><td>发送关节位置</td><td>action</td><td><code>name: joint_position</code>、<code>type: joint_position</code></td></tr>
+    <tr><td>执行 home 动作</td><td>action</td><td><code>name: home</code>、<code>type: prearranged</code></td></tr>
+    <tr><td>执行自定义 move_to</td><td>action</td><td><code>name: move_to</code>、<code>type: custom</code></td></tr>
+  </table>
+
+  <div class="note">
+    判断字段放哪里：随部署机器变化的真实值写到 <code>server config</code>；随机器人构型固定的接入逻辑写到 <code>robot integration</code>；App、Agent、MCP 只看到 RCP 协议对象，不知道串口、相机编号、adapter 或内部 channel。
+  </div>
+
+  <h2>四、一定需要主臂吗</h2>
+  <p>不一定。RCP Server 只描述“一个可观测、可控制、可采集的机器人实例”。主臂只是遥操场景里的一种控制数据来源，不是 RCP 协议要求。</p>
+  <table>
+    <tr><th>数据来源</th><th>是否需要单独 Server</th><th>适合场景</th><th>配置方式</th></tr>
+    <tr><td>主臂 / 示教臂</td><td>通常需要</td><td>主从遥操、采集示教数据</td><td>给主臂也启动一个 Server，通常只开启 observations，不开启 actions/data_collection。</td></tr>
+    <tr><td>手柄 / 键盘 / 3D 鼠标</td><td>不一定</td><td>人工遥控</td><td>可以做成 App 输入，App 直接调用执行端 Server 的 action。</td></tr>
+    <tr><td>策略模型 / 脚本</td><td>不一定</td><td>自动控制、调试动作</td><td>推荐接入 PolicyService；临时脚本也可以直接通过 Interface 调用 <code>run_action_chunk</code>。</td></tr>
+    <tr><td>ROS2 / LCM 外部系统</td><td>通常不需要主臂</td><td>已有机器人系统接入 RCP</td><td>在 robot integration 的 <code>source</code> 中配置 topic 和 payload 模式。</td></tr>
+    <tr><td>云端平台</td><td>不需要主臂</td><td>RynnBot / Agent 调用</td><td>App 把云端命令映射成 RCP action。</td></tr>
+  </table>
+
+  <p>如果你只是想让 App、Agent 或 MCP 控制一个机器人，只需要启动执行端 Server。只有当你需要从另一个设备读取状态作为控制输入时，才需要额外的控制端 Server。</p>
+
+  <h2>五、两类配置</h2>
+  <table>
+    <tr><th>文件</th><th>谁维护</th><th>写什么</th></tr>
+    <tr><td>server config</td><td>部署者</td><td>真实 robot_id、robot_name、启用开关、能力开关、硬件连接参数。</td></tr>
+    <tr><td>robot integration</td><td>机器人包作者</td><td>Manifest 模板、components、observations、actions、source、codec。</td></tr>
+  </table>
+
+  <p>server config 写真实值；robot integration 可以用 <code>${...}</code> 引用 server config。</p>
+
+  <h2>六、协议对象名如何生成</h2>
+  <p>用户在配置里只写局部 name，框架生成完整协议对象名：</p>
+  <pre>observation.&lt;component.name&gt;.&lt;observation.name&gt;
+action.&lt;component.name&gt;.&lt;action.name&gt;</pre>
+
+  <table>
+    <tr><th>配置片段</th><th>生成结果</th><th>说明</th></tr>
+    <tr><td><code>component.name: robot</code><br><code>observation.name: joint_state</code></td><td><code>observation.robot.joint_state</code></td><td>机器人关节状态。</td></tr>
+    <tr><td><code>component.name: front</code><br><code>observation.name: image</code></td><td><code>observation.front.image</code></td><td>前置相机图像。</td></tr>
+    <tr><td><code>component.name: robot</code><br><code>action.name: joint_position</code></td><td><code>action.robot.joint_position</code></td><td>机器人关节位置控制。</td></tr>
+    <tr><td><code>component.name: robot</code><br><code>action.name: move_to</code></td><td><code>action.robot.move_to</code></td><td>自定义动作。</td></tr>
+  </table>
+
+  <p>因此，配置里不要写完整 name，例如不要写 <code>name: observation.robot.joint_state</code>。只写 <code>name: joint_state</code>，完整协议名由框架生成。</p>
+
+  <p>server config 里的 <code>components</code> 是真实部署参数组。最容易理解的写法是让参数组名和协议 component 名一致；
+  如果为了硬件语义使用更明确的参数组名，例如 SO101 的 <code>front_camera</code> 参数组生成协议 component
+  <code>front</code>，必须在 robot integration 里用 <code>${components.front_camera.device_id}</code> 这种显式引用写清楚。
+  用户看配置时，以 integration 的 <code>components[].name</code> 作为最终协议 component 名。</p>
+
+  <h2>七、哪些字段是协议字段，哪些不是</h2>
+  <table>
+    <tr><th>字段</th><th>是否协议要求</th><th>说明</th></tr>
+    <tr><td><code>manifest.robot_id</code></td><td>是</td><td>当前 RCP 实例唯一 ID，App 和 Agent 用它识别设备。</td></tr>
+    <tr><td><code>manifest.robot_name</code></td><td>是</td><td>人类可读名称。</td></tr>
+    <tr><td><code>manifest.capabilities</code></td><td>是</td><td>声明 observations、actions、health、resources、data_collection 是否支持。</td></tr>
+    <tr><td><code>component.name/type</code></td><td>是</td><td>描述机器人部件，是生成协议对象名和 Manifest 的核心字段。</td></tr>
+    <tr><td><code>component.frame/dof/parent_component/description</code></td><td>按需填写</td><td>补充构型信息。机械臂通常写 <code>dof</code> 和 <code>frame</code>；没有坐标系或自由度语义的部件不要硬写。</td></tr>
+    <tr><td><code>observation.name/type</code></td><td>是</td><td>生成协议观测对象名，并决定 value_schema。</td></tr>
+    <tr><td><code>action.name/type</code></td><td>是</td><td>生成协议动作对象名，并决定 input_schema。</td></tr>
+    <tr><td><code>role</code></td><td>否</td><td>SO101 controller 需要区分 leader/follower，所以 SO101 配置会写。其他机器人不一定需要。</td></tr>
+    <tr><td><code>port</code></td><td>否</td><td>串口机器人需要。网络机器人、ROS2、LCM 不一定需要。</td></tr>
+    <tr><td><code>ip/control_port/device_id/topic</code></td><td>否</td><td>具体硬件或通信方式的实现参数，由 controller 或 connector 决定。</td></tr>
+  </table>
+
+  <div class="note">
+    判断规则：App 需要知道的是协议字段；controller 启动才需要知道的是实现参数。实现参数写在 server config 的 <code>components</code> 下，再由 robot integration 的 <code>source.init</code> 引用。
+  </div>
+
+  <h2>八、最小 server config 示例</h2>
+  <p>这一节只展示 server config 的结构：真实 robot_id、robot_name、能力开关、integration 路径和硬件参数组。完整字段字典看 <code>RCP配置文件说明.md</code>。</p>
+  <pre>config_type: rynnrcp_server_config
+version: 1
+
+manifest:
+  robot_id: my_robot_01
+  robot_name: My Robot
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+
+integration:
+  config: package://rynnrcp_robot_my_robot/config/robot_integration.yaml
+
+components:
+  robot:
+    enabled: true
+  front:
+    enabled: true
+    device_id: 0</pre>
+
+  <p><code>components</code> 下的名字建议和 robot integration 里的 <code>components[].name</code> 保持一致，用户读起来最省心。除了 <code>enabled</code>，其他字段只写你的 controller 或 source 真正需要的内容。不要为了看起来完整而照抄别的机器人字段。</p>
+
+  <div class="note">
+    如果确实想把硬件参数组写得更具体，例如 server config 里写 <code>components.front_camera.device_id</code>，但协议 component 叫 <code>front</code>，也可以；不过必须在 robot integration 里显式引用 <code>${components.front_camera.device_id}</code>，不要让用户猜哪个参数组对应哪个协议 component。
+  </div>
+
+  <h3>串口机械臂</h3>
+  <pre>components:
+  robot:
+    enabled: true
+    port: /dev/ttyUSB0</pre>
+
+  <h3>需要区分主从角色的机械臂，例如 SO101</h3>
+  <pre>components:
+  robot:
+    enabled: true
+    role: follower
+    port: /dev/ttyUSB0</pre>
+
+  <h3>网络控制器</h3>
+  <pre>components:
+  robot:
+    enabled: true
+    ip: 192.168.1.10
+    control_port: 5000</pre>
+
+  <h3>ROS2 或 LCM 接入</h3>
+  <pre>components:
+  robot:
+    enabled: true</pre>
+
+  <p>ROS2/LCM 的 topic、msg_type、payload_mode 通常写在 robot integration 的 <code>source</code> 里，因为它描述的是这个 observation/action 如何通信。</p>
+
+  <h2>九、最小 robot integration 示例</h2>
+  <p>这一节只展示“一个已经跑通的 controller 如何登记成 RCP observation/action”。下面是 Python controller 通过串口连接机械臂的例子。这里的 <code>port</code> 只是这个 controller 的初始化参数，不是 RCP 必填字段。</p>
+  <pre>config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: single_arm
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata: {}
+
+components:
+  - name: robot
+    type: arm
+    parent_component: null
+    dof: 6
+    frame: base
+    description: Arm hardware
+    enabled: ${components.robot.enabled}
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current joint positions
+        frame_rate: 60
+        source:
+          connector: module
+          module_name: rynnrcp_robot_my_robot.controller.MyRobotController
+          init:
+            robot_id: ${manifest.robot_id}
+            # 这里写 controller __init__ 真正需要的参数。
+            # 串口机器人可以写 port；网络机器人可以写 ip/control_port。
+            # 不需要的参数不要写。
+            port: ${components.robot.port}
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: Target joint positions
+        frame_rate: 60
+        source:
+          connector: module
+          module_name: rynnrcp_robot_my_robot.controller.MyRobotController
+          init:
+            robot_id: ${manifest.robot_id}
+            port: ${components.robot.port}
+          start: start
+          stop: shutdown
+          method_name: set_joint_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter</pre>
+
+  <p><code>model_refs</code> 在配置文件里写 server 本机可访问的模型、标定或 mesh 路径，例如
+  <code>/opt/robots/my_arm/model.urdf</code>、<code>/opt/robots/my_arm/calibration.yaml</code>。
+  当 <code>manifest.capabilities.resources</code> 为 <code>true</code> 时，RynnRCP 启动后会把这些路径注册成
+  Resource；<code>get_manifest</code> 返回的是 <code>resource_id</code>、<code>format</code>、<code>hash</code>
+  等协议字段。App 或 Agent 需要通过 Resource 接口读取文件，不直接读取 server 本地路径。
+  当 <code>resources</code> 为 <code>false</code> 时，这些路径只作为本地配置存在，不对外暴露。</p>
+
+  <h2>十、source 应该怎么写</h2>
+  <p><code>source</code> 说明这个 observation/action 的数据到底从哪里来，或者要发到哪里去。它不是协议对象本身，而是 RCP Runtime 连接真实硬件、controller 或外部通信系统的配置。</p>
+
+  <table>
+    <tr><th>配置层</th><th>负责什么</th><th>例子</th></tr>
+    <tr><td>协议字段</td><td>对外叫什么、value 长什么样。</td><td><code>name: joint_state</code>、<code>type: joint_state</code></td></tr>
+    <tr><td><code>source</code></td><td>这个 value 如何读取，或者 action 如何写回真实系统。</td><td><code>method_name: get_joint_positions</code>、<code>topic: /joint_states</code></td></tr>
+    <tr><td><code>codec</code></td><td>把真实数据和 RCP 协议 value 互相转换。</td><td><code>ProtocolInputAdapter</code>、<code>Ros2StandardInputAdapter</code></td></tr>
+  </table>
+
+  <p>以 observation 为例：</p>
+  <pre>observation.robot.joint_state
+  - 协议名：由 component.name=robot 和 observation.name=joint_state 生成
+  - 协议类型：type=joint_state
+  - 数据来源：source 指向 controller.get_joint_positions()
+  - 返回结果：{"joint_positions": [...]}</pre>
+
+  <p>以 action 为例：</p>
+  <pre>action.robot.joint_position
+  - 协议名：由 component.name=robot 和 action.name=joint_position 生成
+  - 协议类型：type=joint_position
+  - 执行位置：source 指向 controller.set_joint_positions(value)
+  - 输入参数：{"joint_positions": [...]}</pre>
+
+  <p>所以，读配置时可以按这个顺序理解：</p>
+  <ol>
+    <li><code>name</code> 和 <code>type</code> 决定 RCP 对外暴露什么。</li>
+    <li><code>source.connector</code> 决定通过哪种方式连接真实世界。</li>
+    <li><code>source</code> 里的其他字段决定具体调用哪个函数、哪个端口或哪个 topic。</li>
+    <li><code>codec.adapter</code> 决定如何把真实数据整理成协议 value。</li>
+  </ol>
+
+  <p>常见 connector 有四种：</p>
+
+  <table>
+    <tr><th>connector</th><th>用来做什么</th><th>配置重点</th></tr>
+    <tr><td><code>module</code></td><td>调用 Python controller 方法。</td><td><code>module_name</code>、<code>init</code>、<code>start</code>、<code>stop</code>、<code>method_name</code>。</td></tr>
+    <tr><td><code>port</code></td><td>调用本地硬件端口对象，例如 USB 相机。</td><td><code>port_type</code>、<code>init</code>、<code>method_name</code>。</td></tr>
+    <tr><td><code>ros2</code></td><td>订阅或发布 ROS2 topic。</td><td><code>topic</code>、<code>msg_type</code>、<code>payload_mode</code>、<code>qos</code>。</td></tr>
+    <tr><td><code>lcm</code></td><td>订阅或发布 LCM channel。</td><td><code>topic</code>、<code>payload_mode: protocol_json</code>。</td></tr>
+  </table>
+
+  <h3>module：调用 Python controller</h3>
+  <pre>source:
+  connector: module
+  module_name: rynnrcp_robot_my_robot.controller.MyRobotController
+  init:
+    robot_id: ${manifest.robot_id}
+    port: ${components.robot.port}
+  start: start
+  stop: shutdown
+  method_name: get_joint_positions</pre>
+
+  <p><code>module</code> 的调用规则很简单：observation 方法不接收参数，返回协议 value；action 方法接收协议 value。<code>source.init</code> 里的字段会作为 controller 构造参数传入。</p>
+
+  <h3>port：调用本地硬件端口对象，例如 USB 相机</h3>
+  <pre>source:
+  connector: port
+  port_type: cameras.usb_camera.USBCamera
+  init:
+    name: front_camera
+    device_id: ${components.front_camera.device_id}
+    width: 640
+    height: 360
+    encoding: jpg
+    fps: 30
+  method_name: read</pre>
+
+  <h3>ros2：订阅或发布 ROS2 topic</h3>
+  <pre>source:
+  connector: ros2
+  topic: /joint_states
+  msg_type: sensor_msgs.msg.JointState
+  payload_mode: ros2_standard
+  qos:
+    depth: 1</pre>
+
+  <p>LCM 当前只借用通信机制，payload 使用 UTF-8 JSON，不定义自定义 LCM 类型。</p>
+
+  <h2>十一、用户已经知道怎么控制机器人时，该怎么写</h2>
+  <p>如果你已经知道“怎么获取状态、怎么获取图像、怎么发送控制”，就按下面的方式把它们映射到 RCP。</p>
+
+  <table>
+    <tr><th>你已有的能力</th><th>配置里写成</th><th>controller/数据源需要提供</th></tr>
+    <tr><td>读取关节状态</td><td><code>observation + type: joint_state</code></td><td>返回 <code>{"joint_positions": [...]}</code>，可选 <code>joint_velocities</code>。</td></tr>
+    <tr><td>读取相机图像</td><td><code>observation + type: image</code></td><td>返回图像宽、高、编码和图像 bytes；adapter 会转成协议传输格式。</td></tr>
+    <tr><td>读取末端位姿</td><td><code>observation + type: ee_pose</code></td><td>返回 <code>position</code> 和 <code>orientation_quat_xyzw</code>。</td></tr>
+    <tr><td>发送关节目标</td><td><code>action + type: joint_position</code></td><td>接收 <code>{"joint_positions": [...]}</code>。</td></tr>
+    <tr><td>回 home</td><td><code>action + type: prearranged</code></td><td>接收空对象 <code>{}</code>，执行预定义动作。</td></tr>
+    <tr><td>自定义 move_to</td><td><code>action + type: custom</code></td><td>接收该 action 的 input_schema，例如 <code>{"joint_positions": [...]}</code>。</td></tr>
+  </table>
+
+  <h3>例子：你有一个 Python SDK</h3>
+  <p>假设你的机器人 SDK 已经有这些方法：</p>
+  <pre>sdk.connect()
+sdk.read_joint_positions() -> list[float]
+sdk.command_joint_positions(list[float]) -> None
+camera.read_jpeg() -> bytes</pre>
+
+  <p>controller 可以写成：</p>
+  <pre>class MyRobotController:
+    def __init__(self, robot_id: str, ip: str):
+        self.robot_id = robot_id
+        self.ip = ip
+        self.sdk = MyRobotSDK(ip)
+
+    def start(self) -> None:
+        self.sdk.connect()
+
+    def shutdown(self) -> None:
+        self.sdk.close()
+
+    def get_joint_positions(self) -> dict:
+        return {"joint_positions": self.sdk.read_joint_positions()}
+
+    def set_joint_positions(self, value: dict) -> dict:
+        self.sdk.command_joint_positions(value["joint_positions"])
+        return {"accepted": True}
+
+    # 只有 robot_integration.yaml 配置了 health.source.method_name: get_health
+    # 时才需要实现这个方法。
+    def get_health(self) -> dict:
+        return {"errors": [], "warnings": []}</pre>
+
+  <p>server config 写真实 IP：</p>
+  <pre>components:
+  robot:
+    enabled: true
+    ip: 192.168.1.10</pre>
+
+  <p>robot integration 把 IP 传给 controller，并声明 observation/action：</p>
+  <pre>source:
+  connector: module
+  module_name: rynnrcp_robot_my_robot.controller.MyRobotController
+  init:
+    robot_id: ${manifest.robot_id}
+    ip: ${components.robot.ip}
+  start: start
+  stop: shutdown
+  method_name: get_joint_positions</pre>
+
+  <h3>例子：图像由你的 controller 获取</h3>
+  <p>如果相机不是普通 USB 摄像头，而是机器人 SDK 自己返回图像，可以把图像也写成 module observation。</p>
+  <pre>class MyRobotController:
+    def get_front_image(self) -> dict:
+        jpg_bytes = self.sdk.read_front_camera_jpeg()
+        return {
+            "width": 1280,
+            "height": 720,
+            "encoding": "jpg",
+            "image": jpg_bytes,
+        }</pre>
+
+  <p>这里的 <code>image</code> 可以是 JPEG/PNG bytes；<code>encoding</code> 说明 bytes 的编码方式。controller 不需要手动把图像转成 base64，<code>ProtocolImageInputAdapter</code> 会负责协议传输格式。</p>
+
+  <pre>components:
+  - name: front
+    type: camera
+    parent_component: robot
+    frame: front_camera
+    description: Front camera
+    enabled: ${components.front_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Front RGB image
+        frame_rate: 30
+        source:
+          connector: module
+          module_name: rynnrcp_robot_my_robot.controller.MyRobotController
+          init:
+            robot_id: ${manifest.robot_id}
+            ip: ${components.robot.ip}
+          start: start
+          stop: shutdown
+          method_name: get_front_image
+        codec:
+          adapter: ProtocolImageInputAdapter</pre>
+
+  <p>如果相机是普通本地 USB 摄像头，则更推荐使用前面的 <code>port</code> 示例，不需要把相机逻辑塞进机器人 controller。</p>
+
+  <h3>例子：你已有 ROS2 topic</h3>
+  <p>如果关节状态已经通过 ROS2 <code>/joint_states</code> 发布，可以不写 Python controller，直接配置 source：</p>
+  <pre>observations:
+  - name: joint_state
+    type: joint_state
+    description: ROS2 joint state
+    frame_rate: 60
+    source:
+      connector: ros2
+      topic: /joint_states
+      msg_type: sensor_msgs.msg.JointState
+      payload_mode: ros2_standard
+      qos:
+        depth: 1
+    codec:
+      adapter: Ros2StandardInputAdapter</pre>
+
+  <p>如果动作通过 ROS2 topic 发送：</p>
+  <pre>actions:
+  - name: joint_position
+    type: joint_position
+    description: ROS2 joint target
+    frame_rate: 60
+    source:
+      connector: ros2
+      topic: /robot/action
+      msg_type: sensor_msgs.msg.JointState
+      payload_mode: ros2_standard
+      qos:
+        depth: 1
+    codec:
+      adapter: Ros2StandardActionOutputAdapter</pre>
+
+  <p>当前 ROS2 标准消息只支持下面这些白名单。其他 ROS2 消息可以先转成 RCP 协议 JSON 再接入。</p>
+  <table>
+    <tr><th>ROS2 message</th><th>RCP type</th><th>方向</th><th>adapter</th></tr>
+    <tr><td><code>sensor_msgs.msg.JointState</code></td><td><code>joint_state</code></td><td>observation</td><td><code>Ros2StandardInputAdapter</code></td></tr>
+    <tr><td><code>sensor_msgs.msg.Image</code></td><td><code>image</code></td><td>observation</td><td><code>ProtocolImageInputAdapter</code></td></tr>
+    <tr><td><code>sensor_msgs.msg.CompressedImage</code></td><td><code>image</code></td><td>observation</td><td><code>ProtocolImageInputAdapter</code></td></tr>
+    <tr><td><code>geometry_msgs.msg.PoseStamped</code></td><td><code>ee_pose</code></td><td>observation/action</td><td><code>Ros2StandardInputAdapter</code> / <code>Ros2StandardActionOutputAdapter</code></td></tr>
+    <tr><td><code>geometry_msgs.msg.Twist</code></td><td><code>base_velocity</code></td><td>action</td><td><code>Ros2StandardActionOutputAdapter</code></td></tr>
+    <tr><td><code>sensor_msgs.msg.JointState</code></td><td><code>joint_position</code> / <code>joint_velocity</code></td><td>action</td><td><code>Ros2StandardActionOutputAdapter</code></td></tr>
+  </table>
+
+  <h3>例子：你已有 LCM 通道</h3>
+  <p>LCM 使用协议 JSON，不需要定义 LCM 数据类型。payload 是包含 <code>name/type/value</code> 的 JSON。</p>
+  <pre>observations:
+  - name: joint_state
+    type: joint_state
+    description: LCM joint state
+    frame_rate: 60
+    source:
+      connector: lcm
+      topic: ROBOT_JOINT_STATE
+      msg_type: json
+      payload_mode: protocol_json
+    codec:
+      adapter: ProtocolInputAdapter</pre>
+
+  <pre>actions:
+  - name: joint_position
+    type: joint_position
+    description: LCM joint target
+    frame_rate: 60
+    source:
+      connector: lcm
+      topic: ROBOT_JOINT_POSITION
+      payload_mode: protocol_json
+    codec:
+      adapter: ProtocolActionOutputAdapter</pre>
+
+  <h2>十二、controller 应该实现什么</h2>
+  <p>controller 方法直接收发协议 value，不做平台 key 映射。</p>
+  <p><code>source.method_name</code> 决定 Runtime 会调用哪个方法。Observation 方法无入参，返回协议 value；Action 方法接收一个协议 value。</p>
+  <table>
+    <tr><th>配置</th><th>Runtime 调用</th><th>函数要求</th></tr>
+    <tr><td><code>observation.source.method_name: get_joint_positions</code></td><td><code>controller.get_joint_positions()</code></td><td>返回 <code>{"joint_positions": [...]}</code></td></tr>
+    <tr><td><code>action.source.method_name: set_joint_positions</code></td><td><code>controller.set_joint_positions(value)</code></td><td>接收 <code>{"joint_positions": [...]}</code></td></tr>
+    <tr><td><code>health.source.method_name: get_health</code></td><td><code>controller.get_health()</code></td><td>仅在配置了 health 时需要实现；返回健康 payload。</td></tr>
+    <tr><td><code>source.start: start</code></td><td><code>controller.start()</code></td><td>启动或连接硬件。</td></tr>
+    <tr><td><code>source.stop: shutdown</code></td><td><code>controller.shutdown()</code></td><td>释放硬件资源。</td></tr>
+  </table>
+  <pre>class MyRobotController:
+    def start(self) -> None:
+        ...
+
+    def shutdown(self) -> None:
+        ...
+
+    def get_joint_positions(self) -> dict:
+        return {"joint_positions": [0.0, -1.5, 1.6, 0.8, 0.0, 0.0]}
+
+    def set_joint_positions(self, value: dict) -> dict:
+        positions = value["joint_positions"]
+        ...
+        return {"accepted": True}
+
+    # 只有配置了 health.source.method_name: get_health 时才需要实现。
+    def get_health(self) -> dict:
+        return {"errors": [], "warnings": []}</pre>
+
+  <h2>十三、custom action</h2>
+  <p><code>prearranged</code> 和 <code>custom</code> 都允许构型侧自定义 action name。区别是 <code>prearranged</code> 只能触发预定义动作，调用 value 必须是空对象 <code>{}</code>；<code>custom</code> 可以携带结构化参数，调用 value 必须是 object，并会原样传给 controller 方法。</p>
+  <p>普通 action 的 schema 由 <code>type</code> 推导；<code>custom</code> action 建议直接在配置里写 <code>input_schema</code>，这样 App 调用 <code>list_actions</code> 时能知道该怎么填参数。如果不写，框架会把它当作开放 object。</p>
+  <p>SO101 的 <code>move_to</code> 只是 custom action 的一个例子，不是协议内置的唯一 custom 名字：</p>
+  <pre>- name: move_to
+  type: custom
+  description: Interpolate to target joint positions
+  frame_rate: 1
+  input_schema:
+    type: object
+    fields:
+      joint_positions:
+        type: array
+        items: float
+        shape: [dof]
+        unit: rad
+  source:
+    connector: module
+    module_name: rynnrcp_robot_so101.controller.SO101Controller
+    init:
+      robot_id: ${manifest.robot_id}
+      port: ${components.robot.port}
+      role: ${components.robot.role}
+    start: start
+    stop: shutdown
+    method_name: move_to
+  codec:
+    adapter: ProtocolActionOutputAdapter</pre>
+
+  <p>调用时直接传：</p>
+  <pre>{
+  "name": "action.robot.move_to",
+  "frames": [
+    {"joint_positions": [0.0, -1.5, 1.6, 0.8, 0.0, 0.0]}
+  ],
+  "frame_rate": 1
+}</pre>
+
+  <p>如果要定义一个全新的 custom action，例如 <code>action.robot.pick</code>，只需要在 robot integration 中新增 action，写清楚 <code>input_schema</code>，并把 <code>source.method_name</code> 指向自己的 controller 方法。协议层不会限制 <code>pick</code>、<code>move_to</code>、<code>calibrate</code> 这些名字，也不会修改传入的 frame。</p>
+
+  <p>如果动作没有参数，例如回 home，优先用 <code>type: prearranged</code>；如果动作需要自定义参数，才使用 <code>type: custom</code>。</p>
+
+  <h2>十四、写完后怎么确认</h2>
+  <p>先做配置展开检查，确认框架能从 server config 和 robot integration 生成正确的协议对象名。</p>
+  <pre>PYTHONPATH=robots/my_robot python - &lt;&lt;'PY'
+from rynnrcp.config import RuntimeConfig, build_runner_config
+
+runtime = RuntimeConfig.load("robots/my_robot/rynnrcp_robot_my_robot/config/my_robot_server.yaml")
+runner = build_runner_config(runtime)
+print("observations:", [item.name for item in runner.input_specs])
+print("actions:", [item.name for item in runner.output_specs])
+PY</pre>
+
+  <p>期望看到的是完整协议对象名，例如：</p>
+  <pre>observations: ["observation.robot.joint_state", "observation.front.image"]
+actions: ["action.robot.joint_position", "action.robot.home"]</pre>
+
+  <p>再启动 server：</p>
+  <pre>rynnrcp-server --config robots/my_robot/rynnrcp_robot_my_robot/config/my_robot_server.yaml</pre>
+
+  <p>启动后用 App、MCP 或脚本检查这些协议接口：</p>
+  <table>
+    <tr><th>检查项</th><th>期望结果</th></tr>
+    <tr><td><code>get_manifest</code></td><td>能看到正确的 <code>robot_id</code>、<code>robot_name</code>、components、capabilities。</td></tr>
+    <tr><td><code>list_observations</code></td><td>能看到配置生成的 observation name、type、value_schema。</td></tr>
+    <tr><td><code>list_actions</code></td><td>能看到配置生成的 action name、type、input_schema。</td></tr>
+    <tr><td><code>get_observations</code></td><td>能按完整 observation name 读到协议 value。</td></tr>
+    <tr><td><code>run_action_chunk</code></td><td>能按完整 action name 发送协议 value。</td></tr>
+    <tr><td><code>list_policies</code></td><td>如果启用了 <code>policy_service</code>，能看到已扫描到的策略。</td></tr>
+    <tr><td><code>get_health</code></td><td>能看到 controller 或框架上报的健康状态。</td></tr>
+  </table>
+
+  <h2>十五、接入检查清单</h2>
+  <ul>
+    <li>server config 只放真实部署值和 controller/硬件启动所需参数。</li>
+    <li>robot integration 只描述机器人构型和 source/codec。</li>
+    <li>不要把 SO101 的 <code>role</code>/<code>port</code> 当成所有机器人必填字段。</li>
+    <li>如果某个字段不是 controller 初始化或通信需要的，就不要写。</li>
+    <li>不需要主臂也可以接入执行端机器人；主臂只是遥操 source 的一种。</li>
+    <li>如果用户已经有 ROS2/LCM topic，就优先用 connector 配置通信，不必额外包一层 controller。</li>
+    <li>启用的 component 会被运行时独立启动和管理；用户不需要手动创建 runner。</li>
+    <li>component、observation、action 名称都用局部 name，完整协议对象名由框架生成。</li>
+    <li>需要长期运行的 RL / VLA / policy 时，优先按 <code>RCP 策略服务接入指南.html</code> 接入 PolicyService。</li>
+    <li>controller 方法收发协议 value。</li>
+    <li>App、Agent、MCP 不知道 channel、adapter、串口或相机编号。</li>
+    <li>协议字段以 <code>RCP使用场景及协议.md</code> 为准；配置字段以 <code>RCP配置文件说明.md</code> 为准。</li>
+  </ul>
+</main>
+</body>
+</html>

@@ -1,0 +1,133 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: humanoid
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: package://rynnrcp_robot_atom01/atom_control/config/robot.yaml
+    assets: []
+  metadata: {}
+
+components:
+  - name: robot
+    type: humanoid
+    parent_component: null
+    dof: 23
+    frame: base_link
+    description: Atom01 humanoid robot
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_atom01.controller.Atom01Controller
+        init:
+          robot_id: ${manifest.robot_id}
+          role: standalone
+          atom_root: ${components.robot.atom_root}
+          config_path: ${components.robot.config_path}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current Atom01 joint positions
+        frame_rate: 50
+        source:
+          connector: module
+          module_name: rynnrcp_robot_atom01.controller.Atom01Controller
+          init:
+            robot_id: ${manifest.robot_id}
+            role: standalone
+            atom_root: ${components.robot.atom_root}
+            config_path: ${components.robot.config_path}
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+
+      - name: imu
+        type: imu
+        description: Current Atom01 IMU data
+        frame_rate: 50
+        source:
+          connector: module
+          module_name: rynnrcp_robot_atom01.controller.Atom01Controller
+          init:
+            robot_id: ${manifest.robot_id}
+            role: standalone
+            atom_root: ${components.robot.atom_root}
+            config_path: ${components.robot.config_path}
+          start: start
+          stop: shutdown
+          method_name: get_imu
+        codec:
+          adapter: ProtocolInputAdapter
+
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: Target Atom01 joint positions
+        frame_rate: 50
+        source:
+          connector: module
+          module_name: rynnrcp_robot_atom01.controller.Atom01Controller
+          init:
+            robot_id: ${manifest.robot_id}
+            role: standalone
+            atom_root: ${components.robot.atom_root}
+            config_path: ${components.robot.config_path}
+          start: start
+          stop: shutdown
+          method_name: set_joint_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+      - name: home_position
+        type: prearranged
+        description: Move Atom01 back to all-zero joint positions
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_atom01.controller.Atom01Controller
+          init:
+            robot_id: ${manifest.robot_id}
+            role: standalone
+            atom_root: ${components.robot.atom_root}
+            config_path: ${components.robot.config_path}
+          start: start
+          stop: shutdown
+          method_name: move_to_home
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+      - name: damping_mode
+        type: prearranged
+        description: Toggle Atom01 damping mode with default damping gain
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_atom01.controller.Atom01Controller
+          init:
+            robot_id: ${manifest.robot_id}
+            role: standalone
+            atom_root: ${components.robot.atom_root}
+            config_path: ${components.robot.config_path}
+          start: start
+          stop: shutdown
+          method_name: toggle_damping
+        codec:
+          adapter: ProtocolActionOutputAdapter

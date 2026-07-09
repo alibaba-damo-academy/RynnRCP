@@ -1,0 +1,10 @@
+include rynnrcp_robot_atom01/atom_control/CMakeLists.txt
+include rynnrcp_robot_atom01/atom_control/*.png
+recursive-include rynnrcp_robot_atom01/atom_control/bindings *.cpp
+recursive-include rynnrcp_robot_atom01/atom_control/config *.yaml
+recursive-include rynnrcp_robot_atom01/atom_control/core/include *.h *.hpp
+recursive-include rynnrcp_robot_atom01/atom_control/core/src *.c *.cpp
+recursive-include rynnrcp_robot_atom01/atom_control/python *.py
+recursive-include rynnrcp_robot_atom01/config *.yaml
+recursive-include rynnrcp_robot_atom01/policies *.py *.yaml *.onnx *.npz
+global-exclude __pycache__ *.py[cod] .DS_Store

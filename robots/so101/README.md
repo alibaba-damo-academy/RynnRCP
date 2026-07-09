@@ -1,192 +1,212 @@
-# Minimal Example: SO101 to RynnBot (RynnRCP)
-This directory provides a minimal runnable project to connect the **SO101** robotic arm to **RynnRCP**, including:
+# SO101 Robot Package
 
-- Config files:
-  - `config/so101_config.yaml`: **RcpCore** configuration (inputs/outputs for Action/Sensor/DeviceMonitor)
-  - `config/rynnbot_config.yaml`: RynnBot (cloud platform) device credentials (triplet/URL)
-  - `config/mcp_config.yaml`: **MCP server** configuration (exposes RCP tools over HTTP)
-- Launch script:
-  - `run_rcp_so101.py`: starts **RcpCore + RynnBot (plugin) + McpPlugin**
-    - **RynnBot**: connects to the cloud platform (MQTT/WS)
-    - **McpPlugin**: starts an MCP HTTP service and exposes RCP tools
-- Configuration wizard:
-  - `configure_so101.py`: interactive setup (Chinese/English), which can configure cameras, follower/leader serial ports, follower/leader arm calibration, and RynnBot device triplet
-  - `configure_so101_web.py`: web-based configuration tool with graphical interface, featuring camera live preview, serial port auto-detection, and real-time calibration log streaming
+[简体中文](README.zh-CN.md)
 
+This package is the SO101 robot integration for the RynnRCP Python
+implementation. It maps the lightweight SO101 driver into the RCP device model:
+robot state, camera observations, action execution, health/status, recording,
+teleoperation, MCP access, and RynnBot cloud workflows.
 
-## Directory Structure
+The package does not replace the robot-side controller or hardware safety
+layer. Calibration, low-level execution, interpolation, limits, and emergency
+handling remain the responsibility of the SO101 driver and the physical robot
+setup.
+
+## What It Provides
+
+- SO101 controller wrapper for follower/leader arms.
+- A long-running RynnRCP server config plus standalone MCP, Teleop,
+  and RynnBot app configs.
+- A browser-based configuration helper for serial ports, cameras, calibration,
+  and Server/App settings.
+- Console commands for starting the SO101 server and apps.
+
+## Installation
+
+The setup script uses Python 3.10. On Windows, run it from Git Bash or WSL.
+From the SO101 package directory:
+
+```bash
+cd robots/so101
+./setup_so101.sh
+source venv/bin/activate
+```
+
+The script creates `robots/so101/venv`, installs RynnRCP as a local library,
+installs the official apps, and installs the SO101 robot package in editable
+mode. Most users should use this script instead of installing Runtime first and
+then installing SO101 manually.
+
+## Configuration
+
+SO101 configs live under:
 
 ```text
-robots/so101/
-├── config/
-│   ├── rynnbot_config.yaml         # RynnBot device triplet / URL
-│   ├── so101_config.yaml           # RcpCore config: Action/Sensor/DeviceMonitor (follower)
-│   ├── so101_leader_config.yaml    # RcpCore config for leader arm (teleop)
-│   ├── teleop_config.yaml          # TeleopPlugin network config (hosts / ports / hz)
-│   └── mcp_config.yaml             # MCP Server config
-├── configure_so101.py              # Interactive configuration wizard (CN/EN)
-├── configure_so101_web.py          # Web-based configuration tool (GUI)
-├── configure_so101_web_usage.md    # Web configuration tool usage guide
-├── run_rcp_so101.py                # Launch: RcpCore + RynnBot(plugin)
-├── run_teleop_leader.py            # Launch: leader arm + Web UI
-├── run_teleop_follower.py          # Launch: follower arm
-├── README.md                       # Documentation (English)
-└── README_cn.md                    # Documentation (Chinese)
+robots/so101/rynnrcp_robot_so101/config/
 ```
 
+Important files:
 
-## Prerequisites
+| File | Purpose |
+| --- | --- |
+| `robot_integration.yaml` | Integration definition maintained by the robot package. |
+| `so101_follower_server.yaml` | Follower SO101 RynnRCP Server config with `manifest.robot_id`, arm serial port, and cameras. |
+| `so101_leader_server.yaml` | Leader SO101 RynnRCP Server config with `manifest.robot_id` and arm serial port. |
+| `so101_rynnbot_app.yaml` | RynnBot App cloud device credentials. |
 
-1. Project is installed (Python environment ready, dependencies installed, and venv activated)
-2. SO101 controller is connected (serial port)
-3. Cameras are connected (USB cameras; two cameras recommended: front / wrist)
-4. RynnBot device credentials (triplet):
-   - product_key
-   - device_name
-   - device_secret
-   - http_url (platform access URL; keep the default value)
- - If you enable MCP, make sure the port is reachable (example: 8001)
-
-
-## Configure via Environment Variables (Optional)
-
-### RynnBot Environment Variables
-Required (device triplet):
-- `RYNNBOT_PRODUCT_KEY`
-- `RYNNBOT_DEVICE_NAME`
-- `RYNNBOT_DEVICE_SECRET`
-
-Optional:
-- `RYNNBOT_HTTP_URL` (default: `https://robot-access.damo-academy.com`)
-
-Example:
-```bash
-export RYNNBOT_PRODUCT_KEY="put_product_key_here"
-export RYNNBOT_DEVICE_NAME="put_device_name_here"
-export RYNNBOT_DEVICE_SECRET="put_device_secret_here"
-# optional
-export RYNNBOT_HTTP_URL="https://robot-access.damo-academy.com"
-```
-
-### MCP Environment Variables
-Required:
-- `MCP_SERVER_NAME`
-- MCP_HOST
-- MCP_PORT
-
-
-Optional:
-- MCP_PATH (default: /mcp)
-- MCP_TRANSPORT (default: streamable-http)
-
-
-Example:
-```bash
-export MCP_SERVER_NAME="rcp_server"
-export MCP_HOST="0.0.0.0"
-export MCP_PORT="8000"
-# optional
-export MCP_PATH="/mcp"
-export MCP_TRANSPORT="streamable-http"
-```
-
-Note: If you configure via environment variables, you can omit `rynnbot_config.yaml` / `mcp_config.yaml`. When environment variables are set, they take priority.
-
-
-## Quick Start
-
-Enter this directory and run the configuration wizard:
+Use the configuration helper to edit common hardware and Server/App settings:
 
 ```bash
-cd RynnRCP/robots/so101
-python configure_so101.py
+rynnrcp-so101-configure
 ```
 
-After selecting a language (Chinese/English), the wizard provides the following menu:
-1. Device settings: fill in RynnBot device credentials and save to `config/rynnbot_config.yaml`
-2. Camera settings: detect cameras by plug/unplug and write to `config/so101_config.yaml`
-3. Follower arm serial settings: detect follower arm serial port, update permissions, and write to `rcp_motion/robots/so101/configs/so101.yaml` → `robot.port`
-4. Follower arm calibration: run the follower arm calibration procedure and write output to `~/.cache/huggingface/lerobot/calibration/robots/so101_follower`
-5. Configure all: execute steps 1 → 2 → 3 → 4 → 6 → 7 in order
-6. Leader arm serial settings: detect leader arm serial port, update permissions, and write to `rcp_motion/robots/so101/configs/so101.yaml` → `teleoperate.port`
-7. Leader arm calibration: run the leader arm calibration procedure and write output to `~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader`
+The helper supports serial port scanning, USB camera scan/preview, SO101
+calibration, Server ID, RynnBot credentials, and config validation. By default it
+opens `http://127.0.0.1:28401`; if the port is already in use, it prints the
+actual selected address.
 
-> Calibration guide reference: [SO101 Calibration Guide](../../docs/so101_calibrate.md)
+## Runtime Commands
 
-
-## Launch Edge-side Server
-
-After configuration, start the server in this directory:
+Run these commands from the SO101 package directory after activating `venv`:
 
 ```bash
-python run_rcp_so101.py
+cd robots/so101
+source venv/bin/activate
 ```
 
-This script reads:
-- ./config/so101_config.yaml
-- ./config/rynnbot_config.yaml
-- ./config/mcp_config.yaml
+Choose the program by what you want to do:
 
-Then it starts the edge-side server node and connects to RynnBot / the cloud services, while also starting the MCP service (McpPlugin).
+| Goal | Start |
+| --- | --- |
+| Check follower state, cameras, actions, or serve MCP/RynnBot | Follower Server |
+| Teleoperate the follower | Follower Server + Leader Server + Teleop App |
+| Debug protocol tools through MCP | Follower Server + MCP App |
+| Connect to RynnBot cloud | Follower Server + RynnBot App |
+| Edit serial ports, cameras, calibration, or RynnBot credentials | Configuration helper |
 
-
-## Teleoperation (Leader / Follower)
-
-The SO101 supports bilateral teleoperation between a **leader arm** (operator) and a **follower arm** (robot) over LAN using the `TeleopPlugin`.
-
-### How connection works
-
-Both sides continuously send heartbeat packets to each other at 1 Hz.  
-Data exchange only begins **after both sides are running** and heartbeats are detected within 5 seconds — if only one side is running, no business data is transmitted.
-
-### Config: `config/teleop_config.yaml`
-
-```yaml
-teleop:
-  leader_host: 127.0.0.1    # IP of the machine running the leader arm
-  follower_host: 127.0.0.1  # IP of the machine running the follower arm
-
-  leader_port: 9101
-  follower_port: 9102
-
-  control_hz: 30            # joint state send rate (Hz)
-  image_hz: 10              # camera image send rate (Hz)
-```
-
-> For two separate machines, replace `127.0.0.1` with the actual LAN IPs.
-
-### Launch leader arm (with Web UI)
+Start the follower SO101 Server:
 
 ```bash
-cd RynnRCP/robots/so101
-python run_teleop_leader.py
+rynnrcp-server --config rynnrcp_robot_so101/config/so101_follower_server.yaml
 ```
 
-This reads `config/teleop_config.yaml` and `config/so101_leader_config.yaml`, starts the leader arm, and opens a web control panel at:
-
-```
-http://127.0.0.1:5001
-```
-
-The Web UI lets you:
-- Start / stop teleop streaming
-- Start / stop data recording
-- Export or discard recorded episodes
-
-### Launch follower arm
+Start the leader SO101 Server:
 
 ```bash
-cd RynnRCP/robots/so101
-python run_teleop_follower.py
+rynnrcp-server --config rynnrcp_robot_so101/config/so101_leader_server.yaml
 ```
 
-This reads `config/teleop_config.yaml` and `config/so101_config.yaml`, starts the follower arm, and begins receiving joint commands from the leader once the connection is established.
+Start the Teleop App Web UI:
 
-### Typical workflow
+```bash
+rynnrcp-teleop-app
+```
 
-1. Start the follower arm first (or simultaneously with the leader).
-2. Start the leader arm — the Web UI opens automatically.
-3. Wait ~5 seconds for the connection indicator to show **connected**.
-4. Click **Start Teleop** in the Web UI to begin streaming leader joint states to the follower.
-5. Click **Start Recording** to collect an episode; click **Stop Recording** when done.
-6. Click **Export** to package all recorded episodes into a ZIP file.
+Start the MCP App:
+
+```bash
+rynnrcp-mcp-app --server-config rynnrcp_robot_so101/config/so101_follower_server.yaml
+```
+
+Start the RynnBot App:
+
+```bash
+rynnrcp-rynnbot-app --config rynnrcp_robot_so101/config/so101_rynnbot_app.yaml --server-config rynnrcp_robot_so101/config/so101_follower_server.yaml
+```
+
+Open the configuration helper:
+
+```bash
+rynnrcp-so101-configure
+```
+
+The Teleop App starts the local Web UI. Open:
+
+```text
+http://<teleop_web_host>:28402
+```
+
+For a local two-terminal test, use:
+
+```text
+http://127.0.0.1:28402
+```
+
+For a custom SO101 server config, use:
+
+```bash
+rynnrcp-server --config <path-to-so101-server.yaml>
+```
+
+## Follower Response Note
+
+The SO101 follower keeps the upstream LeRobot Feetech motor configuration. The
+upstream implementation sets follower motor `P_Coefficient` to `16` to reduce
+shakiness; the motor default is `32`. This package keeps that behavior instead
+of tuning PID by default.
+
+Direct motor tests show millisecond-level send/read time, but `115-140ms` state
+lag and only `0.65-0.84` target amplitude tracking. The bottleneck is the
+follower motor position-loop response, not gRPC, RCP, Python, or serial calls.
+
+Use the direct response test to bypass Teleop/RCP and measure the hardware:
+
+```bash
+python -m lerobot_so101.motor_response_test \
+  --port /dev/cu.usbmodem5AE70441561 \
+  --joint shoulder_lift \
+  --amplitude 0.20 \
+  --frequency 0.5 \
+  --duration 8 \
+  --control-hz 60
+```
+
+The script writes CSV/SVG output and prints a summary. Check:
+
+- `lag_ms`: state lag relative to the target.
+- `amplitude_ratio`: measured motion amplitude divided by target amplitude.
+- `send_p95_ms` and `read_p95_ms`: millisecond-level values mean the Python
+  send/read calls are not the main bottleneck.
+
+During Teleop, enable the controller action/state trace with environment
+variables:
+
+```bash
+export RYNNRCP_SO101_TRACE_POSITIONS=1
+export RYNNRCP_SO101_TRACE_DIR=/tmp/so101_trace
+
+rynnrcp-server --config rynnrcp_robot_so101/config/so101_follower_server.yaml
+```
+
+When the follower Server stops, it writes:
+
+- `so101_trace_*.csv`: position samples with `action`, `sent`, and `state`.
+- `so101_trace_*.timing.csv`: `read_state`, `send_action`, and `worker_tick`
+  timings.
+- `so101_trace_*.svg`: plot output. Red is target `action`, green is actual
+  `sent`, and blue is measured `state`.
+
+For temporary control-loop debugging, these environment variables are also
+available:
+
+```bash
+export RYNNRCP_SO101_CONTROL_LOOP_HZ=100
+export RYNNRCP_SO101_STATE_READ_HZ=60
+export RYNNRCP_SO101_MAX_JOINT_VELOCITY_RAD_S=30
+export RYNNRCP_SO101_MAX_GRIPPER_VELOCITY_PER_S=30
+```
+
+## Controller Conventions
+
+- The first five arm joints use radians internally.
+- The gripper uses a normalized ratio in `[0, 1]`.
+- Use small hold-current or small joint-space actions for first hardware checks.
+- Confirm robot state and camera streams are fresh before sending motion
+  commands.
+
+## Tests
+
+Framework-level tests are documented in [../../tests/README.md](../../tests/README.md).
+SO101 hardware validation is performed by running the configuration helper,
+starting the follower/leader Servers, and checking Teleop, MCP, or RynnBot
+workflows on the real device.

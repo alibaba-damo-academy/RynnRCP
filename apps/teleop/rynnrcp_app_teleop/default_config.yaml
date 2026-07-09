@@ -1,0 +1,41 @@
+config_type: rynnrcp_app_config
+version: 1
+
+app:
+  name: teleop
+  app_id: teleop_app
+
+defaults:
+  web_host: 0.0.0.0
+  web_port: 28402
+  open_browser: true
+  control_hz: 60
+  state_hz: 30
+  status_hz: 10
+  image_hz: 10
+  request_timeout_ms: 1000
+  connection_monitor_interval_s: 0.5
+  connection_monitor_timeout_ms: 500
+  connection_reconnect_scan_s: 2.0
+  error_log_interval_s: 5
+  profile_path: profiles/teleop.yaml
+  debug_enabled: false
+  debug_ui: false
+  debug_ui_allow_url_toggle: true
+  debug_poll_interval_s: 1.0
+  debug_cache_ttl_s: 0.5
+  trace_io: false
+  trace_io_interval_s: 1.0
+  image_max_long_edge: 320
+  max_record_duration_s: 600
+  record_dir: teleop_records
+  export_rynnbot_mapping: true
+  video_encoder_smoke_test: true
+  playback_move_to_start: true
+  playback_move_max_step: 0.03
+  playback_move_min_steps: 10
+  playback_move_max_steps: 180
+  playback_move_hz: 20
+  playback_settle_s: 0.5
+  playback_rpc_batch_size: 5
+  transport: grpc

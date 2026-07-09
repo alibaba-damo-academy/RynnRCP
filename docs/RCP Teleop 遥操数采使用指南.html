@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RCP Teleop 遥操数采使用指南</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #fff;
+      --text: #182230;
+      --muted: #5d6b7c;
+      --line: #d9e2ec;
+      --blue: #1570ef;
+      --green: #16875a;
+      --amber: #b7791f;
+      --red: #b42318;
+      --code: #111827;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 36px 24px 64px;
+    }
+
+    header {
+      padding-bottom: 22px;
+      border-bottom: 2px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.25;
+    }
+
+    h2 {
+      margin: 34px 0 14px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      font-size: 22px;
+    }
+
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 17px;
+    }
+
+    p, li {
+      line-height: 1.75;
+      color: var(--muted);
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #e8edf3;
+      color: #1f2937;
+    }
+
+    pre {
+      overflow: auto;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: var(--code);
+      color: #e5e7eb;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    th {
+      background: #eef3f8;
+      color: #344054;
+      font-weight: 700;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .lead {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .note {
+      margin: 18px 0;
+      padding: 13px 15px;
+      border-left: 4px solid var(--blue);
+      background: #eaf3ff;
+      border-radius: 8px;
+      color: #26435f;
+      line-height: 1.7;
+    }
+
+    .warn {
+      border-left-color: var(--amber);
+      background: #fff7e3;
+      color: #594214;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 15px;
+      min-height: 118px;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--blue);
+    }
+
+    .card span {
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    .ok { color: var(--green); font-weight: 700; }
+    .todo { color: var(--amber); font-weight: 700; }
+
+    @media (max-width: 840px) {
+      main { padding: 24px 16px 44px; }
+      h1 { font-size: 26px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>RCP Teleop 遥操数采使用指南</h1>
+    <p class="lead">说明 Teleop App 如何发现设备、绑定控制端和执行端、配置控制流、遥操、数据采集、回放和导出。</p>
+  </header>
+
+  <section>
+    <h2>一句话理解</h2>
+    <div class="note">
+      Teleop App 本身不控制硬件。它连接两个 RCP Server：一个提供控制输入，另一个执行动作并采集数据。
+      页面里看到的所有状态、图像、动作和采集项，都来自 Server 的 Manifest、Observation 和 Action 描述。
+    </div>
+  </section>
+
+  <section>
+    <h2>角色关系</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>角色</th>
+          <th>含义</th>
+          <th>典型例子</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>控制端 Server</td>
+          <td>提供遥操输入数据，通常只需要 observations。</td>
+          <td>SO101 Leader、示教臂、手柄、脚本、策略模型。</td>
+        </tr>
+        <tr>
+          <td>执行端 Server</td>
+          <td>接收 action，执行机器人动作，并保存采集数据。</td>
+          <td>SO101 Follower、真实执行机器人。</td>
+        </tr>
+        <tr>
+          <td>Teleop App</td>
+          <td>连接两个 Server，读取控制端 observation，转换为执行端 action，同时管理采集和导出。</td>
+          <td>浏览器里的遥操数采页面。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>启动顺序</h2>
+    <ol>
+      <li>启动执行端 Server，例如 SO101 follower。</li>
+      <li>启动控制端 Server，例如 SO101 leader。</li>
+      <li>启动 Teleop App。</li>
+      <li>打开浏览器页面，刷新设备，选择控制端和执行端。</li>
+      <li>确认控制流，再开始遥操或数据采集。</li>
+    </ol>
+
+    <pre># 终端 1：执行端
+rynnrcp-server --config rynnrcp_robot_so101/config/so101_follower_server.yaml
+
+# 终端 2：控制端
+rynnrcp-server --config rynnrcp_robot_so101/config/so101_leader_server.yaml
+
+# 终端 3：Teleop App
+rynnrcp-teleop-app</pre>
+
+    <p>Teleop 默认页面：</p>
+    <pre>http://127.0.0.1:28402</pre>
+  </section>
+
+  <section>
+    <h2>设备发现</h2>
+    <p>Teleop App 会从本机注册表、mDNS 和静态地址发现 RCP Server。Server 启动后会打印真实地址：</p>
+    <pre>Local gRPC: 127.0.0.1:42027
+LAN gRPC:   30.150.30.180:42027</pre>
+
+    <table>
+      <thead>
+        <tr>
+          <th>情况</th>
+          <th>怎么做</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>App 和 Server 在同一台机器</td>
+          <td>通常能自动发现；也可以手动添加 <code>Local gRPC</code> 地址。</td>
+        </tr>
+        <tr>
+          <td>App 和 Server 在同一局域网</td>
+          <td>优先自动发现；发现不到时手动添加 <code>LAN gRPC</code> 地址。</td>
+        </tr>
+        <tr>
+          <td>跨网段或 mDNS 不通</td>
+          <td>手动添加 Server 终端打印的 <code>LAN gRPC</code> 地址。不要猜端口。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note warn">
+      如果同一台 Server 通过本机地址和局域网地址同时出现，页面会按 robot_id 合并显示；用户只需要选设备，不需要关心底层地址来源。
+    </div>
+  </section>
+
+  <section>
+    <h2>设备匹配</h2>
+    <p>页面选择控制端和执行端时，会读取两个 Server 的 Manifest，用里面的能力判断是否适合当前角色。</p>
+    <table>
+      <thead>
+        <tr>
+          <th>检查项</th>
+          <th>控制端需要</th>
+          <th>执行端需要</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>observations</td>
+          <td><span class="ok">需要</span>，用来读取控制输入。</td>
+          <td><span class="ok">需要</span>，用来显示执行端状态和图像。</td>
+        </tr>
+        <tr>
+          <td>actions</td>
+          <td>通常不需要。</td>
+          <td><span class="ok">需要</span>，用来执行遥操指令。</td>
+        </tr>
+        <tr>
+          <td>data_collection</td>
+          <td>通常不需要。</td>
+          <td>需要采集数据时必须开启。</td>
+        </tr>
+        <tr>
+          <td>resources</td>
+          <td>通常不需要。</td>
+          <td>需要回放、导出历史采集数据时必须开启。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>控制流配置</h2>
+    <p>控制流描述“控制端的哪个 observation 驱动执行端的哪个 action”。最常见配置是：</p>
+    <pre>observation.robot.joint_state  ->  action.robot.joint_position</pre>
+
+    <p>页面会从 <code>list_observations</code> 和 <code>list_actions</code> 获取可选项，只允许用户选择协议上可以直接匹配的 value 类型。</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>控制端 Observation</th>
+          <th>执行端 Action</th>
+          <th>是否适合直接遥操</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>joint_state</code></td>
+          <td><code>joint_position</code></td>
+          <td><span class="ok">适合</span>，常规主从臂遥操。</td>
+        </tr>
+        <tr>
+          <td><code>ee_pose</code></td>
+          <td><code>ee_pose</code></td>
+          <td><span class="ok">适合</span>，前提是机器人支持末端位姿控制。</td>
+        </tr>
+        <tr>
+          <td><code>joint_state</code></td>
+          <td><code>ee_pose</code></td>
+          <td>不直接匹配，需要额外运动学转换，当前页面不自动猜。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <code>home</code>、<code>move_to</code> 这类 action 可以在 Server 里存在，但它们不是连续遥操控制流。遥操默认使用 <code>joint_position</code> 这类连续控制 action。
+    </div>
+  </section>
+
+  <section>
+    <h2>遥操过程</h2>
+    <div class="grid">
+      <div class="card">
+        <strong>读取控制端状态</strong>
+        <span>App 按控制流读取控制端 observation，例如 <code>observation.robot.joint_state</code>。</span>
+      </div>
+      <div class="card">
+        <strong>发送执行端动作</strong>
+        <span>App 把读取到的协议 value 放进 action frame，调用执行端 <code>run_action_chunk</code>。</span>
+      </div>
+      <div class="card">
+        <strong>显示执行端反馈</strong>
+        <span>App 按用户勾选的 key 读取执行端图像和状态，不需要每次读取全部 observation。</span>
+      </div>
+    </div>
+
+    <p>页面会显示控制频率、图像刷新频率、get_obs 耗时、run_action 耗时和连接状态，用来判断当前遥操是否稳定。</p>
+  </section>
+
+  <section>
+    <h2>数据采集</h2>
+    <p>数据采集发生在执行端 Server。Teleop App 只是告诉执行端 Server：本次 episode 要录哪些协议对象。</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>采集项</th>
+          <th>默认选择</th>
+          <th>原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Observation，例如 <code>observation.robot.joint_state</code>、<code>observation.front.image</code></td>
+          <td><span class="ok">默认勾选</span></td>
+          <td>它们是数据集里的状态和传感器数据。</td>
+        </tr>
+        <tr>
+          <td>连续控制 Action，例如 <code>action.robot.joint_position</code></td>
+          <td><span class="ok">默认勾选</span></td>
+          <td>遥操期间会持续发送，是数据集里的 action。</td>
+        </tr>
+        <tr>
+          <td>预定义动作，例如 <code>action.robot.home</code></td>
+          <td><span class="todo">默认不勾选</span></td>
+          <td>这是偶发事件，不是连续控制流。</td>
+        </tr>
+        <tr>
+          <td>自定义动作，例如 <code>action.robot.move_to</code></td>
+          <td><span class="todo">默认不勾选</span></td>
+          <td>只有用户明确要记录这类事件时才手动选择。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <pre>start_collection(
+  names=[
+    "observation.robot.joint_state",
+    "observation.front.image",
+    "observation.wrist.image",
+    "action.robot.joint_position"
+  ],
+  collection_id="teleop_dataset_...",
+  episode_id="episode_000001"
+)</pre>
+  </section>
+
+  <section>
+    <h2>采集数据保存在哪里</h2>
+    <p>原始采集数据保存在执行端 Server 的本地目录。App 不直接扫描远端文件夹，而是通过 Resource 工具查看、读取和打包。</p>
+    <pre>Server data/
+  collections/
+    manual/
+      teleop_dataset_xxx/
+        episode_000001/
+          collection_meta.json
+          streams/
+            observation.robot.joint_state/samples.msgpack
+            observation.front.image/samples.msgpack
+            action.robot.joint_position/samples.msgpack</pre>
+
+    <p>如果 Server 和 App 在不同机器，回放或导出时 App 会按需临时下载需要的数据。导出完成后，临时文件会清理。</p>
+  </section>
+
+  <section>
+    <h2>回放</h2>
+    <p>回放用于检查某个 episode 是否可用。页面会从采集数据中读取 action stream，按原始顺序重新发送给执行端。</p>
+    <table>
+      <thead>
+        <tr>
+          <th>步骤</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>选择 episode</td>
+          <td>在数据管理区展开数据集，点击 episode 的回放按钮。</td>
+        </tr>
+        <tr>
+          <td>移动到起始位置</td>
+          <td>如果配置开启，回放前会先移动到 episode 起点附近。</td>
+        </tr>
+        <tr>
+          <td>发送 action</td>
+          <td>按采集数据里的 action 帧执行。</td>
+        </tr>
+        <tr>
+          <td>停止回放</td>
+          <td>停止后回到初始状态，避免 UI 继续显示执行中。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>导出</h2>
+    <p>导出发生在 App 侧。App 从 Server 读取原始采集数据，按指定 FPS 做 nearest 对齐，生成 parquet、视频和 metadata，再打包成 zip。</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>导出方式</th>
+          <th>结果</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>导出单个 episode</td>
+          <td>生成一个 episode zip。</td>
+        </tr>
+        <tr>
+          <td>导出选中 episode</td>
+          <td>把选中的 episode 编码并打包。</td>
+        </tr>
+        <tr>
+          <td>导出整个 dataset</td>
+          <td>把该 dataset 下所有 episode 一次性打包。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>导出时可以启用 RynnBot key 映射：</p>
+    <pre>action.robot.joint_position      -> action
+observation.robot.joint_state    -> observation.state
+observation.front.image          -> observation.images.front
+observation.wrist.image          -> observation.images.wrist</pre>
+
+    <div class="note">
+      App 和 Server 通信始终使用 RCP key。RynnBot key 映射只发生在导出或云端 App 边界。
+    </div>
+  </section>
+
+  <section>
+    <h2>页面功能总览</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>区域</th>
+          <th>功能</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>执行端视野</td>
+          <td>显示执行端 image 类型 observation，可多选需要预览的相机。</td>
+        </tr>
+        <tr>
+          <td>执行端状态 / 控制端状态</td>
+          <td>显示 joint_state、ee_pose 等状态；joint_position 和 ee_pose 用图表展示，其他类型展示内容。</td>
+        </tr>
+        <tr>
+          <td>设备选择</td>
+          <td>选择控制端 Server 和执行端 Server，支持自动发现和手动地址。</td>
+        </tr>
+        <tr>
+          <td>控制流</td>
+          <td>配置 observation 到 action 的映射，可支持多条控制流。</td>
+        </tr>
+        <tr>
+          <td>状态监控</td>
+          <td>显示在线状态、遥操状态、采集状态、控制频率、图像频率、接口耗时。</td>
+        </tr>
+        <tr>
+          <td>遥操控制</td>
+          <td>开始/停止遥操。</td>
+        </tr>
+        <tr>
+          <td>数据采集</td>
+          <td>选择采集项，开始/停止采集，查看每个 stream 的采集帧率。</td>
+        </tr>
+        <tr>
+          <td>数据管理</td>
+          <td>查看本机和 Server 资源，回放、导出、删除采集数据，查看日志资源。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>常见问题</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>问题</th>
+          <th>处理方式</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>发现不到 Server</td>
+          <td>使用 Server 终端打印的 <code>LAN gRPC</code> 地址手动添加；确认网络可达。</td>
+        </tr>
+        <tr>
+          <td>执行端没有 action</td>
+          <td>检查执行端 server config 的 <code>manifest.capabilities.actions</code> 是否为 <code>true</code>，以及 integration 是否声明 actions。</td>
+        </tr>
+        <tr>
+          <td>无法拉取历史数据</td>
+          <td>检查执行端 <code>manifest.capabilities.resources</code> 是否为 <code>true</code>。</td>
+        </tr>
+        <tr>
+          <td>遥操延迟大</td>
+          <td>先看页面里的 get_obs 和 run_action 耗时；再检查网络延迟、图像预览数量和设备负载。</td>
+        </tr>
+        <tr>
+          <td>采集项太多</td>
+          <td>保留需要训练的数据。默认不勾选 <code>home</code>、<code>move_to</code> 这类事件型 action。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>

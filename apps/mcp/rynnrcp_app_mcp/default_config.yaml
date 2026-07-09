@@ -1,0 +1,13 @@
+config_type: rynnrcp_app_config
+version: 1
+
+app:
+  name: mcp
+  app_id: mcp_app
+
+defaults:
+  server_name: rcp_server
+  host: 0.0.0.0
+  port: 28403
+  path: /mcp
+  transport: streamable-http

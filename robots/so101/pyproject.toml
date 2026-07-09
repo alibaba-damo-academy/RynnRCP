@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-so101"
+version = "0.1.0"
+description = "SO101 robot bringup and lightweight driver integration for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp>=0.1.0",
+    "feetech-servo-sdk>=1.0.0",
+    "flask>=3.0",
+    "opencv-python-headless>=4.9",
+    "pyserial>=3.5",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+rynnrcp-so101-configure = "rynnrcp_robot_so101.configure_so101_web:main"
+
+[project.entry-points."rynnrcp.robots"]
+so101 = "rynnrcp_robot_so101"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "hardware: requires SO101 robot hardware, serial ports, and cameras",
+    "cloud: requires RynnBot cloud network access and valid credentials",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_robot_so101*", "lerobot_so101*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_so101" = ["config/*.yaml"]

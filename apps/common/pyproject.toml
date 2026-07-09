@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-app-common"
+version = "0.1.0"
+description = "Shared recording, encoding, and app utilities for RynnRCP apps"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp>=0.1.0",
+    "numpy>=1.24",
+    "msgpack>=1.0",
+    "av>=10.0.0",
+    "opencv-python-headless>=4.9",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_app_common*"]

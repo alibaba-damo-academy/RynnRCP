@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-sim"
+version = "0.1.0"
+description = "RynnRCP simulation robot integration (Isaac Sim via ZeroMQ)"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp",
+    "pyzmq>=25.0",
+    "numpy>=1.24",
+    "opencv-python-headless>=4.9",
+]
+
+[tool.setuptools.packages.find]
+include = [
+    "rynnrcp_robot_sim",
+    "rynnrcp_robot_sim.*",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_sim.config" = ["*.yaml"]

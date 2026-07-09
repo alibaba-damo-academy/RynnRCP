@@ -1,0 +1,28 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: atom01
+  robot_name: Atom01
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: true
+integration:
+  config: package://rynnrcp_robot_atom01/config/robot_integration.yaml
+server:
+  interface:
+    host: 127.0.0.1
+    port: 0
+    local_registry: true
+    mdns: false
+components:
+  robot:
+    enabled: true
+    atom_root: null
+    config_path: null
+policies:
+  paths:
+    - ../policies

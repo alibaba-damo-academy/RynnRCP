@@ -1,0 +1,165 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: single_arm
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    simulation: true
+    sim_engine: isaac_sim
+
+components:
+  - name: robot
+    type: arm
+    parent_component: null
+    dof: 8
+    frame: base
+    description: Simulated robot arm in Isaac Sim
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_sim.controller.SimRobotController
+        init:
+          robot_id: ${components.robot.robot_id}
+          server_host: ${components.robot.server_host}
+          server_port: ${components.robot.server_port}
+          n_dof: ${components.robot.n_dof}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current joint positions from simulation
+        frame_rate: 30
+        source:
+          connector: module
+          module_name: rynnrcp_robot_sim.controller.SimRobotController
+          init:
+            robot_id: ${components.robot.robot_id}
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+            n_dof: ${components.robot.n_dof}
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: Target joint positions sent to simulation
+        frame_rate: 30
+        source:
+          connector: module
+          module_name: rynnrcp_robot_sim.controller.SimRobotController
+          init:
+            robot_id: ${components.robot.robot_id}
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+            n_dof: ${components.robot.n_dof}
+          start: start
+          stop: shutdown
+          method_name: set_joint_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+  - name: front
+    type: camera
+    parent_component: robot
+    frame: front_camera
+    description: Front camera
+    enabled: ${components.front_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Front camera image
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: rynnrcp_robot_sim.sim_camera.SimCamera
+          init:
+            name: front_camera
+            device_id: ${components.front_camera.device_id}
+            width: 640
+            height: 360
+            encoding: jpg
+            fps: 30
+            native_compressed: true
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: wrist
+    type: camera
+    parent_component: robot
+    frame: wrist_camera
+    description: Wrist camera
+    enabled: ${components.wrist_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Wrist camera image
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: rynnrcp_robot_sim.sim_camera.SimCamera
+          init:
+            name: wrist_camera
+            device_id: ${components.wrist_camera.device_id}
+            width: 640
+            height: 360
+            encoding: jpg
+            fps: 30
+            native_compressed: true
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: top
+    type: camera
+    parent_component: robot
+    frame: top_camera
+    description: Top camera
+    enabled: ${components.top_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Top camera image
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: rynnrcp_robot_sim.sim_camera.SimCamera
+          init:
+            name: top_camera
+            device_id: ${components.top_camera.device_id}
+            width: 640
+            height: 360
+            encoding: jpg
+            fps: 30
+            native_compressed: true
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter

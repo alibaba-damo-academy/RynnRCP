@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>RCP App 接入 Server 指南</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
+    main { max-width: 980px; margin: 0 auto; padding: 40px 24px 64px; }
+    h1 { margin: 0 0 8px; font-size: 32px; }
+    h2 { margin-top: 34px; padding-top: 10px; border-top: 1px solid #dbe3ef; font-size: 22px; }
+    h3 { margin-top: 24px; font-size: 18px; }
+    p, li { line-height: 1.75; }
+    code { padding: 2px 5px; border-radius: 5px; background: #e5e7eb; }
+    pre { overflow: auto; padding: 16px; border-radius: 8px; background: #111827; color: #e5e7eb; line-height: 1.55; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; background: white; }
+    th, td { padding: 10px 12px; border: 1px solid #dbe3ef; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .note { padding: 12px 14px; border-left: 4px solid #0ea5e9; background: #e0f2fe; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>RCP App 接入 Server 指南</h1>
+  <p>本文面向 App 开发者，说明如何导入 Interface、发现 Server、获取可用工具，以及按协议调用工具。</p>
+
+  <div class="note">
+    App 是 RCP Server 的客户端。App 不直接接触机器人 SDK、串口、相机编号、channel、adapter。
+    App 只使用 Interface、协议工具和协议对象名。
+  </div>
+
+  <h2>一、App 调用链</h2>
+  <pre>App
+  -> rynnrcp.interface
+  -> Interface gRPC
+  -> Server ToolBus
+  -> Service
+  -> runner / controller</pre>
+
+  <p>App 只关心：</p>
+  <ul>
+    <li>怎么发现或指定 Server。</li>
+    <li>Server 暴露了哪些工具。</li>
+    <li>Server Manifest 里有哪些 capabilities、components、observations、actions。</li>
+    <li>如何调用协议工具并处理返回值。</li>
+  </ul>
+
+  <h2>二、导入 Interface</h2>
+  <p>推荐 App 使用协议层封装，不直接操作底层 gRPC。</p>
+  <pre>from rynnrcp.interface import ClientInterface
+from rynnrcp.interface.protocol_client import (
+    RcpProtocolClient,
+    discover_manifests,
+    connect_to_server,
+)</pre>
+
+  <table>
+    <tr><th>对象</th><th>用途</th></tr>
+    <tr><td><code>ClientInterface</code></td><td>管理发现源，并连接 endpoint。</td></tr>
+    <tr><td><code>RcpProtocolClient</code></td><td>协议方法封装，例如 <code>get_manifest</code>、<code>get_observations</code>、<code>run_action_chunk</code>、<code>list_policies</code>。</td></tr>
+    <tr><td><code>discover_manifests</code></td><td>发现可达 Server，并读取每个 Server 的 Manifest。</td></tr>
+    <tr><td><code>connect_to_server</code></td><td>按 <code>robot_id</code> 解析并连接一个 Server。</td></tr>
+  </table>
+
+  <h2>三、发现 Server</h2>
+  <p>开发 App 时通常同时启用本机注册表、mDNS 和静态地址。静态地址适合调试，mDNS 适合局域网自动发现。RCP Server 默认使用动态 gRPC 端口，启动后会在终端打印 <code>Local gRPC</code> 和 <code>LAN gRPC</code> 地址；静态地址应填写这个实际地址。</p>
+  <pre>server_address = "127.0.0.1:54241"  # 替换为 Server 终端打印的 Local gRPC 或 LAN gRPC
+
+interface = ClientInterface.with_defaults(
+    static_addresses=[server_address],
+    local_registry=True,
+    mdns=True,
+)
+
+endpoints = interface.discover(timeout_s=1.5)
+for endpoint in endpoints:
+    print(endpoint.address, endpoint.source, endpoint.metadata)</pre>
+
+  <p>如果只想获得带 Manifest 的可用 Server：</p>
+  <pre>manifests = discover_manifests(interface=interface, timeout_s=1.5)
+for manifest in manifests:
+    print(
+        manifest.robot_id,
+        manifest.robot_name,
+        manifest.embodiment_type,
+        manifest.endpoint.address if manifest.endpoint else "",
+    )</pre>
+
+  <h2>四、连接 Server</h2>
+  <h3>方式 A：用户选择 endpoint</h3>
+  <pre>endpoint = endpoints[0]
+client = RcpProtocolClient(interface.connect(endpoint))</pre>
+
+  <h3>方式 B：按 robot_id 连接</h3>
+  <pre>client = connect_to_server(
+    robot_id="my_robot_follower",
+    interface=interface,
+    timeout_s=1.5,
+)</pre>
+
+  <h3>方式 C：手动地址</h3>
+  <pre>client = RcpProtocolClient.connect(server_address)</pre>
+
+  <h3>连接后统一处理返回</h3>
+  <p><code>RcpProtocolClient</code> 方法返回统一响应对象。业务代码应先检查 <code>ok</code>，成功时读取 <code>payload</code>，失败时显示或记录 <code>message</code>。</p>
+  <pre>response = client.get_manifest(timeout_ms=1000)
+if not response.ok:
+    raise RuntimeError(response.message)
+
+manifest = response.payload</pre>
+
+  <p>工具调用失败时，payload 仍可能包含空结构，App 不应继续按成功数据解析：</p>
+  <pre>{
+  "ok": false,
+  "message": "names is required",
+  "payload": {
+    "observations": []
+  }
+}</pre>
+
+  <h2>五、获取可用工具</h2>
+  <p>Server 的工具来自 ToolBus。App 可以先读取工具列表，用于调试、MCP 暴露或 UI 能力判断。</p>
+  <pre>response = client.list_tools(timeout_ms=1000)
+if not response.ok:
+    raise RuntimeError(response.message)
+
+for tool in response.payload["tools"]:
+    print(tool["name"], tool.get("description", ""))</pre>
+
+  <p>返回 payload 示例：</p>
+  <pre>{
+  "tools": [
+    {
+      "name": "get_manifest",
+      "description": "Get the RCP robot manifest.",
+      "input": {},
+      "output": {
+        "robot_id": "str",
+        "robot_name": "str",
+        "embodiment_type": "str"
+      }
+    },
+    {
+      "name": "get_observations",
+      "description": "Get latest RCP Observation values.",
+      "input": {
+        "names": "list[str] # required Observation names",
+        "sync": "bool # optional; current server only supports false"
+      }
+    }
+  ]
+}</pre>
+
+  <p>业务 App 通常还需要读取 Manifest 和能力描述：</p>
+  <pre>manifest = client.get_manifest(timeout_ms=1000)
+print(manifest.capabilities)
+print(manifest.components)
+print(manifest.observations)
+print(manifest.actions)</pre>
+
+  <p><code>get_manifest</code> 返回 payload 示例：</p>
+  <pre>{
+  "robot_id": "so101_follower",
+  "robot_name": "SO101 Follower",
+  "embodiment_type": "single_arm",
+  "capabilities": {
+    "observations": true,
+    "actions": true,
+    "health": true,
+    "resources": true,
+    "data_collection": true,
+    "policy_service": false
+  },
+  "components": [
+    {
+      "name": "robot",
+      "type": "arm",
+      "dof": 6,
+      "frame": "base"
+    },
+    {
+      "name": "front",
+      "type": "camera",
+      "parent_component": "robot",
+      "frame": "front_camera"
+    }
+  ],
+  "observations": [
+    {
+      "name": "observation.robot.joint_state",
+      "type": "joint_state",
+      "component_name": "robot"
+    }
+  ],
+  "actions": [
+    {
+      "name": "action.robot.joint_position",
+      "type": "joint_position",
+      "component_name": "robot"
+    }
+  ],
+  "model_refs": {
+    "urdf": null,
+    "mjcf": null,
+    "calibration": null,
+    "assets": []
+  },
+  "metadata": {}
+}</pre>
+
+  <h2>六、列出 Observation 和 Action</h2>
+  <p>App 不应写死某个机器人有哪些数据和动作，应从 Server 查询。</p>
+  <pre>obs_resp = client.list_observations(timeout_ms=1000)
+act_resp = client.list_actions(timeout_ms=1000)
+
+observations = obs_resp.payload["observations"] if obs_resp.ok else []
+actions = act_resp.payload["actions"] if act_resp.ok else []
+
+for item in observations:
+    print(item["name"], item["type"], item.get("value_schema"))
+
+for item in actions:
+    print(item["name"], item["type"], item.get("input_schema"))</pre>
+
+  <p><code>list_observations</code> 返回 payload 示例：</p>
+  <pre>{
+  "observations": [
+    {
+      "name": "observation.robot.joint_state",
+      "type": "joint_state",
+      "component_name": "robot",
+      "description": "Current joint positions",
+      "frame_rate": 60,
+      "value_schema": {
+        "type": "object",
+        "fields": {
+          "joint_positions": {
+            "type": "array",
+            "items": "float",
+            "shape": ["dof"],
+            "unit": "rad"
+          }
+        }
+      }
+    },
+    {
+      "name": "observation.front.image",
+      "type": "image",
+      "component_name": "front",
+      "frame_rate": 30,
+      "value_schema": {
+        "type": "object",
+        "fields": {
+          "width": {"type": "int"},
+          "height": {"type": "int"},
+          "encoding": {"type": "string"},
+          "image": {"type": "bytes"}
+        }
+      }
+    }
+  ]
+}</pre>
+
+  <p><code>list_actions</code> 返回 payload 示例：</p>
+  <pre>{
+  "actions": [
+    {
+      "name": "action.robot.joint_position",
+      "type": "joint_position",
+      "component_name": "robot",
+      "description": "Target joint positions",
+      "frame_rate": 60,
+      "input_schema": {
+        "type": "object",
+        "fields": {
+          "joint_positions": {
+            "type": "array",
+            "items": "float",
+            "shape": ["dof"],
+            "unit": "rad"
+          }
+        }
+      }
+    },
+    {
+      "name": "action.robot.move_to",
+      "type": "custom",
+      "component_name": "robot",
+      "description": "Interpolate to target joint positions",
+      "frame_rate": 1,
+      "input_schema": {
+        "type": "object",
+        "fields": {
+          "joint_positions": {
+            "type": "array",
+            "items": "float",
+            "shape": ["dof"],
+            "unit": "rad"
+          }
+        }
+      }
+    }
+  ]
+}</pre>
+
+  <table>
+    <tr><th>字段</th><th>说明</th></tr>
+    <tr><td><code>name</code></td><td>完整协议对象名，App 调用时使用这个值。</td></tr>
+    <tr><td><code>type</code></td><td>协议 value 类型，例如 <code>joint_state</code>、<code>image</code>、<code>joint_position</code>。</td></tr>
+    <tr><td><code>component_name</code></td><td>所属组件名，可用于 UI 分组。</td></tr>
+    <tr><td><code>value_schema/input_schema</code></td><td>用于生成表单、校验入参、渲染不同类型数据。</td></tr>
+  </table>
+
+  <h2>七、调用 Observation 工具</h2>
+  <p>只请求当前页面需要的 observation，不要每次请求全部数据。</p>
+  <pre>selected_names = [item["name"] for item in observations if item["type"] == "joint_state"]
+
+response = client.get_observations(
+    selected_names,
+    sync=False,
+    timeout_ms=1000,
+)
+
+if response.ok:
+    for obs in response.payload["observations"]:
+        print(obs["name"], obs["timestamp"], obs["value"])</pre>
+
+  <p><code>sync=true</code> 当前不实现；App 应传 <code>sync=False</code>。</p>
+
+  <p><code>get_observations</code> 返回 payload 示例：</p>
+  <pre>{
+  "observations": [
+    {
+      "name": "observation.robot.joint_state",
+      "timestamp": 1782216088.02686,
+      "value": {
+        "joint_positions": [
+          -0.1396,
+          -1.4944,
+          1.5941,
+          0.8216,
+          0.3084,
+          0.0205
+        ]
+      }
+    },
+    {
+      "name": "observation.front.image",
+      "timestamp": 1782216088.03120,
+      "value": {
+        "width": 640,
+        "height": 360,
+        "encoding": "jpg",
+        "image": "base64-or-bytes-payload"
+      }
+    }
+  ]
+}</pre>
+
+  <h2>八、调用 Action 工具</h2>
+  <p>App 应先从 <code>list_actions</code> 选择目标 action，再按该 action 的 <code>input_schema</code> 构造 value。</p>
+  <pre>target_action = actions[0]
+action_name = target_action["name"]
+
+frame_value = build_value_from_schema(target_action["input_schema"])
+
+response = client.run_action_chunk(
+    action_name,
+    frames=[frame_value],
+    frame_rate=float(target_action.get("frame_rate") or 1),
+    timeout_ms=1000,
+)
+
+print(response.ok, response.payload, response.message)</pre>
+
+  <p><code>run_action_chunk</code> 返回 payload 示例：</p>
+  <pre>{
+  "accepted_frames": 1
+}</pre>
+
+  <p>停止当前动作：</p>
+  <pre>client.stop_action(reason="user_requested_stop", timeout_ms=1000)</pre>
+
+  <p><code>stop_action</code> 返回 payload 示例：</p>
+  <pre>{
+  "stopped": true
+}</pre>
+
+  <h2>九、调用 Health 工具</h2>
+  <pre>response = client.get_health(timeout_ms=1000)
+if response.ok:
+    for item in response.payload.get("msg", []):
+        print(item)</pre>
+
+  <p><code>get_health</code> 返回 payload 示例：</p>
+  <pre>{
+  "msg": [
+    {
+      "level": "warning",
+      "component_name": "front",
+      "message": "camera frame is stale",
+      "timestamp": 1782216088.05
+    }
+  ]
+}</pre>
+
+  <h2>十、Collection 工具</h2>
+  <p>采集在 Server 端进行。App 只传需要采集的协议对象名和 episode 信息。</p>
+  <pre>names = [
+    item["name"]
+    for item in observations + actions
+    if item["type"] in {"joint_state", "image", "joint_position"}
+]
+
+client.start_collection(
+    names,
+    collection_id="demo_collection",
+    episode_id="episode_000001",
+    task_prompt="demo task",
+    task_description="manual data collection",
+    frame_rate=30,
+    timeout_ms=1000,
+)
+
+status = client.get_collection_status(timeout_ms=1000)
+print(status.payload)
+
+client.stop_collection(timeout_ms=1000)</pre>
+
+  <p><code>start_collection</code> 返回 payload 示例：</p>
+  <pre>{
+  "collection_id": "demo_collection",
+  "episode_id": "episode_000001",
+  "recording": true
+}</pre>
+
+  <p><code>get_collection_status</code> 返回 payload 示例：</p>
+  <pre>{
+  "collection_id": "demo_collection",
+  "episode_id": "episode_000001",
+  "running": true,
+  "duration": 12.5,
+  "per_name_counts": {
+    "observation.robot.joint_state": 750,
+    "observation.front.image": 375,
+    "action.robot.joint_position": 750
+  }
+}</pre>
+
+  <p><code>stop_collection</code> 返回 payload 示例：</p>
+  <pre>{
+  "collection_id": "demo_collection",
+  "episode_id": "episode_000001",
+  "recording": false,
+  "resource_id": "collections/manual/demo_collection/episode_000001"
+}</pre>
+
+  <h2>十一、Resource 数据传输</h2>
+  <p>App 不扫描远端文件系统。日志、采集数据、模型文件、标定文件、导出源数据都通过 Resource 工具传输。只有 Server 的 <code>manifest.capabilities.resources</code> 为 <code>true</code> 时，App 才能读取这些文件类资源。</p>
+  <pre>resources = client.list_resources(limit=100, timeout_ms=1000)
+for resource in resources.payload.get("resources", []):
+    print(resource["resource_id"], resource.get("metadata", {}))
+
+archive = client.prepare_resource_archive(
+    resource_id="some/resource/id",
+    format="zip",
+    timeout_ms=30000,
+)
+
+resource_id = archive.payload["resource"]["resource_id"]
+chunk = client.read_resource(resource_id, offset=0, limit=1024 * 1024, timeout_ms=1000)
+print(chunk.payload["encoding"], chunk.payload["eof"])</pre>
+
+  <p><code>list_resources</code> 返回 payload 示例：</p>
+  <pre>{
+  "resources": [
+    {
+      "resource_id": "res_collection_snapshot_7bc91a2f",
+      "type": "directory",
+      "domain": "data",
+      "name": "teleop_dataset_1781774672/episode_000001",
+      "format": "directory",
+      "mode": "snapshot",
+      "size_bytes": 10485760,
+      "metadata": {
+        "kind": "collection",
+        "collection_id": "teleop_dataset_1781774672",
+        "episode_id": "episode_000001",
+        "task_prompt": "teleop demo"
+      }
+    },
+    {
+      "resource_id": "res_log_3ab22c1",
+      "type": "file",
+      "domain": "log",
+      "name": "server.log",
+      "format": "log",
+      "mode": "live",
+      "size_bytes": 20480,
+      "metadata": {
+        "kind": "log",
+        "relative_path": "server.log"
+      }
+    }
+  ],
+  "next_cursor": null
+}</pre>
+
+  <p><code>prepare_resource_archive</code> 返回 payload 示例：</p>
+  <pre>{
+  "resource": {
+    "resource_id": "res_archive_91a2f7bc",
+    "type": "file",
+    "domain": "data",
+    "name": "demo_collection.zip",
+    "format": "zip",
+    "mode": "snapshot",
+    "size_bytes": 10490000,
+    "metadata": {
+      "kind": "archive",
+      "source_resource_id": "res_collection_snapshot_7bc91a2f"
+    }
+  }
+}</pre>
+
+  <p><code>read_resource</code> 返回 payload 示例：</p>
+  <pre>{
+  "resource_id": "archives/collections/demo_collection.zip",
+  "offset": 0,
+  "next_offset": 1048576,
+  "data": "base64-chunk",
+  "encoding": "base64",
+  "eof": false
+}</pre>
+
+  <h2>十二、App 开发检查清单</h2>
+  <ul>
+    <li>导入 <code>ClientInterface</code> 和 <code>RcpProtocolClient</code>，不要直接依赖 controller。</li>
+    <li>通过发现或手动地址连接 Server。</li>
+    <li>用 <code>list_tools</code> 和 Manifest 判断 Server 能力。</li>
+    <li>用 <code>list_observations/list_actions</code> 构建 UI 和校验输入。</li>
+    <li>调用工具时只使用协议对象名。</li>
+    <li>只请求当前页面需要的 observations。</li>
+    <li>远端数据传输走 Resource 工具。</li>
+    <li>外部平台格式映射放在 App 边界，App 和 Server 之间保持 RCP 协议格式。</li>
+  </ul>
+</main>
+</body>
+</html>

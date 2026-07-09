@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-app-protocol-debug"
+version = "0.1.0"
+description = "Protocol debug web app for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp>=0.1.0",
+]
+
+[project.scripts]
+rynnrcp-protocol-debug = "rynnrcp_app_protocol_debug.protocol_debug_app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_app_protocol_debug*"]

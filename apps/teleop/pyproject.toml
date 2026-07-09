@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-app-teleop"
+version = "0.2.0"
+description = "Teleoperation app for RynnRCP"
+authors = [{name = "RynnRCP Team"}]
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "rynnrcp>=0.1.0",
+    "rynnrcp-app-common>=0.1.0",
+    "msgpack>=1.0",
+    "flask>=3.0",
+    "flask-socketio>=5.0",
+    "opencv-python-headless>=4.9",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+rynnrcp-teleop-app = "rynnrcp_app_teleop.teleop_app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_app_teleop*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_app_teleop" = ["default_config.yaml"]

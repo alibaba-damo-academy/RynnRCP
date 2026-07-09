@@ -1,0 +1,20 @@
+config_type: rynnrcp_core_config
+version: 1
+
+runtime:
+  runner_mode: process
+  startup_timeout_s: 30.0
+
+ipc:
+  thread_transport: memory
+  process_transport: shm
+
+buffer:
+  state_msg_size: 4096
+  action_msg_size: 65536
+  ref_msg_size: 16384
+  image_padding_bytes: 1024
+  shared_data_buffer_size: 104857600
+  shared_data_slot_count: 100
+  shared_image_data_buffer_size: 104857600
+  shared_image_data_slot_count: 10

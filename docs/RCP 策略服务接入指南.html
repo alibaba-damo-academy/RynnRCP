@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>RCP 策略服务接入指南</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2937; background: #f8fafc; }
+    main { max-width: 980px; margin: 0 auto; padding: 40px 24px 64px; }
+    h1 { margin: 0 0 8px; font-size: 32px; }
+    h2 { margin-top: 34px; padding-top: 10px; border-top: 1px solid #dbe3ef; font-size: 22px; }
+    h3 { margin-top: 24px; font-size: 18px; }
+    p, li { line-height: 1.75; }
+    code { padding: 2px 5px; border-radius: 5px; background: #e5e7eb; }
+    pre { overflow: auto; padding: 16px; border-radius: 8px; background: #111827; color: #e5e7eb; line-height: 1.55; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; background: white; }
+    th, td { padding: 10px 12px; border: 1px solid #dbe3ef; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .note { padding: 12px 14px; border-left: 4px solid #0ea5e9; background: #e0f2fe; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>RCP 策略服务接入指南</h1>
+  <p>本文说明 RCP Server 如何发现、加载和运行机器人绑定策略，以及 App 如何通过协议启动策略、更新实时输入和停止策略。</p>
+
+  <div class="note">
+    策略服务只负责 <code>obs dict -> action chunk</code>。策略不直接访问 channel、controller、串口或相机。
+    策略输出统一按 <code>run_action_chunk</code> 入参形状返回，再由 RCP ActionService 下发。
+    这里的策略指可运行的 RL / VLA / policy 控制策略，不是 Manifest 里的 <code>model_refs</code>（URDF、MJCF、mesh、标定等本体资源）。
+  </div>
+
+  <h2>一、最小设计</h2>
+  <p>策略接入者只需要做四件事：</p>
+  <ol>
+    <li>把策略放到一个文件夹。</li>
+    <li>写 <code>policy.yaml</code>，声明需要哪些 observation、接收哪些运行时输入、允许输出哪些 action。</li>
+    <li>写 <code>policy.py</code>，实现 <code>step(obs)</code>。</li>
+    <li>在 Server 配置里加入策略目录。</li>
+  </ol>
+  <p>策略属于机器人构型。每个策略是一个文件夹，文件夹里至少有策略描述文件和推理脚本。</p>
+  <pre>robots/my_robot/policies/
+  stand/
+    policy.yaml
+    policy.py
+    weights.onnx
+  walk/
+    policy.yaml
+    policy.py
+    weights.onnx
+  dance/
+    policy.yaml
+    policy.py
+    weights.onnx
+    motion.npz</pre>
+
+  <p>Server 配置只需要写策略目录：</p>
+  <pre>policies:
+  paths:
+    - ./policies</pre>
+
+  <p><code>PolicyService</code> 启动时扫描 <code>policies.paths</code> 下所有 <code>policy.yaml</code>，并把可用策略暴露给协议层。相对路径以 Server 配置文件所在目录为基准；如果 Server 由内存配置启动，则以机器人本地目录为基准。</p>
+
+  <h2>二、接入前先确认三件事</h2>
+  <p>策略不是直接读相机、串口或共享内存。策略只消费 RCP 已经暴露出来的 Observation，并输出 RCP 已经暴露出来的 Action。</p>
+
+  <h3>1. 确认可读取的 Observation</h3>
+  <p>先调用 <code>list_observations</code>，找到策略需要的状态和图像。</p>
+  <pre>{
+  "observations": [
+    {
+      "name": "observation.robot.joint_state",
+      "type": "joint_state",
+      "value_schema": {
+        "type": "object",
+        "fields": {
+          "joint_positions": {"type": "array", "items": "float", "shape": [6], "unit": "rad"}
+        }
+      }
+    },
+    {
+      "name": "observation.front_camera.image",
+      "type": "image"
+    }
+  ]
+}</pre>
+
+  <p>然后在 <code>policy.yaml</code> 里按组件和对象名引用它们。用户不需要手写完整 RCP key，PolicyService 会拼成 <code>observation.&lt;component&gt;.&lt;name&gt;</code>：</p>
+  <pre>inputs:
+  observations:
+    - component: robot
+      name: joint_state
+    - component: front_camera
+      name: image</pre>
+
+  <h3>2. 确认可执行的 Action</h3>
+  <p>再调用 <code>list_actions</code>，找到策略最终要调用的完整 Action 名和单帧 <code>value</code> 结构。</p>
+  <pre>{
+  "actions": [
+    {
+      "name": "action.robot.joint_position",
+      "type": "joint_position",
+      "input_schema": {
+        "type": "object",
+        "fields": {
+          "joint_positions": {"type": "array", "items": "float", "shape": [6], "unit": "rad"}
+        }
+      }
+    }
+  ]
+}</pre>
+
+  <p>策略输出的 <code>name</code> 必须直接写完整 Action 名：</p>
+  <pre>{
+  "name": "action.robot.joint_position",
+  "frame_rate": 50,
+  "frames": [
+    {"joint_positions": [0, 0, 0, 0, 0, 0]}
+  ]
+}</pre>
+
+  <h3>3. 确认 App 运行时要传什么</h3>
+  <p>只有 App 需要动态改变的内容才写到 <code>runtime_inputs</code>，例如速度、方向、prompt、max_steps。固定配置不要塞到协议里，直接写在策略代码或策略目录文件中。</p>
+  <table>
+    <tr><th>输入</th><th>建议写法</th><th>原因</th></tr>
+    <tr><td>行走速度</td><td><code>runtime_inputs.velocity_xyz</code>，配置 <code>stale_after_ms</code></td><td>App 会实时更新，断连后应回到默认值。</td></tr>
+    <tr><td>转向速度</td><td><code>runtime_inputs.yaw_rate</code>，配置 <code>stale_after_ms</code></td><td>连续控制量，不能永久沿用旧值。</td></tr>
+    <tr><td>VLA 任务文本</td><td><code>runtime_inputs.prompt</code>，不配置 <code>stale_after_ms</code></td><td>任务文本通常传一次后持续生效。</td></tr>
+    <tr><td>策略权重路径</td><td>放在策略目录里，由 <code>load(policy_dir)</code> 读取</td><td>不是运行时输入。</td></tr>
+  </table>
+
+  <h2>三、策略描述文件</h2>
+  <p><code>policy.yaml</code> 描述策略名称、入口、输入和输出。RL 和 VLA 都返回 <code>run_action_chunk</code> 入参形状，区别只是 <code>frames</code> 数量不同。</p>
+  <h3>RL 单帧策略示例</h3>
+  <p>RL 策略每次推理返回 1 帧 action chunk。PolicyService 按返回值里的 <code>frame_rate</code> 控制下一次推理时间。</p>
+  <pre>policy_id: walk
+name: Walk Policy
+entrypoint: policy.py:WalkPolicy
+
+inputs:
+  observations:
+    - component: robot
+      name: joint_state
+  runtime_inputs:
+    velocity_xyz:
+      type: array
+      items: float
+      shape: [3]
+      default: [0, 0, 0]
+      stale_after_ms: 500
+    yaw_rate:
+      type: float
+      default: 0
+      stale_after_ms: 500
+
+outputs:
+  actions:
+    - component: robot
+      name: joint_position</pre>
+
+  <h3>VLA 多帧策略示例</h3>
+  <p>VLA 策略一次推理返回多帧 action chunk。PolicyService 等这段 chunk 的时间窗口结束后，再做下一次推理。</p>
+  <pre>policy_id: pick_place
+name: Pick Place VLA
+entrypoint: policy.py:PickPlacePolicy
+
+inputs:
+  observations:
+    - component: robot
+      name: joint_state
+    - component: front_camera
+      name: image
+  runtime_inputs:
+    prompt:
+      type: string
+      default: PickPlace
+
+outputs:
+  actions:
+    - component: robot
+      name: joint_position</pre>
+
+  <table>
+    <tr><th>字段</th><th>必选</th><th>说明</th></tr>
+    <tr><td><code>policy_id</code></td><td>是</td><td>策略唯一 ID。App 调用 <code>start_policy</code> 时使用。</td></tr>
+    <tr><td><code>name</code></td><td>是</td><td>展示名称。</td></tr>
+    <tr><td><code>entrypoint</code></td><td>是</td><td>推理类入口，格式为 <code>文件.py:类名</code>。</td></tr>
+    <tr><td><code>inputs.observations</code></td><td>是</td><td>Observation 引用列表，每项写 <code>component</code> 和 <code>name</code>。</td></tr>
+    <tr><td><code>inputs.runtime_inputs</code></td><td>否</td><td>App 运行时传给策略的输入，例如 prompt、速度向量、yaw rate。这里不用 <code>params</code>，避免和协议请求外层 <code>params</code> 混淆。</td></tr>
+    <tr><td><code>stale_after_ms</code></td><td>否</td><td>某个运行时输入多久没更新就回到 <code>default</code>。速度、方向这类连续控制建议配置，prompt 这类任务输入通常不需要。</td></tr>
+    <tr><td><code>outputs.actions</code></td><td>是</td><td>Action 引用列表，每项写 <code>component</code> 和 <code>name</code>。</td></tr>
+  </table>
+
+  <h3>字段怎么写</h3>
+  <table>
+    <tr><th>字段</th><th>怎么写</th><th>用户需要注意什么</th></tr>
+    <tr><td><code>policy_id</code></td><td>短小稳定，例如 <code>walk</code>、<code>pick_place</code></td><td>App 后续用它启动策略。不要用中文、路径或版本号当 ID。</td></tr>
+    <tr><td><code>name</code></td><td>人类可读名称，例如 <code>Walk Policy</code></td><td>只用于展示，不参与协议匹配。</td></tr>
+    <tr><td><code>entrypoint</code></td><td><code>policy.py:WalkPolicy</code></td><td>冒号前是文件名，冒号后是类名。文件路径相对当前策略目录。</td></tr>
+    <tr><td><code>inputs.observations</code></td><td><code>- component: robot<br>  name: joint_state</code></td><td>后台解析为 <code>observation.robot.joint_state</code>，并用 <code>list_observations</code> 校验。</td></tr>
+    <tr><td><code>inputs.runtime_inputs</code></td><td>使用 <code>float/int/bool/string/array/object/bytes</code></td><td>类型写法和 RCP <code>value_schema</code> 保持一致。</td></tr>
+    <tr><td><code>outputs.actions</code></td><td><code>- component: robot<br>  name: joint_position</code></td><td>后台解析为 <code>action.robot.joint_position</code>，并用 <code>list_actions</code> 校验。</td></tr>
+  </table>
+
+  <h3>完整 policy.yaml 示例</h3>
+  <pre>policy_id: walk
+name: Walk Policy
+entrypoint: policy.py:WalkPolicy
+
+inputs:
+  observations:
+    - component: robot
+      name: joint_state
+  runtime_inputs:
+    velocity_xyz:
+      type: array
+      items: float
+      shape: [3]
+      default: [0, 0, 0]
+      stale_after_ms: 500
+    yaw_rate:
+      type: float
+      default: 0
+      stale_after_ms: 500
+
+outputs:
+  actions:
+    - component: robot
+      name: joint_position</pre>
+
+  <h2>四、策略脚本接口</h2>
+  <p>用户实现一个简单类即可。只有 <code>step(obs)</code> 必须实现，<code>load(policy_dir)</code> 和 <code>reset(runtime_inputs)</code> 是可选钩子。</p>
+  <table>
+    <tr><th>方法</th><th>必选</th><th>说明</th></tr>
+    <tr><td><code>load(policy_dir)</code></td><td>否</td><td>策略加载时调用一次，可在这里加载权重、ONNX 文件或其它资源。</td></tr>
+    <tr><td><code>reset(runtime_inputs)</code></td><td>否</td><td>每次 <code>start_policy</code> 或策略切换前调用，用于清空策略内部状态。</td></tr>
+    <tr><td><code>step(obs)</code></td><td>是</td><td>执行一次推理，返回 <code>run_action_chunk</code> 入参形状。</td></tr>
+  </table>
+  <h3>RL 单帧输出</h3>
+  <pre>class WalkPolicy:
+    def load(self, policy_dir):
+        pass
+
+    def reset(self, runtime_inputs):
+        pass
+
+    def step(self, obs):
+        return {
+            "name": "action.robot.joint_position",
+            "frame_rate": 50,
+            "frames": [
+                {"joint_positions": [0, 0, 0, 0, 0, 0]}
+            ]
+        }</pre>
+
+  <h3>VLA 多帧输出</h3>
+  <pre>class PickPlacePolicy:
+    def load(self, policy_dir):
+        pass
+
+    def reset(self, runtime_inputs):
+        pass
+
+    def step(self, obs):
+        return {
+            "name": "action.robot.joint_position",
+            "frame_rate": 50,
+            "frames": [
+                {"joint_positions": [0, 0, 0, 0, 0, 0]},
+                {"joint_positions": [0.1, 0, 0, 0, 0, 0]}
+            ]
+        }</pre>
+
+  <p><code>step(obs)</code> 接收的 <code>obs</code> 包含两类数据：</p>
+  <pre>{
+  "observation.robot.joint_state": {
+    "joint_positions": [0.1, -1.5, 1.7, 0.7, -0.2, 0.0]
+  },
+  "velocity_xyz": [0.2, 0.0, 0.0],
+  "yaw_rate": 0.1
+}</pre>
+
+  <p>输出里的 <code>name</code> 必须是完整 RCP action name，并且必须出现在 <code>outputs.actions</code> 中。对于 SO101 关节控制，就是 <code>action.robot.joint_position</code>。</p>
+
+  <h3>完整 policy.py 示例</h3>
+  <pre>from pathlib import Path
+
+
+class WalkPolicy:
+    def load(self, policy_dir):
+        self.policy_dir = Path(policy_dir)
+        self.last_runtime_inputs = {}
+
+    def reset(self, runtime_inputs):
+        self.last_runtime_inputs = dict(runtime_inputs or {})
+
+    def step(self, obs):
+        state = obs["observation.robot.joint_state"]["joint_positions"]
+        velocity = obs.get("velocity_xyz", [0, 0, 0])
+        yaw_rate = obs.get("yaw_rate", 0)
+
+        # 示例只返回当前位置。真实策略在这里调用 ONNX / PyTorch / 自定义逻辑。
+        joint_positions = list(state)
+
+        return {
+            "name": "action.robot.joint_position",
+            "frame_rate": 50,
+            "frames": [
+                {"joint_positions": joint_positions}
+            ]
+        }</pre>
+
+  <p>这个类只依赖 Python 入参，不依赖 RCP 内部对象。PolicyService 会负责读取 Observation、合并 runtime_inputs、调用 <code>step(obs)</code>，再把返回结果交给 ActionService。</p>
+
+  <h3>step 返回值要求</h3>
+  <table>
+    <tr><th>字段</th><th>要求</th><th>错误时怎么处理</th></tr>
+    <tr><td><code>name</code></td><td>必须是完整 RCP Action name，并在 <code>outputs.actions</code> 中</td><td>拒绝执行本次输出。</td></tr>
+    <tr><td><code>frames</code></td><td>必须是非空数组，每一项都是目标 Action 的输入对象</td><td>拒绝执行本次输出。</td></tr>
+        <tr><td><code>frame_rate</code></td><td>必须大于 0</td><td>拒绝执行本次输出。</td></tr>
+  </table>
+
+  <h2>五、协议接口</h2>
+  <p>策略服务只暴露四个协议方法。</p>
+
+  <table>
+    <tr><th>方法</th><th>用途</th></tr>
+    <tr><td><code>list_policies</code></td><td>列出策略描述和当前状态。</td></tr>
+    <tr><td><code>start_policy</code></td><td>启动策略。如果已有策略运行，则切换到新策略。</td></tr>
+    <tr><td><code>update_policy_inputs</code></td><td>更新运行时参数。只保留最新值，不排队。</td></tr>
+    <tr><td><code>stop_policy</code></td><td>停止当前策略。</td></tr>
+  </table>
+
+  <h3>list_policies</h3>
+  <pre>{
+  "method": "list_policies",
+  "params": {}
+}</pre>
+
+  <pre>{
+  "ok": true,
+  "payload": {
+    "policies": [
+      {
+        "policy_id": "walk",
+        "name": "Walk Policy",
+        "inputs": {
+          "observations": [
+            {"component": "robot", "name": "joint_state", "key": "observation.robot.joint_state"}
+          ],
+          "runtime_inputs": {
+            "velocity_xyz": {
+              "type": "array",
+              "items": "float",
+              "shape": [3],
+              "default": [0, 0, 0]
+            }
+          }
+        },
+        "outputs": {
+          "actions": [
+            {"component": "robot", "name": "joint_position", "key": "action.robot.joint_position"}
+          ]
+        }
+      }
+    ],
+    "active_policy_id": "stand",
+    "last_error": ""
+  }
+}</pre>
+
+  <h3>start_policy</h3>
+  <p>启动策略，或从当前策略切换到另一个策略。启动后默认持续推理，直到调用 <code>stop_policy</code> 或切换到另一个策略。切换时 Server 会先加载并 reset 新策略，成功后再停止旧策略。</p>
+  <pre>{
+  "method": "start_policy",
+  "params": {
+    "policy_id": "walk",
+    "runtime_inputs": {
+      "velocity_xyz": [0, 0, 0],
+      "yaw_rate": 0
+    }
+  }
+}</pre>
+
+  <pre>{
+  "ok": true,
+  "payload": {
+    "active_policy_id": "walk"
+  }
+}</pre>
+
+  <h3>update_policy_inputs</h3>
+  <p>实时输入更新当前运行策略的最新值，不进入队列。后续推理都会使用这个最新值，直到 App 再次更新、策略停止、策略切换，或该输入按 <code>stale_after_ms</code> 回到默认值。</p>
+  <p>例如行走 RL 策略收到 <code>velocity_xyz = [0.2, 0, 0]</code> 后，后续每次 <code>step()</code> 都会按这个速度推理；要停下需要更新为 <code>[0, 0, 0]</code>，或等待超时回到默认值。</p>
+  <p><code>runtime_inputs</code> 不做“单次生效”语义。需要触发一次性动作时，使用已有 ActionService，例如 <code>action.robot.home</code>、<code>action.robot.move_to</code> 或其他自定义 action。</p>
+  <pre>{
+  "method": "update_policy_inputs",
+  "params": {
+    "runtime_inputs": {
+      "velocity_xyz": [0.2, 0, 0],
+      "yaw_rate": 0.1
+    }
+  }
+}</pre>
+
+  <pre>{
+  "ok": true,
+  "payload": {
+    "active_policy_id": "walk",
+    "runtime_inputs": {
+      "velocity_xyz": [0.2, 0, 0],
+      "yaw_rate": 0.1
+    }
+  }
+}</pre>
+
+  <h3>stop_policy</h3>
+  <pre>{
+  "method": "stop_policy",
+  "params": {}
+}</pre>
+
+  <pre>{
+  "ok": true,
+  "payload": {
+    "stopped_policy_id": "walk"
+  }
+}</pre>
+
+  <h2>六、切换规则</h2>
+  <p>App 不应该自己执行 <code>stop_policy</code> 再 <code>start_policy</code>。这样会扩大控制空窗。</p>
+  <p>正确方式是直接调用 <code>start_policy(dance)</code>。Server 内部执行：</p>
+  <pre>stand 正在运行
+App 调用 start_policy(dance)
+PolicyService 加载 dance
+PolicyService reset dance
+stand 停止
+dance 接管输出</pre>
+
+  <p>如果新策略加载失败或 reset 失败，旧策略继续运行。</p>
+
+  <h2>七、运行时行为</h2>
+  <pre>PolicyService 运行循环：
+  -> 按 policy.yaml 读取最新 observations
+  -> 合并最新 runtime_inputs
+  -> 调用 active_policy.step(obs)
+  -> 得到 run_action_chunk 参数形状
+  -> 检查 name 是否在 policy.yaml 的 outputs.actions 解析结果中
+  -> 调用 ActionService/run_action_chunk
+  -> 按 frames 数量和 frame_rate 控制下一次推理时间</pre>
+
+  <p>策略输出统一为 <code>run_action_chunk</code> 的入参形状。RL 返回 1 帧，VLA 返回多帧。</p>
+  <p>节奏也统一由返回值决定：<code>len(frames) / frame_rate</code> 是这次输出覆盖的动作时长。RL 返回 1 帧且 <code>frame_rate=50</code>，下一次推理约在 20ms 后；VLA 返回 20 帧且 <code>frame_rate=50</code>，下一次推理约在 400ms 后。</p>
+  <pre># RL：1 帧 chunk
+{
+  "name": "action.robot.joint_position",
+  "frame_rate": 50,
+  "frames": [
+    {"joint_positions": [0, 0, 0, 0, 0, 0]}
+  ]
+}
+
+# VLA：多帧 chunk
+{
+  "name": "action.robot.joint_position",
+  "frame_rate": 50,
+  "frames": [
+    {"joint_positions": [0, 0, 0, 0, 0, 0]},
+    {"joint_positions": [0.1, 0, 0, 0, 0, 0]}
+  ]
+}</pre>
+
+  <p>配置了 <code>stale_after_ms</code> 的输入超时时，使用 <code>policy.yaml</code> 中声明的默认值。例如行走策略没有继续收到速度指令时，<code>velocity_xyz</code> 回到 <code>[0, 0, 0]</code>，策略保持站立。</p>
+
+  <h2>八、App 调用示例</h2>
+  <h3>启动站立策略</h3>
+  <pre>start_policy({
+  "policy_id": "stand"
+})</pre>
+
+  <h3>切换到行走策略</h3>
+  <pre>start_policy({
+  "policy_id": "walk",
+  "runtime_inputs": {
+    "velocity_xyz": [0, 0, 0],
+    "yaw_rate": 0
+  }
+})</pre>
+
+  <h3>摇杆实时更新速度</h3>
+  <pre>update_policy_inputs({
+  "runtime_inputs": {
+    "velocity_xyz": [0.2, 0, 0],
+    "yaw_rate": 0.1
+  }
+})</pre>
+
+  <h3>启动 VLA 操作策略</h3>
+  <pre>start_policy({
+  "policy_id": "pick_place",
+  "runtime_inputs": {
+    "prompt": "PickPlace"
+  }
+})</pre>
+
+  <h3>切换到跳舞策略</h3>
+  <pre>start_policy({
+  "policy_id": "dance"
+})</pre>
+
+  <h3>切回站立策略</h3>
+  <pre>start_policy({
+  "policy_id": "stand"
+})</pre>
+
+  <h2>九、接入检查清单</h2>
+  <table>
+    <tr><th>检查项</th><th>期望结果</th></tr>
+    <tr><td>策略目录</td><td>目录下存在 <code>policy.yaml</code> 和 <code>policy.py</code>。</td></tr>
+    <tr><td><code>entrypoint</code></td><td>能导入到对应类，例如 <code>policy.py:WalkPolicy</code>。</td></tr>
+    <tr><td>Observation</td><td><code>inputs.observations</code> 每项都有 <code>component</code> 和 <code>name</code>，解析后的 <code>key</code> 能在 <code>list_observations</code> 中找到。</td></tr>
+    <tr><td>Action</td><td><code>outputs.actions</code> 每项都有 <code>component</code> 和 <code>name</code>，解析后的 <code>key</code> 能在 <code>list_actions</code> 中找到。</td></tr>
+    <tr><td>运行时输入</td><td>类型只使用 <code>float/int/bool/string/array/object/bytes</code>。</td></tr>
+    <tr><td>连续控制输入</td><td>速度、方向、力这类输入设置了 <code>stale_after_ms</code> 和安全 <code>default</code>。</td></tr>
+    <tr><td><code>step</code> 输出</td><td>返回 <code>name</code>、非空 <code>frames</code>、合法 <code>frame_rate</code>。</td></tr>
+  </table>
+
+  <h2>十、边界</h2>
+  <ul>
+    <li>协议不暴露 ONNX、TensorRT、PyTorch 等运行时细节。</li>
+    <li>策略依赖问题先不进入协议，默认本地环境可运行。</li>
+    <li>策略服务不直接写机器人控制代码，真实执行仍走 ActionService。</li>
+    <li>实时参数只保留最新值，不保证每次 App 更新都被策略消费。</li>
+    <li>实时参数只有持续生效一种语义，不增加额外配置。</li>
+  </ul>
+</main>
+</body>
+</html>

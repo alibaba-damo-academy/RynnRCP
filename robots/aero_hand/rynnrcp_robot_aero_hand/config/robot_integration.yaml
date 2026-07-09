@@ -1,0 +1,92 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: ${components.robot.embodiment_type}
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata: {}
+
+components:
+  - name: robot
+    type: gripper
+    parent_component: null
+    frame: hand
+    description: Aero Hand vector robot
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_aero_hand.controller.AeroHandController
+        init:
+          robot_id: ${manifest.robot_id}
+          mode: ${components.robot.mode}
+          port: ${components.robot.port}
+          left_port: ${components.robot.left_port}
+          right_port: ${components.robot.right_port}
+          baudrate: ${components.robot.baudrate}
+          homing_on_connect: ${components.robot.homing_on_connect}
+          homing_timeout_s: ${components.robot.homing_timeout_s}
+          homing_settle_s: ${components.robot.homing_settle_s}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current Aero Hand compact joint vector
+        frame_rate: 60
+        source:
+          connector: module
+          module_name: rynnrcp_robot_aero_hand.controller.AeroHandController
+          init:
+            robot_id: ${manifest.robot_id}
+            mode: ${components.robot.mode}
+            port: ${components.robot.port}
+            left_port: ${components.robot.left_port}
+            right_port: ${components.robot.right_port}
+            baudrate: ${components.robot.baudrate}
+            homing_on_connect: ${components.robot.homing_on_connect}
+            homing_timeout_s: ${components.robot.homing_timeout_s}
+            homing_settle_s: ${components.robot.homing_settle_s}
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: Target Aero Hand compact joint vector
+        frame_rate: 60
+        source:
+          connector: module
+          module_name: rynnrcp_robot_aero_hand.controller.AeroHandController
+          init:
+            robot_id: ${manifest.robot_id}
+            mode: ${components.robot.mode}
+            port: ${components.robot.port}
+            left_port: ${components.robot.left_port}
+            right_port: ${components.robot.right_port}
+            baudrate: ${components.robot.baudrate}
+            homing_on_connect: ${components.robot.homing_on_connect}
+            homing_timeout_s: ${components.robot.homing_timeout_s}
+            homing_settle_s: ${components.robot.homing_settle_s}
+          start: start
+          stop: shutdown
+          method_name: set_joint_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter

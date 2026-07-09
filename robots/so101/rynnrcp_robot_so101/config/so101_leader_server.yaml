@@ -1,0 +1,23 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: so101_leader
+  robot_name: SO101 Leader
+  capabilities:
+    observations: true
+    actions: false
+    health: true
+    resources: true
+    data_collection: false
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_so101/config/robot_integration.yaml
+components:
+  robot:
+    enabled: true
+    role: leader
+    port: /dev/cu.usbmodem5B421350951
+  front_camera:
+    enabled: false
+  wrist_camera:
+    enabled: false

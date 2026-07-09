@@ -1,0 +1,22 @@
+policy_id: stand
+name: Stand
+entrypoint: policy.py:Policy
+
+inputs:
+  observations:
+    - component: robot
+      name: joint_state
+    - component: robot
+      name: imu
+  runtime_inputs:
+    cmd_vel:
+      type: array
+      items: float
+      shape: [3]
+      default: [0.0, 0.0, 0.0]
+      stale_after_ms: 500
+
+outputs:
+  actions:
+    - component: robot
+      name: joint_position
