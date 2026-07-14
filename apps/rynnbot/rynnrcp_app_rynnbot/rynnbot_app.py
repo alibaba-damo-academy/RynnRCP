@@ -829,13 +829,15 @@ class RynnBotApp(AppLifecycle):
                     if encoding in ("jpg", "jpeg"):
                         # Already JPEG, use raw bytes directly
                         encoded = raw
+                        img = Image.open(io.BytesIO(encoded))
+                        shape = [int(img.height), int(img.width), 3]
                     else:
                         # Re-encode to JPEG
                         img = Image.open(io.BytesIO(raw)).convert("RGB")
                         jpeg_buf = io.BytesIO()
                         img.save(jpeg_buf, format="JPEG", quality=self._image_jpeg_quality)
                         encoded = jpeg_buf.getvalue()
-                    shape = [len(encoded)]
+                        shape = [int(img.height), int(img.width), 3]
                     image_format = "jpeg"
                 else:
                     # npy_gzip mode: decode → numpy → gzip
