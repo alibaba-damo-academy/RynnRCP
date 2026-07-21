@@ -1,0 +1,68 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: mobile_manipulator
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    teleop_value_names:
+      - shoulder_pan
+      - shoulder_lift
+      - elbow_flex
+      - wrist_flex
+      - wrist_roll
+      - gripper
+      - base_x_velocity
+      - base_y_velocity
+      - base_yaw_velocity
+
+components:
+  - name: robot
+    type: arm
+    parent_component: null
+    dof: 9
+    frame: leader_base
+    description: LeKiwi leader arm and keyboard teleoperation state
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source: &leader_source
+        connector: module
+        module_name: rynnrcp_robot_lekiwi.leader_controller.LeKiwiLeaderController
+        init:
+          robot_id: ${manifest.robot_id}
+          port: ${components.robot.port}
+          calibration_dir: ${components.robot.calibration_dir}
+          state_read_hz: ${components.robot.state_read_hz}
+          slow_xy_m_s: ${components.keyboard.slow_xy_m_s}
+          medium_xy_m_s: ${components.keyboard.medium_xy_m_s}
+          fast_xy_m_s: ${components.keyboard.fast_xy_m_s}
+          slow_yaw_rad_s: ${components.keyboard.slow_yaw_rad_s}
+          medium_yaw_rad_s: ${components.keyboard.medium_yaw_rad_s}
+          fast_yaw_rad_s: ${components.keyboard.fast_yaw_rad_s}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Six leader-arm values followed by keyboard x, y, and yaw velocity
+        frame_rate: 60
+        source:
+          <<: *leader_source
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter

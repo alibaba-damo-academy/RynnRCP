@@ -108,6 +108,90 @@ components:
         codec:
           adapter: ProtocolImageInputAdapter
 
+  - name: top
+    type: camera
+    parent_component: robot
+    frame: top_camera
+    description: Top camera
+    enabled: ${components.top_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Top camera image
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: rynnrcp_robot_sim.sim_camera.SimCamera
+          init:
+            name: top_camera
+            device_id: ${components.top_camera.device_id}
+            width: 640
+            height: 360
+            encoding: jpg
+            fps: 30
+            native_compressed: true
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: left
+    type: camera
+    parent_component: robot
+    frame: left_camera
+    description: Left camera
+    enabled: ${components.left_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Left camera image
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: rynnrcp_robot_sim.sim_camera.SimCamera
+          init:
+            name: left_camera
+            device_id: ${components.left_camera.device_id}
+            width: 640
+            height: 360
+            encoding: jpg
+            fps: 30
+            native_compressed: true
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: right
+    type: camera
+    parent_component: robot
+    frame: right_camera
+    description: Right camera
+    enabled: ${components.right_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Right camera image
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: rynnrcp_robot_sim.sim_camera.SimCamera
+          init:
+            name: right_camera
+            device_id: ${components.right_camera.device_id}
+            width: 640
+            height: 360
+            encoding: jpg
+            fps: 30
+            native_compressed: true
+            server_host: ${components.robot.server_host}
+            server_port: ${components.robot.server_port}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
+
   - name: wrist
     type: camera
     parent_component: robot
@@ -135,4 +219,3 @@ components:
           method_name: read
         codec:
           adapter: ProtocolImageInputAdapter
-config_type: rynnrcp_robot_integration

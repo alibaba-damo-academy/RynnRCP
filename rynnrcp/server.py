@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 import uuid
@@ -17,11 +18,13 @@ from rynnrcp.interface.client import ClientInterface
 from rynnrcp.interface.method_dispatcher import InterfaceMethodDispatcher
 from rynnrcp.interface.server import ServerInterface
 from rynnrcp.interface.protocol_client import ServerManifest, discover_manifests
+from rynnrcp.visualization import VisualizationServer
 
 
 RuntimeFactory = Callable[[RuntimeConfig], Any]
 DUPLICATE_CHECK_TIMEOUT_S = 0.5
 DUPLICATE_CHECK_REQUEST_TIMEOUT_MS = 500
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,6 +38,7 @@ class RynnRCPServer:
     def __post_init__(self) -> None:
         self._runtime: Any | None = None
         self._interface_server: ServerInterface | None = None
+        self._visualization_server: VisualizationServer | None = None
         self._server_instance_id = uuid.uuid4().hex
 
     @property
@@ -46,6 +50,18 @@ class RynnRCPServer:
         return self._interface_server
 
     @property
+    def visualization_server(self) -> VisualizationServer | None:
+        return self._visualization_server
+
+    @property
+    def visualization_url(self) -> str | None:
+        return self._visualization_server.url if self._visualization_server is not None else None
+
+    @property
+    def visualization_urls(self) -> list[str]:
+        return self._visualization_server.urls if self._visualization_server is not None else []
+
+    @property
     def server_instance_id(self) -> str:
         return self._server_instance_id
 
@@ -54,7 +70,7 @@ class RynnRCPServer:
         return self._interface_server.bound_port if self._interface_server is not None else 0
 
     def start(self) -> None:
-        if self._runtime is not None or self._interface_server is not None:
+        if self._runtime is not None or self._interface_server is not None or self._visualization_server is not None:
             raise RuntimeError("RynnRCPServer is already started")
 
         runtime = self._create_runtime()
@@ -66,8 +82,11 @@ class RynnRCPServer:
             mdns=bool(interface_cfg.get("mdns", True)),
         )
         runtime.start()
+        visualization_server = _start_visualization_server(runtime, server_cfg)
         try:
             metadata = _server_metadata(runtime, self.config, server_cfg)
+            if visualization_server is not None:
+                metadata["visualization_url"] = visualization_server.url
             handler = InterfaceMethodDispatcher(
                 runtime.bus,
                 server_id=str(server_cfg["id"]),
@@ -86,20 +105,27 @@ class RynnRCPServer:
             )
             interface_server.start()
         except Exception:
+            if visualization_server is not None:
+                visualization_server.stop()
             runtime.stop()
             raise
 
         self._runtime = runtime
         self._interface_server = interface_server
+        self._visualization_server = visualization_server
 
     def stop(self) -> None:
         interface_server = self._interface_server
+        visualization_server = self._visualization_server
         runtime = self._runtime
         self._interface_server = None
+        self._visualization_server = None
         self._runtime = None
 
         if interface_server is not None:
             interface_server.stop()
+        if visualization_server is not None:
+            visualization_server.stop()
         if runtime is not None:
             runtime.stop()
 
@@ -147,6 +173,24 @@ def _create_interface_server(
 def _interface_config(server_cfg: Mapping[str, Any]) -> dict[str, Any]:
     value = server_cfg.get("interface")
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _start_visualization_server(runtime: Any, server_cfg: Mapping[str, Any]) -> VisualizationServer | None:
+    raw = server_cfg.get("visualization")
+    config = dict(raw) if isinstance(raw, Mapping) else {}
+    if not bool(config.get("enabled", True)):
+        return None
+    server = VisualizationServer(
+        runtime,
+        host=str(config.get("host") or "127.0.0.1"),
+        port=int(config.get("port", 8092)),
+    )
+    try:
+        server.start()
+    except Exception:
+        logger.warning("Failed to start built-in visualization", exc_info=True)
+        return None
+    return server
 
 
 def _reject_duplicate_robot_id(

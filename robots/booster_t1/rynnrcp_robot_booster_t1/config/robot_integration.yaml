@@ -1,0 +1,129 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: humanoid
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    control_level: high
+
+components:
+  - name: robot
+    type: humanoid
+    parent_component: null
+    dof: 23
+    frame: base_link
+    description: Booster T1 high-level SDK controller
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_booster_t1.controller.BoosterT1HighController
+        init: &robot_init
+          robot_id: ${manifest.robot_id}
+          net: ${components.robot.net}
+          domain_id: ${components.robot.domain_id}
+          max_x: ${components.robot.max_x}
+          max_y: ${components.robot.max_y}
+          max_yaw: ${components.robot.max_yaw}
+          velocity_duration_s: ${components.robot.velocity_duration_s}
+          velocity_hz: ${components.robot.velocity_hz}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: mode
+        type: robot_state
+        description: "Current Booster T1 high-level mode: damping, prepare, walking, custom, unknown."
+        frame_rate: 5
+        source:
+          connector: module
+          module_name: rynnrcp_robot_booster_t1.controller.BoosterT1HighController
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: get_mode
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: prepare
+        type: prearranged
+        description: "Switch to PREP/prepare mode. Precondition: robot is powered on and safely supported. Postcondition: mode.name should be prepare; run this before walking."
+        frame_rate: 1
+        source: &prepare_source
+          connector: module
+          module_name: rynnrcp_robot_booster_t1.controller.BoosterT1HighController
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: prepare
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: walking
+        type: prearranged
+        description: "Switch to WALK/walking mode. Precondition: mode is prepare and robot is standing safely. Postcondition: base_velocity is allowed."
+        frame_rate: 1
+        source:
+          <<: *prepare_source
+          method_name: walking
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: damping
+        type: prearranged
+        description: "Switch to DAMP/damping mode. Precondition: robot is supported or safe to relax. Postcondition: joints do not actively hold standing."
+        frame_rate: 1
+        source:
+          <<: *prepare_source
+          method_name: damping
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: enter_walk
+        type: prearranged
+        description: "Recommended before movement. Internally sends prepare, waits briefly, then walking. Postcondition: mode.name should be walking."
+        frame_rate: 1
+        source:
+          <<: *prepare_source
+          method_name: enter_walk
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: base_velocity
+        type: base_velocity
+        description: "Send only after action.robot.enter_walk and mode.name is walking. Uses linear x/y in m/s and angular z in rad/s, clamped by config, then auto-stops without changing mode."
+        frame_rate: 20
+        source:
+          <<: *prepare_source
+          method_name: set_base_velocity
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: stop
+        type: prearranged
+        description: "Stop active base_velocity pulse without changing mode. Sends Move(0,0,0) only in walking mode; other modes are no-op because Booster SDK rejects Move in damping."
+        frame_rate: 1
+        source:
+          <<: *prepare_source
+          method_name: stop
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: get_up
+        type: prearranged
+        description: "Trigger vendor GetUp routine. Use only when the robot pose and surrounding space are safe; resulting mode depends on Booster SDK behavior."
+        frame_rate: 1
+        source:
+          <<: *prepare_source
+          method_name: get_up
+        codec:
+          adapter: ProtocolActionOutputAdapter

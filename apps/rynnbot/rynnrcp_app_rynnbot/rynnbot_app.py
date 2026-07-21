@@ -21,6 +21,7 @@ import json
 import logging
 import platform
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -29,6 +30,7 @@ from queue import Empty, Queue
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import websocket
 from PIL import Image
 
 from rynnrcp.interface.client import ClientInterface
@@ -105,6 +107,7 @@ class RynnBotApp(AppLifecycle):
         self._http_url = (cfg.http_url or "").rstrip("/")
         self._endpoint_mqtt = "/connect/mqtt"
         self._endpoint_websocket = "/connect/webSocket"
+        self._endpoint_master_source_websocket = "/connect/webSocket/masterSource"
         self._mqtt_port = 1883
         self._udp_port = cfg.udp_port
 
@@ -116,6 +119,16 @@ class RynnBotApp(AppLifecycle):
         self._device_monitor_interval_s = cfg.device_monitor_interval_s
         self._image_upload_codec = cfg.image_upload_codec  # "npy_gzip" | "jpeg"
         self._image_jpeg_quality = cfg.image_jpeg_quality
+        master_cfg = self.config.get("master_source") if isinstance(self.config.get("master_source"), dict) else {}
+        self._master_source_enabled = bool(master_cfg.get("enabled")) or str(self.config.get("role") or "").lower() == "controller"
+        self._master_source_observation = str(master_cfg.get("observation") or "observation.robot.joint_state")
+        self._master_source_action = str(master_cfg.get("action") or master_cfg.get("action_name") or "action")
+        self._master_source_idle_hz = max(0.1, float(master_cfg.get("idle_hz") or 5.0))
+        self._master_source_active_hz = max(0.1, float(master_cfg.get("active_hz") or master_cfg.get("record_hz") or 30.0))
+        self._flow_diagnostic_interval_s = max(
+            1.0,
+            float(master_cfg.get("diagnostic_interval_s") or self.config.get("flow_diagnostic_interval_s") or 5.0),
+        )
 
         # State
         self._occupied = False
@@ -169,6 +182,23 @@ class RynnBotApp(AppLifecycle):
         self._ws_state_stream_running = False
         self._ws_state_stream_lock = threading.Lock()
         self._ws_state_stream_seq: int = 0
+
+        # Master-arm source streaming
+        self._master_source_lock = threading.Lock()
+        self._master_source_stop = threading.Event()
+        self._master_source_thread: Optional[threading.Thread] = None
+        self._master_source_ws: Any = None
+        self._master_source_seq: int = 0
+        self._master_source_session: Dict[str, str] = {}
+        self._master_source_recording = False
+        self._master_source_recording_fps: Optional[float] = None
+        self._master_source_recording_rate_source = "idle_config"
+
+        # Controlled-device action-flow diagnostics. The bounded action executor
+        # rejects submissions while one action is in flight, so count those
+        # rejections explicitly instead of leaving packet loss invisible.
+        self._ws_action_flow_lock = threading.Lock()
+        self._ws_action_flow: Dict[str, Any] = {}
 
         # Background export executor
         self._tele_exec = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -240,7 +270,18 @@ class RynnBotApp(AppLifecycle):
                 connect_timeout_s=self._mqtt_connect_timeout_s,
                 connect_attempts=self._mqtt_connect_attempts,
             )
-            self._ws_client.start()
+            if self._master_source_enabled:
+                logger.info(
+                    "[RynnBot][MasterSource][CONFIG] controller mode ready idle_hz=%.3f "
+                    "active_hz=%.3f observation=%s action=%s diagnostic_interval_s=%.1f",
+                    self._master_source_idle_hz,
+                    self._master_source_active_hz,
+                    self._master_source_observation,
+                    self._master_source_action,
+                    self._flow_diagnostic_interval_s,
+                )
+            else:
+                self._ws_client.start()
             self._start_device_monitor_thread()
 
             self._loop_running = True
@@ -286,6 +327,7 @@ class RynnBotApp(AppLifecycle):
 
         # Stop WS state stream
         self._stop_ws_state_stream()
+        self._stop_master_source_session()
 
         self._cleanup_external_clients()
         if self._server_client is not None and hasattr(self._server_client, "close"):
@@ -439,14 +481,17 @@ class RynnBotApp(AppLifecycle):
             if isinstance(item, dict) and item.get("name"):
                 values[str(item["name"])] = item.get("value")
         missing = [name for name in names if name not in values]
-        logger.info(
-            "[RynnBot][OBS] get_observations names=%s returned=%s missing=%s elapsed=%.1fms summary=%s",
-            names,
-            sorted(values.keys()),
-            missing,
-            elapsed_ms,
-            {key: _observation_value_summary(value) for key, value in values.items()},
-        )
+        level = logging.WARNING if missing else logging.DEBUG
+        if logger.isEnabledFor(level):
+            logger.log(
+                level,
+                "[RynnBot][OBS] get_observations names=%s returned=%s missing=%s elapsed=%.1fms summary=%s",
+                names,
+                sorted(values.keys()),
+                missing,
+                elapsed_ms,
+                {key: _observation_value_summary(value) for key, value in values.items()},
+            )
         return values
 
     # ─── Message Handling ────────────────────────────────────────────
@@ -524,7 +569,26 @@ class RynnBotApp(AppLifecycle):
         PackageType = self._proto.PackageType
 
         if pkg_type == PackageType.ACTION_DATA:
-            self._action_exec.submit(self._execute_action, inner, packet)
+            if not self._can_execute_cloud_action():
+                summary = _action_message_summary(inner)
+                logger.warning(
+                    "[RynnBot][ActionFlow][REJECT] action received while device is not occupied "
+                    "packet_id=%s frames=%s rates=%s shapes=%s",
+                    getattr(getattr(packet, "common_part_attr", None), "id", None),
+                    summary["frames"],
+                    summary["rates"],
+                    summary["shapes"],
+                )
+                self._send_action_finish(
+                    packet=packet,
+                    code=-1,
+                    error_msg="device is not occupied for cloud action execution",
+                    execute_steps=0,
+                    expect_steps=int(summary["frames"]),
+                )
+                return
+            future = self._action_exec.submit(self._execute_action, inner, packet)
+            self._record_ws_action_dispatch(inner, packet, accepted=future is not None)
         elif pkg_type == PackageType.REQ_IMAGE:
             self._query_exec.submit(self._send_images, inner, packet)
         elif pkg_type == PackageType.REQ_STATE:
@@ -533,6 +597,111 @@ class RynnBotApp(AppLifecycle):
             self._udp_forward_ws_raw(inner)
         else:
             logger.warning("[RynnBot] Unhandled WS package type: %s", pkg_type)
+
+    def _record_ws_action_dispatch(self, action_msg: Any, packet: Any, *, accepted: bool) -> None:
+        """Record cloud-to-device action cadence and bounded-executor drops."""
+        now_mono = time.monotonic()
+        packet_id = int(getattr(packet.common_part_attr, "id", 0))
+        packet_timestamp_ms = int(getattr(packet.common_part_attr, "timestamp", 0))
+        summary = _action_message_summary(action_msg)
+        log_snapshot: Optional[Dict[str, Any]] = None
+        warn_drop = False
+        dropped_total = 0
+        with self._ws_action_flow_lock:
+            state = self._ws_action_flow
+            if not state:
+                state.update(
+                    {
+                        "window_started": now_mono,
+                        "packets": 0,
+                        "frames": 0,
+                        "accepted": 0,
+                        "dropped": 0,
+                        "dropped_total": 0,
+                        "last_receive": None,
+                        "max_interarrival_ms": 0.0,
+                        "rates": set(),
+                        "shapes": set(),
+                        "last_drop_warning": 0.0,
+                    }
+                )
+
+            last_receive = state.get("last_receive")
+            if last_receive is not None:
+                interarrival_ms = max(0.0, (now_mono - float(last_receive)) * 1000.0)
+                state["max_interarrival_ms"] = max(float(state["max_interarrival_ms"]), interarrival_ms)
+            state["last_receive"] = now_mono
+            state["packets"] += 1
+            state["frames"] += int(summary["frames"])
+            state["accepted"] += int(accepted)
+            state["dropped"] += int(not accepted)
+            state["dropped_total"] += int(not accepted)
+            dropped_total = int(state["dropped_total"])
+            state["rates"].update(summary["rates"])
+            state["shapes"].update(summary["shapes"])
+
+            if not accepted and now_mono - float(state["last_drop_warning"]) >= 1.0:
+                state["last_drop_warning"] = now_mono
+                warn_drop = True
+
+            elapsed = now_mono - float(state["window_started"])
+            if elapsed >= self._flow_diagnostic_interval_s:
+                log_snapshot = {
+                    "elapsed": elapsed,
+                    "packets": int(state["packets"]),
+                    "frames": int(state["frames"]),
+                    "accepted": int(state["accepted"]),
+                    "dropped": int(state["dropped"]),
+                    "dropped_total": int(state["dropped_total"]),
+                    "rates": sorted(state["rates"]),
+                    "shapes": sorted(state["shapes"]),
+                    "max_interarrival_ms": float(state["max_interarrival_ms"]),
+                }
+                state.update(
+                    {
+                        "window_started": now_mono,
+                        "packets": 0,
+                        "frames": 0,
+                        "accepted": 0,
+                        "dropped": 0,
+                        "max_interarrival_ms": 0.0,
+                        "rates": set(),
+                        "shapes": set(),
+                    }
+                )
+
+        if warn_drop:
+            logger.warning(
+                "[RynnBot][ActionFlow][DROP] cloud action rejected because max_in_flight=1 is busy "
+                "packet_id=%s packet_ts_ms=%s frames=%s rates=%s shapes=%s dropped_total=%s",
+                packet_id,
+                packet_timestamp_ms,
+                summary["frames"],
+                summary["rates"],
+                summary["shapes"],
+                dropped_total,
+            )
+        if log_snapshot is not None:
+            elapsed = max(float(log_snapshot["elapsed"]), 1e-9)
+            logger.info(
+                "[RynnBot][ActionFlow][RX] window_s=%.3f packets=%s packet_hz=%.3f frames=%s "
+                "frame_hz=%.3f accepted=%s dropped=%s dropped_total=%s rates=%s shapes=%s "
+                "latest_packet_id=%s latest_packet_ts_ms=%s latest_packet_age_ms=%s max_interarrival_ms=%.3f",
+                elapsed,
+                log_snapshot["packets"],
+                log_snapshot["packets"] / elapsed,
+                log_snapshot["frames"],
+                log_snapshot["frames"] / elapsed,
+                log_snapshot["accepted"],
+                log_snapshot["dropped"],
+                log_snapshot["dropped_total"],
+                log_snapshot["rates"],
+                log_snapshot["shapes"],
+                packet_id,
+                packet_timestamp_ms,
+                _packet_age_ms(packet),
+                log_snapshot["max_interarrival_ms"],
+            )
 
     # ─── MQTT Handlers ───────────────────────────────────────────────
 
@@ -547,15 +716,24 @@ class RynnBotApp(AppLifecycle):
         params = request_json.get("params") or {}
         raw_type = params.get("type")
         self._occupied_id = params.get("id")
+        logger.info(
+            "[RynnBot][CloudTrigger][ACQUIRE] topic=%s summary=%s",
+            topic,
+            _mqtt_payload_summary(payload),
+        )
         try:
             occupy_type = OccupyType(int(raw_type))
         except (TypeError, ValueError):
             occupy_type = OccupyType.UNKNOWN
 
+        master_source_params: Optional[Dict[str, Any]] = None
         with self._occupied_lock:
             if self._occupied:
                 resp["error"] = {"code": DEVICE_BUSY_CODE, "message": "Device is busy"}
                 logger.warning("[RynnBot] acquire: device already occupied")
+            elif self._is_master_source_acquire(params, occupy_type) and not self._master_source_enabled:
+                resp["error"] = {"code": JSON_PARSE_ERROR_CODE, "message": "Controller role is not enabled"}
+                logger.warning("[RynnBot][MasterSource] acquire rejected: controller role disabled")
             else:
                 self._occupied = True
                 self._occupy_type = occupy_type
@@ -564,8 +742,12 @@ class RynnBotApp(AppLifecycle):
                     self._occupy_type.name,
                     int(self._occupy_type),
                 )
+                if self._is_master_source_acquire(params, occupy_type):
+                    master_source_params = dict(params)
 
         self._mqtt_send(send_topic, json.dumps(resp, ensure_ascii=False))
+        if master_source_params is not None:
+            self._ws_executor.submit(self._start_master_source_session, master_source_params)
 
     def _on_release_device(self, topic: str, payload: str) -> None:
         """Handle device release request."""
@@ -574,23 +756,39 @@ class RynnBotApp(AppLifecycle):
         if request_json is None:
             return
 
+        logger.info(
+            "[RynnBot][CloudTrigger][RELEASE] topic=%s summary=%s",
+            topic,
+            _mqtt_payload_summary(payload),
+        )
         resp = self._make_base_response(request_json)
         with self._occupied_lock:
             self._occupied = False
             self._occupy_type = OccupyType.UNKNOWN
             self._occupied_id = None
             logger.info("[RynnBot] release: success")
-        self._capture_manager.force_stop_collection_on_release()
+        # Reply before potentially slow action/collection cleanup. Incoming
+        # MQTT messages remain queued until this handler finishes, so a
+        # following upload still observes the finalized local capture.
         self._mqtt_send(send_topic, json.dumps(resp, ensure_ascii=False))
+        self._stop_cloud_action_on_release()
+        self._stop_master_source_session()
+        self._capture_manager.force_stop_collection_on_release()
 
     def _on_tele_data_coll_start(self, topic: str, payload: str) -> None:
         """Handle tele data collection start."""
         logger.info("[RynnBot][tele_data_coll:start] topic=%s summary=%s", topic, _mqtt_payload_summary(payload))
+        if self._master_source_enabled:
+            self._handle_master_source_round_start(topic, payload)
+            return
         self._capture_manager.start_collection_from_mqtt(topic, payload, kind="tele_data_coll")
 
     def _on_tele_data_coll_stop(self, topic: str, payload: str) -> None:
         """Handle tele data collection stop."""
         logger.info("[RynnBot][tele_data_coll:stop] topic=%s summary=%s", topic, _mqtt_payload_summary(payload))
+        if self._master_source_enabled:
+            self._handle_master_source_round_stop(topic, payload)
+            return
         self._capture_manager.stop_collection_from_mqtt(topic, payload, kind="tele_data_coll")
 
     def _on_tele_data_coll_upload(self, topic: str, payload: str) -> None:
@@ -602,6 +800,9 @@ class RynnBotApp(AppLifecycle):
             kind,
             _mqtt_payload_summary(payload),
         )
+        if self._master_source_enabled:
+            self._ack_master_source_noop(topic, payload, kind)
+            return
         self._capture_manager.encode_capture_from_mqtt(topic, payload, kind=kind)
 
     def _on_skill_record_start(self, topic: str, payload: str) -> None:
@@ -618,6 +819,332 @@ class RynnBotApp(AppLifecycle):
         """Handle skill record upload."""
         logger.info("[RynnBot][skill_record:upload] topic=%s summary=%s", topic, _mqtt_payload_summary(payload))
         self._capture_manager.encode_capture_from_mqtt(topic, payload, kind="skill_record")
+
+    def _is_master_source_acquire(self, params: Dict[str, Any], occupy_type: OccupyType) -> bool:
+        return occupy_type == OccupyType.TELE_DATA_COLL and str(params.get("role") or "").lower() == "controller"
+
+    def _can_execute_cloud_action(self) -> bool:
+        with self._occupied_lock:
+            return self._occupied and self._occupy_type in (OccupyType.ACTION, OccupyType.TELE_DATA_COLL)
+
+    def _stop_cloud_action_on_release(self) -> None:
+        client = self._server_client
+        if client is None:
+            return
+        try:
+            result = client.stop_action(reason="release_device")
+            if result.ok:
+                logger.info("[RynnBot][ActionFlow][STOP] release_device stopped active server action")
+            else:
+                logger.warning(
+                    "[RynnBot][ActionFlow][STOP] release_device stop_action failed: %s",
+                    result.message,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[RynnBot][ActionFlow][STOP] release_device stop_action error: %s",
+                exc,
+                exc_info=True,
+            )
+
+        stop_motion_name = self._stop_motion_action_name()
+        if not stop_motion_name:
+            return
+        try:
+            result = client.run_action_chunk(stop_motion_name, [{}], frame_rate=1)
+            if result.ok:
+                logger.info(
+                    "[RynnBot][ActionFlow][STOP] release_device executed %s",
+                    stop_motion_name,
+                )
+            else:
+                logger.warning(
+                    "[RynnBot][ActionFlow][STOP] release_device %s failed: %s",
+                    stop_motion_name,
+                    result.message,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[RynnBot][ActionFlow][STOP] release_device %s error: %s",
+                stop_motion_name,
+                exc,
+                exc_info=True,
+            )
+
+    def _stop_motion_action_name(self) -> str:
+        manifest = getattr(self, "_manifest", None)
+        if manifest is None:
+            return ""
+        for item in manifest.actions:
+            name = str(item.get("name") or "")
+            if name.rsplit(".", 1)[-1] == "stop_motion":
+                return name
+        return ""
+
+    def _handle_master_source_round_start(self, topic: str, payload: str) -> None:
+        request_json = self._parse_json_or_reply_error(payload, topic.replace("/request/", "/response/"), "master_source:start")
+        if request_json is None:
+            return
+        params = request_json.get("params") or {}
+        requested_fps = params.get("fps")
+        requested_rate = params.get("rate")
+        logger.info(
+            "[RynnBot][MasterSource][ROUND_START] request_id=%s requested_fps=%r requested_rate=%r "
+            "stream_hz=%.3f rate_source=controller.acquire_device state_unchanged=true params=%s",
+            request_json.get("id"),
+            requested_fps,
+            requested_rate,
+            self._master_source_active_hz,
+            _mqtt_payload_summary(payload).get("params"),
+        )
+        self._mqtt_send(topic.replace("/request/", "/response/"), json.dumps(self._make_base_response(request_json), ensure_ascii=False))
+
+    def _handle_master_source_round_stop(self, topic: str, payload: str) -> None:
+        request_json = self._parse_json_or_reply_error(payload, topic.replace("/request/", "/response/"), "master_source:stop")
+        if request_json is None:
+            return
+        logger.info(
+            "[RynnBot][MasterSource][ROUND_STOP] request_id=%s stream_hz=%.3f "
+            "rate_source=controller.acquire_device state_unchanged=true params=%s",
+            request_json.get("id"),
+            self._master_source_active_hz,
+            _mqtt_payload_summary(payload).get("params"),
+        )
+        self._mqtt_send(topic.replace("/request/", "/response/"), json.dumps(self._make_base_response(request_json), ensure_ascii=False))
+
+    def _ack_master_source_noop(self, topic: str, payload: str, kind: str) -> None:
+        send_topic = topic.replace("/request/", "/response/")
+        request_json = self._parse_json_or_reply_error(payload, send_topic, f"master_source:{kind}:noop")
+        if request_json is None:
+            return
+        self._mqtt_send(send_topic, json.dumps(self._make_base_response(request_json), ensure_ascii=False))
+        logger.info("[RynnBot][MasterSource] %s upload ignored on controller side", kind)
+
+    def _start_master_source_session(self, params: Dict[str, Any]) -> None:
+        try:
+            session = self._master_source_session_from_params(params)
+            self._validate_master_source_manifest()
+        except Exception as exc:
+            logger.error("[RynnBot][MasterSource] cannot start: %s", exc, exc_info=True)
+            self._post_occupancy_error(error_code=JSON_PARSE_ERROR_CODE, error_msg=str(exc))
+            return
+
+        with self._master_source_lock:
+            thread = self._master_source_thread
+            if thread is not None and thread.is_alive():
+                logger.info("[RynnBot][MasterSource] session already running")
+                return
+            self._master_source_stop.clear()
+            self._master_source_seq = 0
+            self._master_source_session = dict(session)
+            # A controller only receives acquire/release. Collection round
+            # messages are delivered to the controlled device, so the entire
+            # occupied master-source session must run at active_hz.
+            self._master_source_recording = True
+            self._master_source_recording_fps = self._master_source_active_hz
+            self._master_source_recording_rate_source = "controller.acquire_device"
+            self._master_source_thread = threading.Thread(
+                target=self._master_source_loop,
+                args=(dict(session),),
+                daemon=True,
+                name="rynnbot-master-source",
+            )
+            self._master_source_thread.start()
+        logger.info(
+            "[RynnBot][MasterSource] session started: subTaskId=%s mode=active "
+            "target_hz=%.3f rate_source=controller.acquire_device",
+            session["subTaskId"],
+            self._master_source_active_hz,
+        )
+
+    def _stop_master_source_session(self) -> None:
+        self._master_source_stop.set()
+        with self._master_source_lock:
+            ws = self._master_source_ws
+            thread = self._master_source_thread
+            self._master_source_recording = False
+            self._master_source_recording_fps = None
+            self._master_source_recording_rate_source = "idle_config"
+            self._master_source_session = {}
+        if ws is not None:
+            try:
+                ws.close()
+            except Exception:
+                pass
+        if thread is not None and thread is not threading.current_thread() and thread.is_alive():
+            thread.join(timeout=2.0)
+        with self._master_source_lock:
+            if self._master_source_thread is thread:
+                self._master_source_thread = None
+            self._master_source_ws = None
+
+    def _master_source_loop(self, session: Dict[str, str]) -> None:
+        reconnect_deadline = time.monotonic() + 60.0
+        while not self._master_source_stop.is_set() and time.monotonic() < reconnect_deadline:
+            ws = None
+            try:
+                cfg = self._auth.get_master_source_ws_config(
+                    self._endpoint_master_source_websocket,
+                    task_id=session["taskId"],
+                    sub_task_id=session["subTaskId"],
+                )
+                uri = str(cfg["uri"])
+                if "x-specified-pod=" not in uri:
+                    raise RuntimeError("master source uri missing x-specified-pod")
+                ws = websocket.create_connection(
+                    uri,
+                    header=[f"tunnel-access-token: {cfg['token']}"],
+                    sslopt={"cert_reqs": ssl.CERT_NONE},
+                    timeout=5,
+                )
+                with self._master_source_lock:
+                    self._master_source_ws = ws
+                logger.info("[RynnBot][MasterSource] connected: relayAddr=%s", cfg.get("relay_addr"))
+                reconnect_deadline = time.monotonic() + 60.0
+                window_started = time.monotonic()
+                window_first_sent: Optional[float] = None
+                window_last_sent: Optional[float] = None
+                window_attempts = 0
+                window_sent = 0
+                window_missing = 0
+                window_work_ms = 0.0
+                window_max_work_ms = 0.0
+                window_max_interarrival_ms = 0.0
+                last_sent: Optional[float] = None
+                last_rate_hz: Optional[float] = None
+                while not self._master_source_stop.is_set():
+                    rate_hz = self._master_source_rate_hz()
+                    with self._master_source_lock:
+                        mode = "active" if self._master_source_recording else "idle"
+                        rate_source = self._master_source_recording_rate_source
+                    if last_rate_hz != rate_hz:
+                        logger.info(
+                            "[RynnBot][MasterSource][RATE_CHANGE] mode=%s target_hz=%.3f rate_source=%s "
+                            "previous_hz=%s seq=%s",
+                            mode,
+                            rate_hz,
+                            rate_source,
+                            _rounded_optional(last_rate_hz),
+                            self._master_source_seq,
+                        )
+                        last_rate_hz = rate_hz
+
+                    send_started = time.monotonic()
+                    sent = self._send_master_source_action(ws, rate_hz)
+                    send_finished = time.monotonic()
+                    work_ms = (send_finished - send_started) * 1000.0
+                    window_attempts += 1
+                    window_work_ms += work_ms
+                    window_max_work_ms = max(window_max_work_ms, work_ms)
+                    if sent:
+                        window_sent += 1
+                        window_first_sent = window_first_sent or send_finished
+                        window_last_sent = send_finished
+                        if last_sent is not None:
+                            window_max_interarrival_ms = max(
+                                window_max_interarrival_ms,
+                                (send_finished - last_sent) * 1000.0,
+                            )
+                        last_sent = send_finished
+                    else:
+                        window_missing += 1
+
+                    elapsed = send_finished - window_started
+                    if elapsed >= self._flow_diagnostic_interval_s:
+                        sent_span = (
+                            float(window_last_sent) - float(window_first_sent)
+                            if window_first_sent is not None and window_last_sent is not None
+                            else 0.0
+                        )
+                        actual_hz = (window_sent - 1) / sent_span if window_sent > 1 and sent_span > 0 else 0.0
+                        logger.info(
+                            "[RynnBot][MasterSource][TX] mode=%s rate_source=%s target_hz=%.3f "
+                            "window_s=%.3f attempts=%s sent=%s actual_hz=%.3f missing_observation=%s "
+                            "avg_query_send_ms=%.3f max_query_send_ms=%.3f max_interarrival_ms=%.3f seq=%s",
+                            mode,
+                            rate_source,
+                            rate_hz,
+                            elapsed,
+                            window_attempts,
+                            window_sent,
+                            actual_hz,
+                            window_missing,
+                            window_work_ms / max(window_attempts, 1),
+                            window_max_work_ms,
+                            window_max_interarrival_ms,
+                            self._master_source_seq,
+                        )
+                        window_started = send_finished
+                        window_first_sent = None
+                        window_last_sent = None
+                        window_attempts = 0
+                        window_sent = 0
+                        window_missing = 0
+                        window_work_ms = 0.0
+                        window_max_work_ms = 0.0
+                        window_max_interarrival_ms = 0.0
+                    time.sleep(1.0 / rate_hz)
+            except Exception as exc:
+                if not self._master_source_stop.is_set():
+                    logger.warning("[RynnBot][MasterSource] stream error: %s", exc, exc_info=True)
+                    time.sleep(1.0)
+            finally:
+                if ws is not None:
+                    try:
+                        ws.close()
+                    except Exception:
+                        pass
+                with self._master_source_lock:
+                    if self._master_source_ws is ws:
+                        self._master_source_ws = None
+        logger.info("[RynnBot][MasterSource] loop ended")
+
+    def _master_source_session_from_params(self, params: Dict[str, Any]) -> Dict[str, str]:
+        task_id = str(params.get("taskId") or params.get("task_id") or "")
+        sub_task_id = str(params.get("subTaskId") or params.get("sub_task_id") or "")
+        credential_type = str(params.get("credentialType") or params.get("credential_type") or "")
+        if not task_id or not sub_task_id:
+            raise ValueError("master source acquire requires taskId and subTaskId")
+        if credential_type and credential_type != "master-arm-source":
+            raise ValueError(f"unsupported credentialType: {credential_type}")
+        return {
+            "taskId": task_id,
+            "subTaskId": sub_task_id,
+            "occupancyId": str(params.get("id") or ""),
+        }
+
+    def _validate_master_source_manifest(self) -> None:
+        if self._manifest is None:
+            raise RuntimeError("server manifest is not available")
+        for item in self._manifest.observations:
+            if item.get("name") == self._master_source_observation and item.get("type") == "joint_state":
+                return
+        raise RuntimeError(f"missing homomorphic observation: {self._master_source_observation}")
+
+    def _master_source_rate_hz(self) -> float:
+        with self._master_source_lock:
+            if self._master_source_recording:
+                return max(0.1, float(self._master_source_recording_fps or self._master_source_active_hz))
+        return self._master_source_idle_hz
+
+    def _send_master_source_action(self, ws: Any, rate_hz: float) -> bool:
+        obs = self._get_observations([self._master_source_observation])
+        values = _joint_positions(obs.get(self._master_source_observation))
+        if values is None:
+            logger.warning("[RynnBot][MasterSource] joint_state observation missing")
+            return False
+        with self._master_source_lock:
+            seq_id = self._master_source_seq
+            self._master_source_seq += 1
+        multi = _build_joint_position_action(
+            self._proto,
+            values,
+            action_name=self._master_source_action,
+            action_rate=int(round(rate_hz)),
+        )
+        packet = self._proto.build_data_packet(self._proto.PackageType.ACTION_DATA, multi, id=seq_id)
+        ws.send(self._proto.serialize_data_packet(packet), opcode=websocket.ABNF.OPCODE_BINARY)
+        return True
 
     def _start_ws_state_stream(self) -> None:
         with self._ws_state_stream_lock:
@@ -693,10 +1220,19 @@ class RynnBotApp(AppLifecycle):
         """Execute an action received via WS."""
         if self._server_client is None:
             return
+        execution_started = time.monotonic()
         frames_sent = 0
         expect_frames = 0
         error_msg = ""
         try:
+            if not self._can_execute_cloud_action():
+                error_msg = "device occupation ended before action execution"
+                logger.warning(
+                    "[RynnBot][ActionFlow][REJECT] %s packet_id=%s",
+                    error_msg,
+                    getattr(getattr(packet, "common_part_attr", None), "id", None),
+                )
+                return
             action_list = action_msg.action_list if hasattr(action_msg, 'action_list') else []
             for action in action_list:
                 arr_msg = action.action_data
@@ -714,7 +1250,11 @@ class RynnBotApp(AppLifecycle):
                 if not action_payload:
                     continue
                 logger.info(
-                    "[RynnBot][WS][ACTION] id=%s name=%s shape=%s rate=%s",
+                    "[RynnBot][WS][ACTION] packet_id=%s packet_ts_ms=%s packet_age_ms=%s "
+                    "action_id=%s name=%s shape=%s rate=%s",
+                    getattr(getattr(packet, "common_part_attr", None), "id", None),
+                    getattr(getattr(packet, "common_part_attr", None), "timestamp", None),
+                    _packet_age_ms(packet),
                     action.id,
                     action.name,
                     shape,
@@ -739,6 +1279,18 @@ class RynnBotApp(AppLifecycle):
             error_msg = str(e)
             logger.error("[RynnBot] Execute action failed: %s", e, exc_info=True)
         finally:
+            execution_ms = (time.monotonic() - execution_started) * 1000.0
+            execution_log = logger.info if error_msg or expect_frames > 1 or execution_ms >= 100.0 else logger.debug
+            execution_log(
+                "[RynnBot][ActionFlow][EXEC] packet_id=%s expected_frames=%s executed_frames=%s "
+                "execution_ms=%.3f effective_frame_hz=%.3f error=%r",
+                getattr(getattr(packet, "common_part_attr", None), "id", None),
+                expect_frames,
+                frames_sent,
+                execution_ms,
+                (frames_sent / (execution_ms / 1000.0)) if frames_sent and execution_ms > 0 else 0.0,
+                error_msg,
+            )
             self._send_action_finish(
                 packet=packet,
                 code=0 if not error_msg else -1,
@@ -1149,7 +1701,8 @@ class RynnBotApp(AppLifecycle):
 
         image_names = self._image_observation_names()
         if not image_names:
-            logger.warning("[RynnBot][DeviceMonitor] no image observations in manifest")
+            log = logger.debug if self._master_source_enabled else logger.warning
+            log("[RynnBot][DeviceMonitor] no image observations in manifest")
         image_values = self._get_observations(image_names) if image_names else {}
         cameras: List[Dict[str, Any]] = []
         for item in self._manifest.observations:
@@ -1197,6 +1750,37 @@ def _joint_positions(value: Any) -> Optional[List[float]]:
     return values.astype(float).tolist()
 
 
+def _action_message_summary(action_msg: Any) -> Dict[str, Any]:
+    frames = 0
+    rates: set[int] = set()
+    shapes: set[str] = set()
+    action_list = getattr(action_msg, "action_list", [])
+    for action in action_list:
+        shape = [int(item) for item in getattr(getattr(action, "action_data", None), "shape", [])]
+        frames += shape[0] if len(shape) >= 2 else int(bool(shape))
+        rates.add(int(getattr(action, "action_rate", 0)))
+        shapes.add("x".join(str(item) for item in shape) if shape else "scalar")
+    return {
+        "actions": len(action_list),
+        "frames": frames,
+        "rates": sorted(rates),
+        "shapes": sorted(shapes),
+    }
+
+
+def _packet_age_ms(packet: Any | None) -> Optional[float]:
+    timestamp_ms = int(getattr(getattr(packet, "common_part_attr", None), "timestamp", 0) or 0)
+    if timestamp_ms <= 0:
+        return None
+    return round(time.time() * 1000.0 - timestamp_ms, 3)
+
+
+def _rounded_optional(value: Any) -> Any:
+    if value is None:
+        return None
+    return round(float(value), 3)
+
+
 def _action_frames(value: Any) -> List[Dict[str, Any]]:
     arr = np.asarray(value, dtype=np.float32)
     if arr.ndim <= 1:
@@ -1205,6 +1789,19 @@ def _action_frames(value: Any) -> List[Dict[str, Any]]:
         {"joint_positions": frame.reshape(-1).astype(float).tolist()}
         for frame in arr
     ]
+
+
+def _build_joint_position_action(proto: RynnProtoCodec, values: Any, *, action_name: str, action_rate: int) -> Any:
+    arr = np.asarray(values, dtype=np.float32).reshape(1, -1)
+    multi = proto.MultiAction()
+    action = multi.action_list.add()
+    action.id = 1
+    action.name = str(action_name)
+    action.action_data.data = arr.tobytes()
+    action.action_data.shape.extend(list(arr.shape))
+    action.action_data.dtype = proto.DataType.FLOAT32
+    action.action_rate = int(action_rate)
+    return multi
 
 
 def _coerce_image_bytes(value: Any) -> Optional[bytes]:
@@ -1289,9 +1886,16 @@ def _mqtt_payload_summary(payload: Any) -> Dict[str, Any]:
         summary["id"] = request.get("id")
     if request.get("version") is not None:
         summary["version"] = request.get("version")
+    if request.get("method") is not None:
+        summary["method"] = request.get("method")
     if isinstance(params, dict):
         allowed = (
+            "$TIME",
             "id",
+            "type",
+            "role",
+            "credentialType",
+            "credential_type",
             "record_id",
             "record_ids",
             "recordId",

@@ -23,7 +23,7 @@ import pickle
 import signal
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import zmq
 
@@ -41,7 +41,7 @@ def _signal_handler(sig, frame):
 
 
 class JointCommandPoller:
-    """Polls get_joint_command from JointManager via ZMQ."""
+    """Polls get_joint_command from JointManager via ZMQ for a single simulation robot_name."""
 
     def __init__(self, robot_name: str, server_host: str, server_port: int, timeout_ms: int = 500):
         self.robot_name = robot_name
@@ -73,57 +73,177 @@ class JointCommandPoller:
         self._ctx.term()
 
 
+class MergedJointCommandPoller:
+    """Polls multiple simulation robot_names and concatenates positions in order.
+
+    Used for bimanual/multi-arm robots where the simulation registers each arm
+    as an independent JointManager robot (e.g. left_robot, right_robot), but
+    RCP must see ONE merged action (e.g. 12-dim = left 6 + right 6).
+    """
+
+    def __init__(self, robot_names: List[str], server_host: str, server_port: int, timeout_ms: int = 500):
+        self.robot_names = list(robot_names)
+        self._pollers = [
+            JointCommandPoller(name, server_host, server_port, timeout_ms)
+            for name in self.robot_names
+        ]
+
+    def get_joint_command(self) -> Optional[List[float]]:
+        merged: List[float] = []
+        for poller in self._pollers:
+            positions = poller.get_joint_command()
+            if positions is None:
+                return None
+            merged.extend(positions)
+        return merged
+
+    def close(self):
+        for poller in self._pollers:
+            poller.close()
+
+
+def _parse_mapping(value: str) -> Tuple[str, str]:
+    if ":" not in value:
+        raise argparse.ArgumentTypeError(
+            "mapping must be '<sim_robot_name>[+<sim_robot_name>...]:<rcp_action_name>'"
+        )
+    sim_robot_name, action_name = value.split(":", 1)
+    sim_robot_name = sim_robot_name.strip()
+    action_name = action_name.strip()
+    if not sim_robot_name or not action_name:
+        raise argparse.ArgumentTypeError(
+            "mapping must contain both simulation robot name(s) and RCP action name"
+        )
+    return sim_robot_name, action_name
+
+
+def _dispatch_action_frame(
+    rcp_client: RcpProtocolClient,
+    action_name: str,
+    positions: Optional[List[float]],
+    frame_rate: float,
+) -> bool:
+    """Publish one action sample; unchanged and all-zero samples are valid."""
+    if positions is None or len(positions) == 0:
+        return False
+    rcp_client.run_action_chunk(
+        name=action_name,
+        frames=[{"joint_positions": positions}],
+        frame_rate=frame_rate,
+    )
+    return True
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Action bridge: ZMQ → RCP run_action_chunk")
     parser.add_argument("--host", default="localhost", help="Simulation ZMQ host")
     parser.add_argument("--port", type=int, default=8080, help="Simulation base port (JointManager = port+1)")
     parser.add_argument("--robot-id", default="so101_sim", help="RCP Server robot_id")
     parser.add_argument("--hz", type=float, default=30.0, help="Polling frequency")
+    parser.add_argument(
+        "--mapping",
+        action="append",
+        type=_parse_mapping,
+        default=[],
+        help=(
+            "Bridge mapping '<sim_robot_name>:<rcp_action_name>'. "
+            "Can be repeated for multi-arm robots. Default: robot:action.robot.joint_position"
+        ),
+    )
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
+    mappings: List[Tuple[str, str]] = args.mapping or [
+        ("robot", "action.robot.joint_position")
+    ]
     joint_port = args.port + 1
     interval = 1.0 / args.hz
 
     logger.info("Connecting to JointManager tcp://%s:%s", args.host, joint_port)
-    poller = JointCommandPoller(
-        robot_name="robot",
-        server_host=args.host,
-        server_port=joint_port,
-    )
+    pollers: Dict[str, Any] = {}
+    for sim_robot_key, _ in mappings:
+        robot_names = [n.strip() for n in sim_robot_key.split("+") if n.strip()]
+        if len(robot_names) > 1:
+            pollers[sim_robot_key] = MergedJointCommandPoller(
+                robot_names=robot_names,
+                server_host=args.host,
+                server_port=joint_port,
+            )
+        else:
+            pollers[sim_robot_key] = JointCommandPoller(
+                robot_name=robot_names[0],
+                server_host=args.host,
+                server_port=joint_port,
+            )
 
     logger.info("Connecting to RCP Server robot_id=%s", args.robot_id)
-    rcp_client = connect_to_server(robot_id=args.robot_id)
+    rcp_client = None
+    max_retries = 10
+    retry_delay = 2.0
+    for attempt in range(1, max_retries + 1):
+        try:
+            rcp_client = connect_to_server(robot_id=args.robot_id)
+            break
+        except Exception as e:
+            logger.warning("RCP connect attempt %d/%d failed: %s", attempt, max_retries, e)
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            else:
+                raise
     logger.info("RCP connected. Starting action bridge at %.0f Hz", args.hz)
+    for sim_robot_name, action_name in mappings:
+        logger.info("Bridge mapping: %s -> %s", sim_robot_name, action_name)
 
-    last_positions: Optional[List[float]] = None
+    # 等待仿真侧准备好第一条 joint command，避免过早 poll 触发 joint_data_manager 报错
+    logger.info("Waiting for first joint command from simulation...")
+    ready = False
+    deadline = time.monotonic() + 10.0
+    while not ready and time.monotonic() < deadline and _running:
+        for sim_robot_name, _ in mappings:
+            try:
+                positions = pollers[sim_robot_name].get_joint_command()
+                if positions:
+                    ready = True
+                    break
+            except Exception:
+                pass
+        if not ready:
+            time.sleep(0.1)
+    if ready:
+        logger.info("First joint command ready, starting main loop")
+    else:
+        logger.warning("Timed out waiting for first joint command, starting main loop anyway")
+
     action_count = 0
 
     while _running:
         loop_start = time.monotonic()
 
-        positions = poller.get_joint_command()
-        if positions and any(p != 0.0 for p in positions):
-            # Only send if command changed
-            if positions != last_positions:
-                try:
-                    resp = rcp_client.run_action_chunk(
-                        name="action.robot.joint_position",
-                        frames=[{"joint_positions": positions}],
-                        frame_rate=args.hz,
+        for sim_robot_name, action_name in mappings:
+            try:
+                positions = pollers[sim_robot_name].get_joint_command()
+            except Exception as e:
+                # 仿真侧可能还没准备好（right_arm_joints_target 为 None），跳过本帧
+                logger.warning("Failed to get joint command for %s: %s", sim_robot_name, e)
+                continue
+            try:
+                if not _dispatch_action_frame(
+                    rcp_client, action_name, positions, args.hz
+                ):
+                    continue
+                action_count += 1
+                if action_count % 100 == 1:
+                    logger.info(
+                        "Action #%d sent for %s: [%s]",
+                        action_count,
+                        sim_robot_name,
+                        ", ".join(f"{p:.3f}" for p in positions[:6]),
                     )
-                    action_count += 1
-                    if action_count % 100 == 1:
-                        logger.info(
-                            "Action #%d sent: [%s]",
-                            action_count,
-                            ", ".join(f"{p:.3f}" for p in positions[:6]),
-                        )
-                except Exception as e:
-                    logger.error("run_action_chunk failed: %s", e)
-                last_positions = list(positions)
+            except Exception as e:
+                logger.error("run_action_chunk failed for %s: %s", sim_robot_name, e)
 
         elapsed = time.monotonic() - loop_start
         sleep_time = max(0.0, interval - elapsed)
@@ -131,7 +251,8 @@ def main():
             time.sleep(sleep_time)
 
     logger.info("Shutting down. Total actions sent: %d", action_count)
-    poller.close()
+    for poller in pollers.values():
+        poller.close()
     rcp_client.close()
 
 

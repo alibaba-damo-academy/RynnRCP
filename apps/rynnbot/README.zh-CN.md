@@ -54,7 +54,7 @@ RynnBot App 只在云端边界做格式转换：
 SO101 的 RynnBot App 配置示例位于：
 
 ```text
-robots/so101/rynnrcp_robot_so101/config/so101_rynnbot_app.yaml
+robots/lerobot_so101/rynnrcp_robot_so101/config/so101_rynnbot_app.yaml
 ```
 
 常见字段包括云端地址、设备凭据、MQTT 连接参数、设备属性上报间隔、最大采集时长、

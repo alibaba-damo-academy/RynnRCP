@@ -72,6 +72,8 @@ class RynnBotCaptureManager:
             "max_duration_s": float(config["max_capture_duration_s"]),
         }
         self._server_resource_by_capture_dir: Dict[str, str] = {}
+        self._stopped_collection_lock = threading.Lock()
+        self._stopped_collections: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
     @property
     def _server_client(self) -> Any:
@@ -138,6 +140,11 @@ class RynnBotCaptureManager:
             )
             state_fps = self._state_stream_fps_from_params(params) if kind == "tele_data_coll" else fps
             self._set_capture_state(kind, capture_id, True, None, state_fps, capture_request)
+            self._forget_stopped_collection(
+                kind,
+                str(capture_request["collection_id"]),
+                str(capture_request["episode_id"]),
+            )
             if kind == "tele_data_coll":
                 self._start_ws_state_stream()
             if kind == "skill_record":
@@ -299,35 +306,27 @@ class RynnBotCaptureManager:
         try:
             if self._server_client is None:
                 raise RuntimeError("RCP protocol client is not available")
-            result = self._server_client.stop_collection()
-            if not result.ok:
-                raise RuntimeError(result.message or "stop_collection failed")
-            status = result.payload if isinstance(result.payload, dict) else {}
-            stopped_id = status.get("episode_id") or status.get("collection_id")
-            resource = status.get("collection_resource") if isinstance(status.get("collection_resource"), dict) else {}
-            logger.info(
-                "[RynnBot][%s:stop] stopped collection_id=%s episode_id=%s resource_id=%s",
-                kind,
-                status.get("collection_id"),
-                status.get("episode_id"),
-                resource.get("resource_id"),
-            )
-            capture_dir = self._download_collection_resource(kind, status)
-            self._set_capture_state(kind, stopped_id, False, capture_dir, None)
-            self._remember_server_collection_resource(capture_dir, status)
-            summary = self._capture_dir_summary(capture_dir)
-            logger.info(
-                "[RynnBot][%s:stop] saved raw capture capture_dir=%s bytes=%s files=%s streams=%s",
-                kind,
-                capture_dir,
-                summary["bytes"],
-                summary["files"],
-                summary["streams"],
-            )
-            if kind == "tele_data_coll":
-                self._stop_ws_state_stream()
+            stopped = self._latest_stopped_collection(kind)
+            if not self.capture_state(kind).get("recording") and stopped is not None:
+                status = dict(stopped["status"])
+                logger.info(
+                    "[RynnBot][%s:stop] duplicate stop_round acknowledged collection_id=%s episode_id=%s",
+                    kind,
+                    status.get("collection_id"),
+                    status.get("episode_id"),
+                )
+            else:
+                result = self._server_client.stop_collection()
+                if not result.ok:
+                    raise RuntimeError(result.message or "stop_collection failed")
+                status = result.payload if isinstance(result.payload, dict) else {}
+                self._finalize_stopped_collection(
+                    kind,
+                    status,
+                    trigger="stop_round",
+                    defer_download=True,
+                )
             if kind == "skill_record":
-                status["capture_dir"] = capture_dir
                 resp["result"].update(status)
         except Exception as exc:
             resp["error"] = {"code": -1, "message": str(exc)}
@@ -390,6 +389,7 @@ class RynnBotCaptureManager:
         encode_raw_capture_subprocess,
         package_encoded_captures,
     ) -> Dict[str, Any]:
+        self._materialize_stopped_collections(kind, params)
         capture_dirs = self._capture_dirs_for_upload(kind, params)
         if not capture_dirs:
             raise RuntimeError("capture_dir or data_coll_id is required")
@@ -414,11 +414,13 @@ class RynnBotCaptureManager:
                 video_encoder=params.get("video_encoder") or self._config.get("video_encoder"),
                 timeout_s=params.get("timeout_s"),
             )
+            diagnostics = _encoded_capture_diagnostics(encoded)
             logger.info(
-                "[RynnBot][ENCODE] finished kind=%s frames=%s output_dir=%s",
+                "[RynnBot][ENCODE] finished kind=%s frames=%s output_dir=%s diagnostics=%s",
                 kind,
                 encoded.get("total_frames"),
                 encoded.get("output_dir"),
+                diagnostics,
             )
             encoded_captures.append(encoded)
         package_base_dir = self._package_base_dir_for_upload(capture_dirs)
@@ -460,6 +462,7 @@ class RynnBotCaptureManager:
                 self._delete_uploaded_raw_captures(capture_dirs)
             else:
                 logger.info("[RynnBot][CLEANUP] kept local raw captures for inspection: %s", capture_dirs)
+            self._forget_uploaded_stopped_collections(kind, capture_dirs)
         result = {
             "capture_dir": capture_dirs[0] if len(capture_dirs) == 1 else package_base_dir,
             "capture_dirs": capture_dirs,
@@ -593,6 +596,96 @@ class RynnBotCaptureManager:
             return
         self._server_resource_by_capture_dir[os.path.abspath(capture_dir)] = resource_id
 
+    @staticmethod
+    def _stopped_collection_key(collection_id: Any, episode_id: Any) -> str:
+        return f"{collection_id or ''}\0{episode_id or ''}"
+
+    def _remember_stopped_collection(
+        self,
+        kind: str,
+        status: Dict[str, Any],
+        capture_dir: Optional[str] = None,
+    ) -> None:
+        key = self._stopped_collection_key(status.get("collection_id"), status.get("episode_id"))
+        with self._stopped_collection_lock:
+            records = self._stopped_collections.setdefault(kind, {})
+            records[key] = {"status": dict(status), "capture_dir": capture_dir}
+
+    def _forget_stopped_collection(self, kind: str, collection_id: str, episode_id: str) -> None:
+        key = self._stopped_collection_key(collection_id, episode_id)
+        with self._stopped_collection_lock:
+            records = self._stopped_collections.get(kind)
+            if records is not None:
+                records.pop(key, None)
+
+    def _latest_stopped_collection(self, kind: str) -> Optional[Dict[str, Any]]:
+        with self._stopped_collection_lock:
+            records = self._stopped_collections.get(kind) or {}
+            if not records:
+                return None
+            latest_key = next(reversed(records))
+            return dict(records[latest_key])
+
+    def _stopped_collections_for_upload(self, kind: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if params.get("capture_dir") or params.get("capture_dirs") or params.get("episode_dirs"):
+            return []
+        data_coll_id = self._data_collection_id_from_params(params)
+        record_ids = set(self._record_ids_from_params(params)) if kind == "skill_record" else set()
+        with self._stopped_collection_lock:
+            records = [dict(record) for record in (self._stopped_collections.get(kind) or {}).values()]
+        if data_coll_id is not None:
+            records = [
+                record
+                for record in records
+                if str(record["status"].get("collection_id") or "") == str(data_coll_id)
+            ]
+        elif record_ids:
+            records = [
+                record
+                for record in records
+                if str(record["status"].get("episode_id") or "") in record_ids
+            ]
+        return records
+
+    def _forget_uploaded_stopped_collections(self, kind: str, capture_dirs: List[str]) -> None:
+        uploaded_dirs = {os.path.abspath(path) for path in capture_dirs}
+        with self._stopped_collection_lock:
+            records = self._stopped_collections.get(kind)
+            if not records:
+                return
+            for key, record in list(records.items()):
+                capture_dir = record.get("capture_dir")
+                if capture_dir and os.path.abspath(str(capture_dir)) in uploaded_dirs:
+                    records.pop(key, None)
+
+    def _materialize_stopped_collections(self, kind: str, params: Dict[str, Any]) -> List[str]:
+        capture_dirs: List[str] = []
+        for record in self._stopped_collections_for_upload(kind, params):
+            status = record["status"]
+            capture_dir = record.get("capture_dir")
+            if not capture_dir or not os.path.isdir(str(capture_dir)):
+                capture_dir = self._download_collection_resource(kind, status)
+                self._remember_stopped_collection(kind, status, capture_dir)
+                self._remember_server_collection_resource(capture_dir, status)
+                self._set_capture_state(
+                    kind,
+                    status.get("episode_id") or status.get("collection_id"),
+                    False,
+                    capture_dir,
+                    None,
+                )
+                summary = self._capture_dir_summary(capture_dir)
+                logger.info(
+                    "[RynnBot][%s:upload] downloaded raw capture capture_dir=%s bytes=%s files=%s streams=%s",
+                    kind,
+                    capture_dir,
+                    summary["bytes"],
+                    summary["files"],
+                    summary["streams"],
+                )
+            capture_dirs.append(str(capture_dir))
+        return capture_dirs
+
     def _delete_uploaded_raw_captures(self, capture_dirs: List[str]) -> None:
         self._delete_server_collections(capture_dirs)
         self._delete_local_capture_dirs(capture_dirs)
@@ -696,20 +789,84 @@ class RynnBotCaptureManager:
 
         cleanup: List[Dict[str, Any]] = []
         logger.warning("[RynnBot] release_device: force stopping active collections: %s", active_kinds)
+        active_kind = active_kinds[0]
         try:
             if self._server_client is None:
                 raise RuntimeError("RCP protocol client is not available")
             result = self._server_client.stop_collection()
-            cleanup.append({"kind": "collection", "result": result.payload if result.ok else result.message})
             if not result.ok:
-                logger.warning("[RynnBot] release_device: stop_collection failed: %s", result.message)
+                raise RuntimeError(result.message or "stop_collection failed")
+            status = result.payload if isinstance(result.payload, dict) else {}
+            capture_dir = self._finalize_stopped_collection(active_kind, status, trigger="release_device")
+            cleanup.append(
+                {
+                    "kind": active_kind,
+                    "result": status,
+                    "capture_dir": capture_dir,
+                }
+            )
         except Exception as exc:
-            cleanup.append({"kind": "collection", "error": str(exc)})
+            cleanup.append({"kind": active_kind, "error": str(exc)})
             logger.warning("[RynnBot] release_device: force stop collection failed: %s", exc, exc_info=True)
 
         self._clear_capture_state_on_release()
         self._stop_ws_state_stream()
         return cleanup
+
+    def _finalize_stopped_collection(
+        self,
+        kind: str,
+        status: Dict[str, Any],
+        *,
+        trigger: str,
+        defer_download: bool = False,
+    ) -> str:
+        stopped_id = status.get("episode_id") or status.get("collection_id")
+        resource = status.get("collection_resource") if isinstance(status.get("collection_resource"), dict) else {}
+        logger.info(
+            "[RynnBot][%s:stop] trigger=%s collection_id=%s episode_id=%s resource_id=%s "
+            "duration_s=%.3f counts=%s stream_stats=%s",
+            kind,
+            trigger,
+            status.get("collection_id"),
+            status.get("episode_id"),
+            resource.get("resource_id"),
+            float(status.get("duration") or status.get("duration_s") or 0.0),
+            status.get("per_name_counts") or status.get("counts") or {},
+            status.get("stream_stats") or {},
+        )
+
+        # Mark the stream stopped before resource transfer so a download error
+        # cannot leave state streaming alive after the Server already stopped.
+        self._set_capture_state(kind, stopped_id, False, None, None)
+        if kind == "tele_data_coll":
+            self._stop_ws_state_stream()
+
+        if defer_download:
+            self._remember_stopped_collection(kind, status)
+            logger.info(
+                "[RynnBot][%s:stop] raw capture transfer deferred until upload collection_id=%s episode_id=%s",
+                kind,
+                status.get("collection_id"),
+                status.get("episode_id"),
+            )
+            return ""
+
+        capture_dir = self._download_collection_resource(kind, status)
+        self._remember_stopped_collection(kind, status, capture_dir)
+        self._set_capture_state(kind, stopped_id, False, capture_dir, None)
+        self._remember_server_collection_resource(capture_dir, status)
+        summary = self._capture_dir_summary(capture_dir)
+        logger.info(
+            "[RynnBot][%s:stop] trigger=%s saved raw capture capture_dir=%s bytes=%s files=%s streams=%s",
+            kind,
+            trigger,
+            capture_dir,
+            summary["bytes"],
+            summary["files"],
+            summary["streams"],
+        )
+        return capture_dir
 
     def _active_capture_kinds(self) -> List[str]:
         active = []
@@ -840,6 +997,34 @@ class RynnBotCaptureManager:
                     "start_time": None,
                 }
             )
+
+
+def _encoded_capture_diagnostics(encoded: Dict[str, Any]) -> Dict[str, Any]:
+    metadata_path = encoded.get("metadata_path")
+    if not metadata_path:
+        output_dir = encoded.get("output_dir")
+        if output_dir:
+            metadata_path = os.path.join(str(output_dir), "metadata.json")
+    if not metadata_path or not os.path.isfile(str(metadata_path)):
+        return {}
+    try:
+        with open(str(metadata_path), "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+    except (OSError, TypeError, ValueError):
+        return {}
+    if not isinstance(metadata, dict):
+        return {}
+    alignment = metadata.get("alignment") if isinstance(metadata.get("alignment"), dict) else {}
+    return {
+        "fps": metadata.get("fps"),
+        "timestamp_policy": metadata.get("timestamp_policy"),
+        "total_frames": metadata.get("total_frames"),
+        "alignment_policy": metadata.get("alignment_policy"),
+        "recording_duration_s": alignment.get("recording_duration_s"),
+        "frames_recorded_by_key": alignment.get("frames_recorded_by_key") or {},
+        "recording_duration_by_key": alignment.get("recording_duration_by_key") or {},
+        "reused_sample_rate_by_key": alignment.get("reused_sample_rate_by_key") or {},
+    }
 
 
 def _is_capture_dir(path: str) -> bool:

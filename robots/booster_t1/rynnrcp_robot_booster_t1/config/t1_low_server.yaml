@@ -1,0 +1,31 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: booster_t1_low
+  robot_name: Booster T1 Low
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: true
+integration:
+  config: package://rynnrcp_robot_booster_t1/config/robot_integration_low.yaml
+server:
+  interface:
+    host: 0.0.0.0
+    port: 0
+    local_registry: true
+    mdns: false
+components:
+  robot:
+    enabled: true
+    net: ""
+    domain_id: 0
+    default_kp: null
+    default_kd: null
+    damping_kd: 0.1
+policies:
+  paths:
+    - ../policies

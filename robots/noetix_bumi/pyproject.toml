@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-noetix-bumi"
+version = "0.1.0"
+description = "Bumi SDK integration for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "onnxruntime>=1.16",
+    "rynnrcp>=0.1.0",
+    "rynnkit>=0.1.0",
+]
+
+[project.entry-points."rynnrcp.robots"]
+bumi = "rynnrcp_robot_bumi"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_robot_bumi*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_bumi" = ["config/*.yaml", "policies/*/*.yaml", "policies/*/*.onnx"]

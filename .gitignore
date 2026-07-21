@@ -66,4 +66,7 @@ logs/
 
 # Runtime data
 teleop_records/
+teleop_dataset_*.zip
 .runtime/
+benchmark_results/
+.worktrees/

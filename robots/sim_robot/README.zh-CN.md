@@ -1,88 +1,61 @@
-# Sim Robot (Isaac Sim)
+# Sim Robot
 
-RynnRCP 通用仿真机器人集成包，通过 ZeroMQ 连接 Isaac Sim。
-支持多种机器人构型（SO101、RM75 等），通过配置文件区分。
+[English](README.md)
+
+RynnRCP 的 Isaac Sim 接入包，通过 ZeroMQ 支持 SO101 单臂/双臂、RM75、Franka R3、Aero Hand 单手/双手等仿真构型。
+
+## 前置条件
+
+- Isaac Sim 环境可用
+- 仿真侧 ZeroMQ 服务已启动
 
 ## 安装
+
+先进入 Sim Robot 目录，再安装并激活环境：
 
 ```bash
 cd robots/sim_robot
 bash setup_sim.sh
+source venv/bin/activate
 ```
+
+安装脚本会安装 RynnBot、MCP、Protocol Debug 和 Teleop App。
 
 ## 启动
 
 ```bash
-# SO101 (6 DOF, 2 cameras)
 bash start_rcp.sh --config so101
-
-# RM75 (9 DOF, 5 cameras)
-bash start_rcp.sh --config rm75
+bash start_rcp.sh --config lerobot_so101_dual_sim_v1
+bash start_rcp.sh --config lerobot_so101_dual_sim_v2
+bash start_rcp.sh --config aero_hand_dual_sim_v1
+bash start_rcp.sh --config aero_hand_dual_sim_v2
+bash start_rcp.sh --config rm75_rmg24_sim_v1
+bash start_rcp.sh --config rm75_rmg24_sim_v2
+bash start_rcp.sh --config franka_r3_sim_v1
+bash start_rcp.sh --config franka_r3_sim_v2
 ```
 
-前置条件：仿真已在 Docker 容器内运行。
+仅保留以上 9 个 server 配置：8 个精确构型 + 原始 `so101` 构型。Server 启动后，可按需启动 App：
 
-## 配置
-
-### 云平台凭据
-
-编辑 `rynnrcp_robot_sim/config/sim_rynnbot_app.yaml`：
-
-```yaml
-app:
-  product_key: <your_product_key>
-  device_name: <your_device_name>
-  device_secret: <your_device_secret>
-```
-
-支持环境变量覆盖：
 ```bash
-RYNNBOT_PRODUCT_KEY=xxx RYNNBOT_DEVICE_NAME=yyy RYNNBOT_DEVICE_SECRET=zzz bash start_rcp.sh --config so101
+rynnrcp-protocol-debug --config rynnrcp_robot_sim/config/sim_server_so101.yaml
+rynnrcp-mcp-app --server-config rynnrcp_robot_sim/config/sim_server_so101.yaml
+rynnrcp-rynnbot-app --config rynnrcp_robot_sim/config/sim_rynnbot_app.yaml --server-config rynnrcp_robot_sim/config/sim_server_so101.yaml
+rynnrcp-teleop-app
 ```
 
-完整环境变量列表：
+每个 Server 启动后都会打印 `Debug UI` 地址。需要查看状态、Action、相机图像或实时曲线时，手动在浏览器打开该地址；端口被占用时，使用对应 Server 终端打印的新地址。
 
-| 环境变量 | 说明 | 默认值 |
-|---------|------|--------|
-| `RYNNBOT_PRODUCT_KEY` | 云平台 product_key | yaml 中的值 |
-| `RYNNBOT_DEVICE_NAME` | 云平台 device_name | yaml 中的值 |
-| `RYNNBOT_DEVICE_SECRET` | 云平台 device_secret | yaml 中的值 |
-| `RYNNBOT_HTTP_URL` | 云平台接入地址 | https://robot-access.damo-academy.com |
-| `PORT` | 仿真基础端口 | 8080 |
+## 能力
 
-### 添加新机器人构型
+- `aero_hand_dual_sim_v1`：14DoF compact 合并向量 + front 1 相机，action/state 字段名为 left_* + right_* tendon/actuator
+- `aero_hand_dual_sim_v2`：14DoF compact 合并向量 + front/top/left/right 4 相机，action/state 不拆左右 component
+- `rm75_rmg24_sim_v1` / `rm75_rmg24_sim_v2`：8DoF + 5 相机
+- `franka_r3_sim_v1` / `franka_r3_sim_v2`：9DoF + 5 相机
+- `lerobot_so101_dual_sim_v1` / `lerobot_so101_dual_sim_v2`：12DoF 合并向量（左6+右6），RCP/乐云侧只有一个 `robot` component；底层内部才连接 `left_robot`/`right_robot`
+- `so101`：原始 SO101 单臂构型，6DoF + front/top/left/right/wrist 5 相机
+- 仿真关节状态与控制
+- 多相机图像
+- 多机器人构型配置
 
-1. 创建 `config/robot_integration_<name>.yaml`（定义相机列表和 DOF）
-2. 创建 `config/sim_server_<name>.yaml`（引用 integration 并设置 components）
-3. 启动：`bash start_rcp.sh --config <name>`
-
-## 数据流
-
-```
-键盘/云端 → WSS tunnel → RynnBot App → UDP:8085 → 仿真 IK
-  → action_bridge 轮询 get_joint_command
-    → gRPC run_action_chunk → RCP Server (数据采集)
-      → ZMQ set_joint_positions → 仿真机器人运动
-```
-
-## 文件说明
-
-```
-robots/sim_robot/
-├── setup_sim.sh
-├── start_rcp.sh                    # bash start_rcp.sh --config <robot>
-├── action_bridge.py
-├── pyproject.toml
-├── README.zh-CN.md
-└── rynnrcp_robot_sim/
-    ├── __init__.py
-    ├── controller.py               # SimRobotController(n_dof=N)
-    ├── sim_camera.py               # SimCamera (JPEG)
-    ├── zmq_clients.py              # JointClient + FrameClient
-    └── config/
-        ├── robot_integration_so101.yaml  # SO101: 6DOF, front+wrist
-        ├── robot_integration_rm75.yaml   # RM75: 9DOF, 5 cameras
-        ├── sim_server_so101.yaml
-        ├── sim_server_rm75.yaml
-        └── sim_rynnbot_app.yaml
-```
+ZeroMQ 数据流、云端配置和新增构型方法见[调试参考](DEBUGGING.zh-CN.md)。

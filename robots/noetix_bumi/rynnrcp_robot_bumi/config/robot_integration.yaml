@@ -1,0 +1,547 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: humanoid
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    control_level: high
+
+components:
+  - name: robot
+    type: humanoid
+    parent_component: null
+    dof: 21
+    frame: base_link
+    description: Bumi high-level DDS controller
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_bumi.controller.BumiHighController
+        init:
+          robot_id: ${manifest.robot_id}
+          sdk_root: ${components.robot.sdk_root}
+          max_x: ${components.robot.max_x}
+          max_yaw: ${components.robot.max_yaw}
+          action_frames: ${components.robot.action_frames}
+          velocity_duration_s: ${components.robot.velocity_duration_s}
+          velocity_hz: ${components.robot.velocity_hz}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current Bumi high-level joint state
+        frame_rate: 20
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: imu
+        type: imu
+        description: Current Bumi IMU data
+        frame_rate: 20
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: get_imu
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: battery
+        type: robot_state
+        description: "Current Bumi BMS data: battery_soc percent, battery_temp Celsius, battery_soh percent, and battery_alarm."
+        frame_rate: 2
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: get_battery
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: mode
+        type: robot_state
+        description: "Current Bumi high-level workmode. Known values: 0=enabled, 1=ready, 2=walk, 5=dance, 8=swing, 9=shake, 10=cheer, 23=play_teach, 26=protect, 27=fall_to_stand, 28=stand_to_fall, 30=disabled, 31=dance1, 32=dance2, 33=tear."
+        frame_rate: 5
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: get_mode
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: start
+        type: prearranged
+        description: "Trigger START. Vendor semantics: when workmode is 30 disabled, START enters enabled mode; otherwise START immediately enters disabled mode."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: start_mode
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: switch
+        type: prearranged
+        description: "Trigger SWITCH ready mode."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: switch_mode
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: walk
+        type: prearranged
+        description: "Trigger WALK mode. After this, send base_velocity where linear x maps to Bumi ver [-1,1] and angular z maps to Bumi hor [-1,1]."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: walk_mode
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: enter_walk
+        type: prearranged
+        description: "Recommended for upper layers before movement. Send this first, wait until observation.robot.mode reports mode 2 walk, then send action.robot.base_velocity. Internally: if mode is 30 disabled, START; then SWITCH; then WALK."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: enter_walk
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: swing
+        type: prearranged
+        description: "Trigger factory SWING action. Sent once, then DEFAULT is sent so the action is not repeatedly interrupted."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: swing
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: shake
+        type: prearranged
+        description: "Trigger factory SHAKE action. Sent once, then DEFAULT is sent so the action is not repeatedly interrupted."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: shake
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: cheer
+        type: prearranged
+        description: "Trigger factory CHEER action. Sent once, then DEFAULT is sent so the action is not repeatedly interrupted."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: cheer
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: dance
+        type: prearranged
+        description: "Trigger DANCE mode."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: dance
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: dance1
+        type: prearranged
+        description: "Trigger DANCE1 mode."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: dance1
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: dance2
+        type: prearranged
+        description: "Trigger DANCE2 mode."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: dance2
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: tear
+        type: prearranged
+        description: "Trigger factory TEAR action."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: tear
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: fall_to_stand
+        type: prearranged
+        description: "Trigger FALLTOSTAND. Use only when the robot is safely placed for the vendor fall-to-stand routine."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: fall_to_stand
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: stand_to_fall
+        type: prearranged
+        description: "Trigger STANDTOFALL. Dangerous on hardware; use only with the robot suspended or otherwise secured."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: stand_to_fall
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: start_teach
+        type: prearranged
+        description: "Trigger STARTTEACH to start recording a teach motion."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: start_teach
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: save_teach
+        type: custom
+        description: "Trigger SAVETEACH with index. Example value: {\"index\": 1}. The SDK may report save states 12, 14, and 29 while saving."
+        frame_rate: 1
+        input_schema:
+          type: object
+          fields:
+            index:
+              type: int
+              optional: true
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: save_teach
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: play_teach
+        type: custom
+        description: "Trigger PLAYTEACH with index. Example value: {\"index\": 1}. Sent once, then DEFAULT is sent so playback is not repeatedly interrupted."
+        frame_rate: 1
+        input_schema:
+          type: object
+          fields:
+            index:
+              type: int
+              optional: true
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: play_teach
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: stop
+        type: prearranged
+        description: "Send zero DEFAULT command. Stops velocity/action output but does not necessarily change the current mode."
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: stop
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: base_velocity
+        type: base_velocity
+        description: "Send only after action.robot.enter_walk and observation.robot.mode is 2. linear x maps to Bumi ver [-1,1]; angular z maps to Bumi hor [-1,1]. On current hardware, small values like 0.3 may not move; use about +1 forward or -1 backward for visible motion. One call creates a short WALK pulse, ramps to zero, then sends DEFAULT."
+        frame_rate: 50
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: set_base_velocity
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: high_command
+        type: custom
+        description: "Expert raw command. Value example: {\"command\":\"PLAYTEACH\",\"index\":1}. Fields: command, ver, hor, index, frames. Prefer named actions unless testing SDK behavior."
+        frame_rate: 10
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.controller.BumiHighController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            max_x: ${components.robot.max_x}
+            max_yaw: ${components.robot.max_yaw}
+            action_frames: ${components.robot.action_frames}
+            velocity_duration_s: ${components.robot.velocity_duration_s}
+            velocity_hz: ${components.robot.velocity_hz}
+          start: start
+          stop: shutdown
+          method_name: high_command
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+  - name: head_camera
+    type: camera
+    parent_component: robot
+    frame: head_camera
+    description: Bumi head RealSense D435i color camera
+    enabled: ${components.head_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Latest color image from the Bumi head RealSense D435i. This is independent of the high-level controller.
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: cameras.realsense_camera.RealSenseCamera
+          init:
+            name: head_camera
+            serial: ${components.head_camera.serial}
+            width: ${components.head_camera.width}
+            height: ${components.head_camera.height}
+            encoding: ${components.head_camera.encoding}
+            fps: ${components.head_camera.fps}
+            warmup_frames: ${components.head_camera.warmup_frames}
+            jpeg_quality: ${components.head_camera.jpeg_quality}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter

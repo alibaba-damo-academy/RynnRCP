@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-booster-t1"
+version = "0.1.0"
+description = "Booster T1 high-level and low-level SDK integration for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp>=0.1.0",
+    "onnxruntime",
+]
+
+[project.entry-points."rynnrcp.robots"]
+booster_t1 = "rynnrcp_robot_booster_t1"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_robot_booster_t1*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_booster_t1" = ["config/*.yaml", "policies/walk/policy.yaml", "policies/walk/*.onnx"]

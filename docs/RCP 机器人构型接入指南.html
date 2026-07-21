@@ -407,6 +407,7 @@ components:
     <tr><td>回 home</td><td><code>action + type: prearranged</code></td><td>接收空对象 <code>{}</code>，执行预定义动作。</td></tr>
     <tr><td>自定义 move_to</td><td><code>action + type: custom</code></td><td>接收该 action 的 input_schema，例如 <code>{"joint_positions": [...]}</code>。</td></tr>
   </table>
+  <p>标准 <code>type</code> 只返回标准协议字段：<code>joint_state</code> 不要夹带 <code>joint_names</code>、<code>joint_torques</code>；<code>imu</code> 使用 <code>accel</code>、<code>gyro</code>、可选 <code>orientation_quat_wxyz</code>；<code>joint_position</code> action 只接收 <code>joint_positions</code>。机器人私有字段请放到 <code>type: robot_state</code> observation，或使用 <code>type: custom</code> action。</p>
 
   <h3>例子：你有一个 Python SDK</h3>
   <p>假设你的机器人 SDK 已经有这些方法：</p>

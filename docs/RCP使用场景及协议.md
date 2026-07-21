@@ -1,7 +1,5 @@
 # RCP使用场景及协议
 
-# RCP使用场景及协议
-
 # RCP一句话定义
 
 统一机器人技能，本体，传感器，以及数据等接入并对其进行管理，提供给 Physical Agent/外部系统/应用 进行数据采集，推理和调度等。大部分接入并不会随着agent能力增强而变化，除了部分技能，比如vla，可能被将来Agent内的模型所接管，可参考LLM和Agent的相互演进过程。RCP的实现可部署在real或者sim本体侧，提供运行时环境。
@@ -95,7 +93,7 @@ Manifest对象 包含以下字段：
 | model\_refs | object | 可选 | 模型、资产与标定资源描述 |
 | metadata | object | 可选 | 用户自定义补充信息 |
 
-`components` 描述机器人对外暴露的主要组件，不要求与 URDF / MJCF 中的 link、joint、body 一一对应。若提供组件列表，可通过 `parent_component` 描述父子关系。
+`components` 描述机器人对外暴露的主要组件。组件按协议能力组织，可通过 `parent_component` 描述父子关系。
 
 Manifest 按三个层次描述机器人能力：
 
@@ -154,7 +152,7 @@ actions 描述动作对象概要。完整 input\_schema、限位、帧率、�
 | `data_collection` | boolean | 必选 | 是否支持数据采集 |
 | `policy_service` | boolean | 必选 | 是否支持推理策略服务 |
 
-`model_refs` 用于声明机器人模型、资产与标定资源，供仿真、可视化、调试或系统集成使用。协议不要求也不建议暴露服务端本地文件路径。URDF / MJCF / calibration 等较小文本资源可直接以内联 `content` 返回；mesh、texture、较大模型资产或资源包通过 Resource 对象描述，并由资源读取接口按需获取。
+`model_refs` 用于声明机器人模型、资产与标定资源，供仿真、可视化、调试或系统集成使用。URDF / MJCF / calibration 等较小文本资源可直接以内联 `content` 返回；mesh、texture、较大模型资产或资源包通过 Resource 对象描述，并由资源读取接口按需获取。
 
 | 字段 | 类型 | 必选性 | 说明 |
 | --- | --- | --- | --- |
@@ -188,7 +186,7 @@ Observation 可用工具：
 | 工具名 | 意义 | 回调 | 参数 |
 | --- | --- | --- | --- |
 | list\_observations | 查询所有 Observation 的完整描述 | × | para：无<br>ret：{observations: \[{name, type, description?, frame\_rate?, value\_schema}\]} |
-| get\_observations | 获取指定 Observation 的当前值（一次性拉取） | × | para：names（名称列表）, sync?（是否尽量时间对齐，默认 false）<br>ret：{observations: \[{name, timestamp, value}\]} |
+| get\_observations | 获取指定 Observation 的当前值（单次拉取） | × | para：names（名称列表）, sync?（是否尽量时间对齐，默认 false）<br>ret：{observations: \[{name, timestamp, value}\]} |
 | subscribe\_observations | 订阅 Observation 持续推送（流式） | ✓ | para：names（订阅列表）, frame\_rate（推送帧率，单位 Hz）<br>ret：{subscription\_id}<br>callback：{type, subscription\_id, data: {name, timestamp, value}} |
 
 `list_observations` 返回字段：
@@ -239,7 +237,7 @@ Observation 常见类型参考：
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `contact_press_map` | object | 按触觉传感器阵列排布组织的接触压力图，包含 `width`, `height`, `encoding`, `data`；`encoding` 可为 `mono8` / `float32` / `float64`，JSON 中 `data` 为 base64 字符串 |
-| `pressure_map` | float\[\] | 展平后的压力数组，适用于不需要表达二维阵列排布的触觉传感器 |
+| `pressure_map` | float\[\] | 展平后的压力数组，适用于一维触觉传感器或已展平的二维阵列 |
 | `contact` | bool | 当前是否检测到接触 |
 | `slip` | bool | 当前是否检测到滑移 |
 
@@ -330,7 +328,7 @@ Action 可用工具：
 
     custom 用于机器人侧自定义且需要结构化入参的动作，例如 action.robot.move\_to；调用方直接按该 Action 在 list\_actions 返回的 input\_schema 传入 frames\[ \]。
 
-*   `custom` 不要求动作对象命名为 `action.robot.custom`。协议推荐使用语义明确的 Action 名称，例如 `action.robot.move_to`、`action.robot.calibrate`、`action.gripper_0.custom_grasp`。
+*   `custom` 推荐使用语义明确的 Action 名称，例如 `action.robot.move_to`、`action.robot.calibrate`、`action.gripper_0.custom_grasp`。
 
 
 Action 常见类型参考：
@@ -524,7 +522,7 @@ Resource 可用于：
 | `resource_id` | string | 必选 | 资源标识，不应包含服务端本地路径 |
 | `type` | string | 必选 | 资源类型，如 `file` / `directory` / `archive` / `stream` |
 | `domain` | string | 可选 | 资源领域，如 `model` / `asset` / `calibration` / `log` / `data` / `report` |
-| `name` | string | 可选 | 人类可读资源名，不要求唯一 |
+| `name` | string | 可选 | 人类可读资源名 |
 | `format` | string | 可选 | 资源格式，如 `urdf` / `mjcf` / `json` / `yaml` / `zip` / `text` / `jpeg` / `bin` |
 | `mime_type` | string | 可选 | MIME 类型 |
 | `mode` | string | 必选 | `snapshot` 表示内容固定；`live` 表示内容可能变化 |
@@ -545,7 +543,7 @@ Resource 可用工具：
 | snapshot\_resource | 将 live 资源固化为 snapshot 资源 | × | para：resource\_id<br>ret： |
 | prepare\_resource\_archive | 将目录或多个资源打包为 archive 资源 | × | para：resource\_id 或 resource\_ids, format?<br>ret： |
 
-`list_resources` 用于列出当前 RCP 实例主动公开的资源目录和资源项。服务端只应把协议允许跨边界访问的资源注册到 Resource catalog 中，例如采集数据、日志、模型文件、标定文件或临时归档文件。
+`list_resources` 用于列出当前 RCP 实例主动公开的资源目录和资源项。服务端把可跨边界访问的采集数据、日志、模型文件、标定文件或归档文件注册到 Resource catalog。
 
 `list_resources` 参数字段：
 

@@ -1,0 +1,24 @@
+policy_id: walk
+name: Booster T1 Walk ONNX
+description: "50 Hz Booster T1 ONNX walk policy. cmd_vel is [x, y, yaw]; 23-joint output is mapped to the robot's 29-motor LowCmd layout. Run action.robot.enter_low before starting."
+entrypoint: policy.py:Policy
+
+inputs:
+  observations:
+    - component: robot
+      name: joint_state
+    - component: robot
+      name: imu
+  runtime_inputs:
+    cmd_vel:
+      type: array
+      items: float
+      shape: [3]
+      default: [0.0, 0.0, 0.0]
+      description: "[x, y, yaw]. x forward/back, yaw left/right."
+      stale_after_ms: 500
+
+outputs:
+  actions:
+    - component: robot
+      name: joint_position

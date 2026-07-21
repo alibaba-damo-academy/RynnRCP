@@ -6,3 +6,7 @@ app:
   device_name: YOUR_DEVICE_NAME
   device_secret: YOUR_DEVICE_SECRET
   http_url: https://robot-access.damo-academy.com
+  video_encoder_smoke_test: false
+
+  video_backend: auto
+  video_encoder: libx264

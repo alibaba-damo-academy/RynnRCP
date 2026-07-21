@@ -82,6 +82,9 @@ class ActionService(BaseService):
         self._publishers: Dict[str, Dict[str, Any]] = {}
         self._action_stores: Dict[str, SharedDataStore] = {}
         self._action_stop_event = threading.Event()
+        self._latest_actions: Dict[str, Dict[str, Any]] = {}
+        self._latest_actions_lock = threading.RLock()
+        self._latest_action_capture_enabled = False
         for output in self._outputs:
             self._add_action_publisher(
                 output.channel,
@@ -91,6 +94,22 @@ class ActionService(BaseService):
                 shared_data_slot_count=output.params.get("shared_data_slot_count"),
             )
         self._action_by_name = {action["name"]: action for action in self._actions}
+
+    @property
+    def latest_actions(self) -> Dict[str, Dict[str, Any]]:
+        """Return the last successfully published frame for each Action."""
+        with self._latest_actions_lock:
+            return {name: dict(value) for name, value in self._latest_actions.items()}
+
+    def set_latest_action_capture(self, enabled: bool) -> None:
+        """Enable the optional latest-Action snapshot used by the debug UI."""
+        enabled = bool(enabled)
+        with self._latest_actions_lock:
+            if self._latest_action_capture_enabled == enabled:
+                return
+            self._latest_action_capture_enabled = enabled
+            if not enabled:
+                self._latest_actions.clear()
 
     def bind(self) -> None:
         self._register_tool(
@@ -258,6 +277,14 @@ class ActionService(BaseService):
                     f"Action frame exceeds action channel msg_size for {channel}: {len(data)} > {msg_size}"
                 )
             info["publisher"].publish(data)
+        if self._latest_action_capture_enabled:
+            with self._latest_actions_lock:
+                self._latest_actions[action_name] = {
+                    "timestamp": timestamp,
+                    "value": frame,
+                    "frame_rate": float(fps),
+                    "type": action_type,
+                }
 
     def _pack_action_message(
         self,

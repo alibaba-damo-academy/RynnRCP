@@ -9,6 +9,7 @@ description = "RynnRCP simulation robot integration (Isaac Sim via ZeroMQ)"
 requires-python = ">=3.10"
 dependencies = [
     "rynnrcp",
+    "rynnkit>=0.1.0",
     "pyzmq>=25.0",
     "numpy>=1.24",
     "opencv-python-headless>=4.9",

@@ -1,0 +1,27 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: lekiwi_leader
+  robot_name: LeKiwi Leader
+  capabilities:
+    observations: true
+    actions: false
+    health: true
+    resources: false
+    data_collection: false
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_lekiwi/config/lekiwi_leader_integration.yaml
+components:
+  robot:
+    enabled: true
+    port: /dev/cu.usbmodem5B421350951
+    calibration_dir: null
+    state_read_hz: 60
+  keyboard:
+    slow_xy_m_s: 0.1
+    medium_xy_m_s: 0.2
+    fast_xy_m_s: 0.3
+    slow_yaw_rad_s: 0.5235987755982988
+    medium_yaw_rad_s: 1.0471975511965976
+    fast_yaw_rad_s: 1.5707963267948966

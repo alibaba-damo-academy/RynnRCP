@@ -41,7 +41,7 @@ rynnrcp-teleop-app --config <teleop-app.yaml>
 6. 停止数采后，可以回放 episode 或导出数据。
 
 Server 启动后会在终端打印 `Local gRPC` 和 `LAN gRPC` 地址。自动发现不可用或跨网段时，
-在 Teleop 页面手动添加这个地址即可；不要猜端口，使用 Server 实际打印的地址。
+在 Teleop 页面填写 Server 实际打印的地址。
 
 ## 主要功能
 
@@ -55,7 +55,7 @@ Server 启动后会在终端打印 `Local gRPC` 和 `LAN gRPC` 地址。自动�
 ## 数据边界
 
 - 原始采集数据属于执行端 Server。
-- 远端 Server 数据在回放或导出时才通过 Resource 临时传到 App；如果执行端 Server 关闭 `resources` 能力，就只能使用实时遥操，不能从该 Server 拉取历史采集文件。
+- 回放或导出远端 Server 数据时，App 通过 Resource 拉取采集文件；执行端 Server 开启 `resources` 能力后可使用历史采集文件。
 - 导出文件保存在 App 本机。
 - App 和 Server 之间始终使用 RCP key；导出到外部平台格式时，映射发生在 App 边界。
 

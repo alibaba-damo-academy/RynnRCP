@@ -1,0 +1,44 @@
+# LeRobot SO101 Dual Simulation v2 Server Config (12 DOF merged action/state, 6 cameras)
+config_type: rynnrcp_server_config
+version: 1
+
+manifest:
+  robot_id: lerobot_so101_dual_sim_v2
+  robot_name: LeRobot SO101 Dual Simulation v2
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: false
+
+integration:
+  config: package://rynnrcp_robot_sim/config/robot_integration_so101_bimanual.yaml
+
+components:
+  robot:
+    enabled: true
+    left_robot_id: left_robot
+    right_robot_id: right_robot
+    n_dof_per_arm: 6
+    server_host: localhost
+    server_port: 8080
+  front_camera:
+    enabled: true
+    device_id: camera_front
+  top_camera:
+    enabled: true
+    device_id: camera_top
+  left_camera:
+    enabled: true
+    device_id: camera_left
+  right_camera:
+    enabled: true
+    device_id: camera_right
+  left_wrist_camera:
+    enabled: true
+    device_id: camera_left_wrist
+  right_wrist_camera:
+    enabled: true
+    device_id: camera_right_wrist

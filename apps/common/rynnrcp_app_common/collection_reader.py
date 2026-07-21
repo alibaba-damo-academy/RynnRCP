@@ -53,7 +53,11 @@ class RawCaptureReader:
     def stream_keys(self) -> List[str]:
         names = self.capture_meta().get("names")
         if isinstance(names, list):
-            return [str(name) for name in names]
+            return [
+                str(name)
+                for name in names
+                if os.path.isfile(os.path.join(self.streams_dir, safe_name(str(name)), "samples.msgpack"))
+            ]
         if not os.path.isdir(self.streams_dir):
             return []
         return sorted(
@@ -108,6 +112,9 @@ class RawCaptureReader:
             return cached
         path = os.path.join(self.streams_dir, safe_name(key), "samples.msgpack")
         samples: List[RawCaptureSample] = []
+        if not os.path.isfile(path):
+            self._cache[key] = samples
+            return samples
         with open(path, "rb") as f:
             for seq, item in enumerate(msgpack.Unpacker(f, raw=False)):
                 if not isinstance(item, dict):

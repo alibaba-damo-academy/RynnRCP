@@ -42,8 +42,6 @@ include = [
     "rynnrcp.*",
     "rynnrcp_app_protocol_debug",
     "rynnrcp_app_protocol_debug.*",
-    "rynnkit",
-    "rynnkit.*",
 ]
 
 [tool.setuptools]

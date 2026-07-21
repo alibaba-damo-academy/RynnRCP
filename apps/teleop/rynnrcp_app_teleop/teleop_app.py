@@ -581,12 +581,23 @@ class TeleopApp(AppLifecycle):
             self._latest_record_status["episode_dir"] = None
         return self.record_status
 
-    def discard_record(self, episode_number: Optional[int] = None) -> bool:
+    def discard_record(self, episode_number: Optional[int] = None) -> dict[str, Any]:
         with self._record_status_lock:
             path = self._latest_record_status.get("episode_dir")
-        if path:
-            self.records.delete_episode(str(path))
-        return True
+            resource = self._latest_record_status.get("collection_resource")
+            resource = dict(resource) if isinstance(resource, dict) else {}
+        resource_id = str(resource.get("resource_id") or "")
+        result = (
+            self.delete_server_collection("target", resource_id)
+            if resource_id
+            else self.records.delete_episode(str(path)) if path
+            else {"success": False, "message": "episode resource not found"}
+        )
+        if result.get("success"):
+            with self._record_status_lock:
+                self._latest_record_status["collection_resource"] = {}
+                self._latest_record_status["episode_dir"] = None
+        return result
 
     def delete_episode_ref(self, episode_ref: str) -> dict[str, Any]:
         value = str(episode_ref or "")

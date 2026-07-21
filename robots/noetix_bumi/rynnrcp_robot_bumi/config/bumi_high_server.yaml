@@ -1,0 +1,41 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: bumi_high
+  robot_name: Bumi High
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_bumi/config/robot_integration.yaml
+server:
+  interface:
+    host: 0.0.0.0
+    port: 0
+    local_registry: true
+    mdns: false
+components:
+  robot:
+    enabled: true
+    # Set this to your built noetix_sdk_bumi path, or leave null to use BUMI_SDK_ROOT.
+    sdk_root: null
+    # Bumi publish_cmd uses normalized ver/hor in [-1, 1], not m/s or rad/s.
+    max_x: 1.0
+    max_yaw: 1.0
+    action_frames: 10
+    velocity_duration_s: 1.0
+    velocity_hz: 50
+  head_camera:
+    enabled: true
+    # Leave null to use the first connected RealSense; set a serial when multiple cameras exist.
+    serial: null
+    width: 640
+    height: 480
+    fps: 30
+    encoding: jpg
+    warmup_frames: 60
+    jpeg_quality: 85

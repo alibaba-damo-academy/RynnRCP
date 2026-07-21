@@ -1,0 +1,112 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: humanoid
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    control_level: low
+
+components:
+  - name: robot
+    type: humanoid
+    parent_component: null
+    dof: 23
+    frame: base_link
+    description: Booster T1 low-level SDK controller
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_booster_t1.low_controller.BoosterT1LowController
+        init: &robot_init
+          robot_id: ${manifest.robot_id}
+          net: ${components.robot.net}
+          domain_id: ${components.robot.domain_id}
+          default_kp: ${components.robot.default_kp}
+          default_kd: ${components.robot.default_kd}
+          damping_kd: ${components.robot.damping_kd}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current 23-joint policy state mapped from the Booster T1 29-motor SDK order.
+        frame_rate: 200
+        source:
+          connector: module
+          module_name: rynnrcp_robot_booster_t1.low_controller.BoosterT1LowController
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: imu
+        type: imu
+        description: Current Booster T1 low-level IMU data when present in LowState.
+        frame_rate: 200
+        source:
+          connector: module
+          module_name: rynnrcp_robot_booster_t1.low_controller.BoosterT1LowController
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: get_imu
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: enter_low
+        type: prearranged
+        description: "Switch high-level mode Prepare -> Custom so LowCmd can control joints. Use only with robot safely supported."
+        frame_rate: 1
+        source: &low_source
+          connector: module
+          module_name: rynnrcp_robot_booster_t1.low_controller.BoosterT1LowController
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: enter_low
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: joint_position
+        type: joint_position
+        description: "Low-level policy targets. Requires 23 joint_positions; controller maps them to the 29-motor SDK order and publishes continuously at 50 Hz. Requires action.robot.enter_low first."
+        frame_rate: 50
+        consume_mode: latest
+        input_schema:
+          type: object
+          fields:
+            joint_positions:
+              type: array
+              items: float
+              shape: [23]
+        source:
+          <<: *low_source
+          method_name: set_joint_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: damping
+        type: prearranged
+        description: Explicitly send kp=0 and damping kd to all Booster T1 motors. Normal shutdown returns to Prepare instead.
+        frame_rate: 1
+        source:
+          <<: *low_source
+          method_name: damping
+        codec:
+          adapter: ProtocolActionOutputAdapter

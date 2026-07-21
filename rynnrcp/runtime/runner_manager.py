@@ -197,6 +197,7 @@ class ConnectorOutputTarget:
         self._thread: threading.Thread | None = None
         self._last_drop_warning_at = 0.0
         self._shared_reader_cache: Dict[str, Any] = {}
+        self._scheduler: Scheduler | None = None
         if self._consume_mode not in ("queue", "latest"):
             raise ValueError("action_consume_mode must be 'queue' or 'latest'")
 

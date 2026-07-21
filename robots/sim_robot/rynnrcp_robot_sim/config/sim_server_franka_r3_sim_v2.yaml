@@ -1,0 +1,40 @@
+# Franka R3 Simulation v2 Server Config (8 DOF, 5 cameras)
+config_type: rynnrcp_server_config
+version: 1
+
+manifest:
+  robot_id: franka_r3_sim_v2
+  robot_name: Franka R3 Simulation v2
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: false
+
+integration:
+  config: package://rynnrcp_robot_sim/config/robot_integration_franka_r3.yaml
+
+components:
+  robot:
+    enabled: true
+    robot_id: robot
+    n_dof: 8
+    server_host: localhost
+    server_port: 8080
+  front_camera:
+    enabled: true
+    device_id: camera_front
+  wrist_camera:
+    enabled: true
+    device_id: camera_wrist
+  top_camera:
+    enabled: true
+    device_id: camera_top
+  left_camera:
+    enabled: true
+    device_id: camera_left
+  right_camera:
+    enabled: true
+    device_id: camera_right

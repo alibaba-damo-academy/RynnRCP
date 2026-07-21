@@ -1,0 +1,35 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: so101_bimanual_leader
+  robot_name: SO101 Bimanual Leader
+  capabilities:
+    observations: true
+    actions: false
+    health: true
+    resources: true
+    data_collection: false
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_so101/config/robot_integration_bimanual.yaml
+components:
+  robot:
+    enabled: true
+    role: leader
+    n_dof: 12
+    task_keys:
+    - observation.state
+    - action
+    left_robot_id: so101_bimanual_leader_left
+    right_robot_id: so101_bimanual_leader_right
+    left_port: /dev/cu.usbmodem-left-leader
+    right_port: /dev/cu.usbmodem-right-leader
+  front_camera:
+    enabled: false
+    device_id: 0
+  left_wrist_camera:
+    enabled: false
+    device_id: 1
+  right_wrist_camera:
+    enabled: false
+    device_id: 2

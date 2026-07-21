@@ -1,0 +1,66 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: ${components.robot.embodiment_type}
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    control_source: camera_gesture
+
+components:
+  - name: robot
+    type: gripper
+    parent_component: null
+    frame: hand
+    description: Aero Hand camera gesture master
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source: &vision_source
+        connector: module
+        module_name: rynnrcp_robot_aero_hand.vision_master.AeroHandVisionMaster
+        init: &vision_init
+          robot_id: ${manifest.robot_id}
+          mode: ${components.robot.mode}
+          side: ${components.robot.side}
+          camera_index: ${components.robot.camera_index}
+          fps: ${components.robot.fps}
+          hand_landmarker_model: ${components.robot.hand_landmarker_model}
+          swap_handedness: ${components.robot.swap_handedness}
+          camera_width: ${components.robot.camera_width}
+          camera_height: ${components.robot.camera_height}
+          frame_server_port: ${components.robot.frame_server_port}
+          min_hand_area: ${components.robot.min_hand_area}
+          ema_alpha: ${components.robot.ema_alpha}
+          min_cutoff: ${components.robot.min_cutoff}
+          beta: ${components.robot.beta}
+          d_cutoff: ${components.robot.d_cutoff}
+          visual: ${components.robot.visual}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Camera-recognized Aero Hand compact joint vector
+        frame_rate: 30
+        source:
+          <<: *vision_source
+          init:
+            <<: *vision_init
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter

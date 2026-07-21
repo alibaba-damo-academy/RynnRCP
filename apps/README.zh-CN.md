@@ -17,12 +17,11 @@ SDK；它们通过 RynnRCP Interface 调用 Server 暴露的协议工具。
 
 ## 安装入口
 
-普通用户通常不需要在这里单独安装 App。使用具体机器人构型时，优先按该机器人包的
-README 执行安装脚本；例如 SO101 会通过 `robots/so101/setup_so101.sh` 安装 Runtime、
-官方 App 和 SO101 机器人包。
+使用具体机器人构型时，按该机器人包的 README 执行安装脚本；例如 SO101 会通过
+`robots/lerobot_so101/setup_so101.sh` 安装 Runtime、官方 App 和 SO101 机器人包。
 
 只安装 Runtime 和官方 App 时，见仓库根目录 [`../README.zh-CN.md`](../README.zh-CN.md)。
-只有在单独开发某个 App 时，才进入对应 App 目录查看 README 和安装方式。
+开发单个 App 时，进入对应 App 目录查看 README 和安装方式。
 
 安装完成后，可以用 `-h` 确认命令和参数：
 
@@ -33,12 +32,12 @@ rynnrcp-rynnbot-app -h
 rynnrcp-protocol-debug -h
 ```
 
-## 使用原则
+## 使用方式
 
-- App 不知道机器人 SDK、串口、相机编号、channel 或 adapter。
-- App 只通过协议对象名调用 Server，例如 `observation.robot.joint_state`、`action.robot.joint_position`。
-- App 与 Server 的本地或远程数据交换应走 Resource 相关接口；如果目标 Server 关闭 `resources` 能力，App 不应读取该 Server 的文件类资源。
-- App 如需对接外部平台格式，应在 App 边界做 key 和数据格式映射，内部和 Server 通信用 RCP 协议格式。
+- 先启动一个 RCP Server，再启动需要的 App。
+- 通过协议对象名调用 Server，例如 `observation.robot.joint_state`、`action.robot.joint_position`。
+- 本地或远程文件类数据通过 Resource 接口传输。
+- 对接外部平台格式时，在 App 边界完成 key 和数据格式映射；App 与 Server 之间保持 RCP 协议格式。
 
 ## 继续阅读
 

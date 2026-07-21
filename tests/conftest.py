@@ -13,8 +13,9 @@ SOURCE_ROOTS = [
     PROJECT_ROOT / "apps" / "mcp",
     PROJECT_ROOT / "apps" / "rynnbot",
     PROJECT_ROOT / "apps" / "teleop",
-    PROJECT_ROOT / "robots" / "aero_hand",
-    PROJECT_ROOT / "robots" / "so101",
+    PROJECT_ROOT / "robots" / "tetheria_aerohand",
+    PROJECT_ROOT / "robots" / "lerobot_so101",
+    PROJECT_ROOT / "robots" / "lerobot_lekiwi",
 ]
 
 for source_root in reversed(SOURCE_ROOTS):

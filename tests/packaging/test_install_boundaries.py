@@ -79,8 +79,28 @@ def test_app_packages_own_their_optional_dependencies() -> None:
     }.issubset(teleop)
 
 
+def test_rynnkit_owns_hardware_capability_dependencies() -> None:
+    config = _pyproject("rynnkit")
+    dependencies = _dependency_names(config)
+    realsense = config["project"]["optional-dependencies"]["realsense"]
+
+    assert {"numpy", "opencv-python-headless"}.issubset(dependencies)
+    assert "pyrealsense2" in {str(item).split(";", 1)[0].strip() for item in realsense}
+
+
+def test_noetix_bumi_package_declares_robot_layer_dependencies_and_assets() -> None:
+    config = _pyproject("robots/noetix_bumi")
+    dependencies = _dependency_names(config)
+    robot_entry_points = config["project"]["entry-points"]["rynnrcp.robots"]
+    package_data = config["tool"]["setuptools"]["package-data"]["rynnrcp_robot_bumi"]
+
+    assert {"onnxruntime", "rynnrcp", "rynnkit"}.issubset(dependencies)
+    assert robot_entry_points == {"bumi": "rynnrcp_robot_bumi"}
+    assert "policies/*/*.onnx" in package_data
+
+
 def test_so101_package_declares_robot_layer_dependencies_and_entry_points() -> None:
-    config = _pyproject("robots/so101")
+    config = _pyproject("robots/lerobot_so101")
     dependencies = _dependency_names(config)
     scripts = config["project"]["scripts"]
     robot_entry_points = config["project"]["entry-points"]["rynnrcp.robots"]
@@ -98,6 +118,15 @@ def test_so101_package_declares_robot_layer_dependencies_and_entry_points() -> N
         "rynnrcp-so101-configure",
     }
     assert robot_entry_points == {"so101": "rynnrcp_robot_so101"}
+
+
+def test_aero_hand_package_declares_camera_master_dependencies_and_assets() -> None:
+    config = _pyproject("robots/tetheria_aerohand")
+    dependencies = _dependency_names(config)
+    package_data = config["tool"]["setuptools"]["package-data"]["rynnrcp_robot_aero_hand"]
+
+    assert {"rynnrcp", "pyserial", "mediapipe", "numpy", "opencv-python", "pyyaml"}.issubset(dependencies)
+    assert "model/*.task" in package_data
 
 
 def test_core_import_smoke_does_not_pull_robot_or_teleop_modules() -> None:

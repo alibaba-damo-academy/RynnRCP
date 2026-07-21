@@ -1,0 +1,16 @@
+thumb_ip: {peak: 0.78, valley: 0.0}
+thumb_mcp: {peak: 0.70, valley: 0.0}
+thumb_cmc_flex: {peak: 0.956, valley: 0.51}
+thumb_cmc_abd: {peak: 0.705, valley: 0.0}
+index_mcp_flex: {peak: 1.20, valley: 0.708}
+index_pip: {peak: 1.57, valley: 0.02}
+index_dip: {peak: 1.57, valley: 0.25}
+middle_mcp_flex: {peak: 1.20, valley: 0.708}
+middle_pip: {peak: 1.57, valley: 0.02}
+middle_dip: {peak: 1.57, valley: 0.25}
+ring_mcp_flex: {peak: 1.20, valley: 0.708}
+ring_pip: {peak: 1.57, valley: 0.02}
+ring_dip: {peak: 1.57, valley: 0.25}
+pinky_mcp_flex: {peak: 1.571, valley: 0.47}
+pinky_pip: {peak: 1.57, valley: 0.005}
+pinky_dip: {peak: 1.36, valley: 0.24}

@@ -15,6 +15,7 @@ from rynnrcp.config.resolver import (
     load_integration_config,
     require_mapping,
     require_str,
+    resolve_refs,
 )
 from rynnrcp.config.validator import ConfigValidator
 from rynnrcp.utils.user_paths import (
@@ -122,6 +123,8 @@ def _runtime_manifest(
     server_manifest = require_mapping(server_config, "manifest")
     active_components = _active_components(server_config, integration_config)
     manifest = deepcopy(dict(integration_manifest))
+    if "embodiment_type" in manifest:
+        manifest["embodiment_type"] = resolve_refs(manifest["embodiment_type"], server_config)
     manifest.update(deepcopy(dict(server_manifest)))
     manifest["components"] = _select_components(
         integration_manifest,

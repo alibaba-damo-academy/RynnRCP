@@ -82,6 +82,11 @@ class SimCamera(BaseCamera):
         self._frame_client: FrameClient | None = None
         self._blank_frame = np.zeros((int(height), int(width), 3), dtype=np.uint8)
 
+        self._read_count = 0
+        self._read_success_count = 0
+        self._read_failure_count = 0
+        self._last_failure_log_at = 0.0
+
     def start(self) -> None:
         """Connect to FrameManager and mark sensor as running."""
         self._frame_client = FrameClient(
@@ -106,18 +111,50 @@ class SimCamera(BaseCamera):
             (success, width, height, encoding, image_data)
             When native_compressed=True, returns JPEG bytes.
         """
+        self._read_count += 1
         if self.state != SensorState.RUNNING or self._frame_client is None:
+            self._read_failure_count += 1
+            self._maybe_log_read_failure("not_running")
             return False, 0, 0, self.encoding, None
 
         frame = self._frame_client.get_frame(str(self.device_id))
         if frame is not None:
+            self._read_success_count += 1
+            if self._read_failure_count > 0:
+                logger.info(
+                    "SimCamera recovered: device_id=%s after %d failures (total read=%d)",
+                    self.device_id,
+                    self._read_failure_count,
+                    self._read_count,
+                )
+                self._read_failure_count = 0
             if self.native_compressed and self.encoding == "jpg":
                 # Encode BGR8 numpy array to JPEG bytes
                 _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 return True, int(self.width), int(self.height), "jpg", buf.tobytes()
             return True, int(self.width), int(self.height), self.encoding, frame
         else:
+            self._read_failure_count += 1
+            self._maybe_log_read_failure("frame_none")
             return False, int(self.width), int(self.height), self.encoding, None
+
+    def _maybe_log_read_failure(self, reason: str) -> None:
+        """Log camera read failures periodically to avoid log flooding."""
+        now = time.monotonic()
+        if self._read_failure_count == 1 or self._read_failure_count % 50 == 0:
+            if now - self._last_failure_log_at >= 1.0:
+                self._last_failure_log_at = now
+                logger.warning(
+                    "SimCamera read failure (%s): device_id=%s "
+                    "read_count=%d success_count=%d failure_count=%d state=%s client=%s",
+                    reason,
+                    self.device_id,
+                    self._read_count,
+                    self._read_success_count,
+                    self._read_failure_count,
+                    self.state,
+                    self._frame_client is not None,
+                )
 
     def stop(self) -> None:
         """Close the ZMQ connection and mark sensor as stopped."""

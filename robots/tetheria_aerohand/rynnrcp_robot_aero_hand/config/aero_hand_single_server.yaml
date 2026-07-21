@@ -1,0 +1,32 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: aero_hand_single
+  robot_name: Aero Hand Single
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: false
+    data_collection: true
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_aero_hand/config/robot_integration.yaml
+components:
+  robot:
+    enabled: true
+    mode: single
+    embodiment_type: single_dexterous_hand
+    dof: 7
+    port: /dev/cu.usbmodem1101
+    left_port: ''
+    right_port: ''
+    baudrate: 921600
+    homing_on_connect: false
+    homing_timeout_s: 175.0
+    homing_settle_s: 8.0
+  front_camera:
+    enabled: true
+    device_id: 0
+    url: http://127.0.0.1:28412/frame
+    frame_server_port: 28412

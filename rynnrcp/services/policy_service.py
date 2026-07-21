@@ -151,6 +151,7 @@ class PolicyService(BaseService):
             self._stop_event = stop_event
             self._thread = thread
             self._last_error = ""
+        logger.info("Started policy %s with runtime_inputs=%s", requested_id, active_inputs)
         thread.start()
         return ToolBus.make_result(True, result={"active_policy_id": requested_id}, message="OK")
 
@@ -176,6 +177,7 @@ class PolicyService(BaseService):
             for key in runtime_inputs:
                 self._input_updated_at[str(key)] = now
             result = {"active_policy_id": active_policy_id, "runtime_inputs": dict(self._active_inputs)}
+        logger.info("Updated policy %s runtime_inputs=%s", active_policy_id, runtime_inputs)
         return ToolBus.make_result(True, result=result, message="OK")
 
     def stop_policy(self, policy_id: str | None = None, reason: str | None = None) -> dict[str, Any]:
@@ -197,6 +199,7 @@ class PolicyService(BaseService):
             self._bus.call_tool("stop_action", reason=reason or "policy stopped")
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=2.0)
+        logger.info("Stopped policy %s reason=%s", active_policy_id, reason or "")
         return ToolBus.make_result(True, result={"stopped_policy_id": active_policy_id}, message="OK")
 
     def _policy_loop(self, policy: PolicySpec, policy_obj: Any, stop_event: threading.Event) -> None:

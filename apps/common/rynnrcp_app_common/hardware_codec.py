@@ -280,7 +280,7 @@ def discover_ffmpeg_video_encoder(preferred: Optional[str] = None, smoke_test: b
 
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        return _h264_fallback_result("ffmpeg not found")
+        return _h264_fallback_result("ffmpeg not found", preferred=requested or None)
 
     encoders_text = _ffmpeg_encoders(ffmpeg)
     if requested:
@@ -313,7 +313,7 @@ def discover_ffmpeg_video_encoder(preferred: Optional[str] = None, smoke_test: b
             "movflags": list(FFMPEG_MOVFLAGS),
         }
 
-    fallback = _h264_fallback_result(missing_reason)
+    fallback = _h264_fallback_result(missing_reason, preferred=requested or None)
     fallback["failed_candidates"] = failed
     return fallback
 
@@ -747,20 +747,20 @@ def _compact_reason(reason: str, max_len: int = 220) -> str:
     return text[: max_len - 3] + "..."
 
 
-def _h264_fallback_result(reason: str) -> FFmpegEncoder:
-    pyav = _pyav_result(reason)
+def _h264_fallback_result(reason: str, preferred: Optional[str] = None) -> FFmpegEncoder:
+    pyav = _pyav_result(reason, preferred=preferred)
     if pyav is not None:
         return pyav
     return _opencv_result(reason)
 
 
-def _pyav_result(reason: str) -> Optional[FFmpegEncoder]:
+def _pyav_result(reason: str, preferred: Optional[str] = None) -> Optional[FFmpegEncoder]:
     try:
         import av
     except Exception:
         return None
     failed: List[Dict[str, str]] = []
-    for encoder in _pyav_h264_codec_chain(detect_platform()):
+    for encoder in _pyav_h264_codec_chain(detect_platform(), preferred=preferred):
         if encoder in av.codecs_available:
             return {
                 "backend": "pyav",
@@ -775,7 +775,10 @@ def _pyav_result(reason: str) -> Optional[FFmpegEncoder]:
     return None
 
 
-def _pyav_h264_codec_chain(platform_type: PlatformType) -> List[str]:
+def _pyav_h264_codec_chain(platform_type: PlatformType, preferred: Optional[str] = None) -> List[str]:
+    requested = (preferred or "").strip()
+    if requested:
+        return [requested]
     if platform_type == PlatformType.WINDOWS:
         return ["h264_mf", "h264_nvenc", "libx264"]
     if platform_type == PlatformType.MACOS:

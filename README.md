@@ -8,8 +8,8 @@ standard Python implementation of that protocol.
 
 RCP standardizes how robots expose Manifest, Observation, Action, Policy,
 Health, Resource, and Data Collection objects. Apps, agents, MCP tools, and
-cloud systems only need to understand those protocol objects; they do not need
-to know each robot's SDK, serial ports, camera IDs, or internal channel layout.
+cloud systems work through those protocol objects instead of per-robot SDK,
+serial port, camera ID, or internal channel details.
 
 In short:
 
@@ -17,9 +17,8 @@ In short:
 > data, how local policies become reusable skills, and how those skills can be
 > called safely by agents.
 
-RCP does not replace ROS, robot SDKs, or low-level controllers. Hard real-time
-control, interpolation, force control, emergency handling, and safety limits
-must stay inside the robot-side controller or safety layer.
+ROS, robot SDKs, and low-level controllers stay responsible for hard real-time
+control, interpolation, force control, emergency handling, and safety limits.
 
 ## What This Repository Provides
 
@@ -28,7 +27,8 @@ This repository is a concrete implementation of the protocol:
 - a Python runtime that loads robot configs and runs standard robot services;
 - standalone apps for Teleop, MCP, RynnBot cloud access, and protocol debugging,
   with shared recording, encoding, Resource transfer, and export helpers;
-- robot integration packages, currently including SO101, Aero Hand, and Atom01;
+- robot integration packages, including SO101, Aero Hand, Atom01, Booster T1,
+  Noetix Bumi, and Isaac Sim robots;
 - documentation for App integration, robot integration, policy service, protocol
   objects, and config writing;
 - tests for the implementation boundaries.
@@ -52,22 +52,25 @@ and use the setup script it provides.
 
 | Goal | Start with |
 | --- | --- |
-| Use SO101 | [robots/so101/README.md](robots/so101/README.md) |
-| Use Aero Hand | [robots/aero_hand/README.md](robots/aero_hand/README.md) |
-| Use Atom01 | [robots/atom01/README.md](robots/atom01/README.md) |
+| Use SO101 | [robots/lerobot_so101/README.md](robots/lerobot_so101/README.md) |
+| Use Aero Hand | [robots/tetheria_aerohand/README.md](robots/tetheria_aerohand/README.md) |
+| Use Atom01 | [robots/roboparty_atom01/README.md](robots/roboparty_atom01/README.md) |
+| Use Booster T1 | [robots/booster_t1/README.zh-CN.md](robots/booster_t1/README.zh-CN.md) |
+| Use Noetix Bumi | [robots/noetix_bumi/README.zh-CN.md](robots/noetix_bumi/README.zh-CN.md) |
+| Use an Isaac Sim robot | [robots/sim_robot/README.zh-CN.md](robots/sim_robot/README.zh-CN.md) |
 | Use Teleop / MCP / RynnBot | [apps/README.zh-CN.md](apps/README.zh-CN.md), then the app README |
-| Debug one Server protocol | [apps/protocol_debug/README.zh-CN.md](apps/protocol_debug/README.zh-CN.md) |
+| Inspect one Server protocol | [apps/protocol_debug/README.zh-CN.md](apps/protocol_debug/README.zh-CN.md) |
 | Build a new App | [docs/RCP App 接入 Server 指南.html](docs/RCP%20App%20接入%20Server%20指南.html) |
 | Add a new robot package | [docs/RCP 机器人构型接入指南.html](docs/RCP%20机器人构型接入指南.html) |
 | Add local policies | [docs/RCP 策略服务接入指南.html](docs/RCP%20策略服务接入指南.html) |
 | Check protocol objects and methods | [docs/RCP使用场景及协议.md](docs/RCP使用场景及协议.md) |
 | Check config fields | [docs/RCP配置文件说明.md](docs/RCP配置文件说明.md) |
-| Find the right long-lived doc | [docs/README.zh-CN.md](docs/README.zh-CN.md) |
+| Benchmark live-device latency and resource load | [tests/benchmarks/live_device/README.zh-CN.md](tests/benchmarks/live_device/README.zh-CN.md) |
+| Choose a document | [docs/README.zh-CN.md](docs/README.zh-CN.md) |
 
-When adding a robot, do not start by writing config files. First make the robot's
-native SDK, ROS2/LCM path, serial tool, or camera tool work with minimal
-hardware behavior. Then wrap those working abilities as controller/source
-definitions and write the RCP config.
+When adding a robot, first verify the robot's native SDK, ROS2/LCM path, serial
+tool, or camera tool with minimal hardware behavior. Then wrap those working
+abilities as controller/source definitions and write the RCP config.
 
 ## Server And App
 
@@ -106,7 +109,7 @@ python -m pip install --upgrade pip setuptools wheel
 Install the RynnRCP implementation and official apps:
 
 ```bash
-python -m pip install -e . -e apps/common -e apps/mcp -e apps/rynnbot -e apps/teleop
+python -m pip install -e . -e apps/common -e apps/protocol_debug -e apps/mcp -e apps/rynnbot -e apps/teleop
 ```
 
 After installation, the current Python environment has these commands:
@@ -121,10 +124,23 @@ rynnrcp-protocol-debug
 
 Use `-h` to inspect command arguments.
 
+### Inspect Live Server State
+
+`rynnrcp-server` starts a built-in read-only status page without opening a browser. After the Server is ready, open the `Debug UI` address printed in its terminal:
+
+```text
+Debug UI:   http://127.0.0.1:8092/
+```
+
+The page displays Observations/state, Actions, camera images, and live charts; it does not provide robot controls. The default port is `8092`. If that port is occupied, the Server logs a warning and selects the next available port, so use the address printed by the current process.
+
+When no page is active, the Server does not perform additional state or image reads. Closing or hiding the page stops polling, and Action snapshot capture shuts down and clears its cache after about three seconds.
+
 For a concrete robot package, prefer that package's setup script. SO101 uses
-[`robots/so101/setup_so101.sh`](robots/so101/setup_so101.sh), and Aero Hand uses
-[`robots/aero_hand/setup_aero_hand.sh`](robots/aero_hand/setup_aero_hand.sh).
-Atom01 uses [`robots/atom01/setup_atom01.sh`](robots/atom01/setup_atom01.sh).
+[`robots/lerobot_so101/setup_so101.sh`](robots/lerobot_so101/setup_so101.sh), and Aero Hand uses
+[`robots/tetheria_aerohand/setup_aero_hand.sh`](robots/tetheria_aerohand/setup_aero_hand.sh).
+Atom01 uses [`robots/roboparty_atom01/setup_atom01.sh`](robots/roboparty_atom01/setup_atom01.sh).
+Other robot setup scripts are linked from [robots/README.md](robots/README.md).
 These scripts install Runtime, official apps, and the robot package together.
 
 ## Included Packages
@@ -146,6 +162,8 @@ These scripts install Runtime, official apps, and the robot package together.
   provides `rynnrcp-aero-hand-configure`.
 - Python package `rynnrcp-robot-atom01`: Atom01 humanoid integration package
   that provides `rynnrcp-atom01-configure` and `rynnrcp-atom01-test-policy`.
+- Robot packages also include Booster T1, Noetix Bumi, and Isaac Sim
+  integrations; see their package READMEs for hardware prerequisites and commands.
 
 ## Repository Layout
 
@@ -178,10 +196,15 @@ apps/                   official standalone app packages
   teleop/               teleoperation Web app
 
 robots/                 robot integration packages
-  so101/                SO101 integration
-  aero_hand/            Aero Hand integration
-  atom01/               Atom01 integration
+  lerobot_so101/        SO101 integration
+  lerobot_lekiwi/       LeKiwi integration
+  tetheria_aerohand/    Aero Hand integration
+  roboparty_atom01/     Atom01 integration
+  booster_t1/           Booster T1 high-level and low-level integration
+  noetix_bumi/          Noetix Bumi high-level and low-level integration
+  sim_robot/            Isaac Sim integration
 
+benchmarks/             reproducible live-device performance benchmarks
 docs/                   long-lived implementation documentation
 tests/                  implementation tests
 ```
@@ -203,7 +226,7 @@ RynnRCP is licensed under the Apache License 2.0 unless otherwise noted in a
 file header or package README.
 
 The Atom01 robot package includes GPL-3.0 C++ control binding sources under
-`robots/atom01/rynnrcp_robot_atom01/atom_control/`. Those files remain under
+`robots/roboparty_atom01/rynnrcp_robot_atom01/atom_control/`. Those files remain under
 GPL-3.0 as marked by their SPDX headers.
 
 Third-party code and asset notices are listed in
@@ -222,13 +245,15 @@ Third-party code and asset notices are listed in
 - [App integration guide](docs/RCP%20App%20接入%20Server%20指南.html):
   how apps call an RCP Server through Interface and Resource tools.
 - [Apps README](apps/README.zh-CN.md): official app entry point.
-- [Robots README](robots/README.zh-CN.md): robot package entry point.
-- [SO101 README](robots/so101/README.md): SO101 installation, configuration,
+- [Robots README](robots/README.md): robot package entry point.
+- [SO101 README](robots/lerobot_so101/README.md): SO101 installation, configuration,
   runtime commands, and hardware notes.
-- [Aero Hand README](robots/aero_hand/README.md): Aero Hand single/dual setup,
+- [Aero Hand README](robots/tetheria_aerohand/README.md): Aero Hand single/dual setup,
+  camera-gesture Teleop collection, runtime commands, and RynnBot notes.
+- [Atom01 README](robots/roboparty_atom01/README.md): Atom01 setup, zero calibration,
   runtime commands, and RynnBot notes.
-- [Atom01 README](robots/atom01/README.md): Atom01 setup, zero calibration,
-  runtime commands, and RynnBot notes.
+- [Booster T1 README](robots/booster_t1/README.zh-CN.md): high-level control,
+  low-level `LowCmd`, and local walk policy setup.
 - [Protocol Debug README](apps/protocol_debug/README.zh-CN.md): browser UI for
   direct protocol inspection and raw requests.
 - [Test guide](tests/README.md): test suite ownership and recommended commands.

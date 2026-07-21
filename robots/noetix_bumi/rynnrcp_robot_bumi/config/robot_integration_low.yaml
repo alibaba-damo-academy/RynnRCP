@@ -1,0 +1,150 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: humanoid
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    control_level: low
+
+components:
+  - name: robot
+    type: humanoid
+    parent_component: null
+    dof: 21
+    frame: base_link
+    description: Bumi low-level DDS controller
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_bumi.low_controller.BumiLowController
+        init:
+          robot_id: ${manifest.robot_id}
+          sdk_root: ${components.robot.sdk_root}
+          default_kp: ${components.robot.default_kp}
+          default_kd: ${components.robot.default_kd}
+          damping_kd: ${components.robot.damping_kd}
+          max_delta: ${components.robot.max_delta}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current Bumi low-level joint state in policy joint order
+        frame_rate: 500
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.low_controller.BumiLowController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            default_kp: ${components.robot.default_kp}
+            default_kd: ${components.robot.default_kd}
+            damping_kd: ${components.robot.damping_kd}
+            max_delta: ${components.robot.max_delta}
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: imu
+        type: imu
+        description: Current Bumi low-level IMU data
+        frame_rate: 500
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.low_controller.BumiLowController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            default_kp: ${components.robot.default_kp}
+            default_kd: ${components.robot.default_kd}
+            damping_kd: ${components.robot.damping_kd}
+            max_delta: ${components.robot.max_delta}
+          start: start
+          stop: shutdown
+          method_name: get_imu
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: battery
+        type: robot_state
+        description: Current Bumi BMS data
+        frame_rate: 2
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.low_controller.BumiLowController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            default_kp: ${components.robot.default_kp}
+            default_kd: ${components.robot.default_kd}
+            damping_kd: ${components.robot.damping_kd}
+            max_delta: ${components.robot.max_delta}
+          start: start
+          stop: shutdown
+          method_name: get_battery
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: "Low-level joint targets. Requires 21 joint_positions in Bumi policy joint order. Optional: joint_velocities, kp, kd."
+        frame_rate: 500
+        consume_mode: latest
+        input_schema:
+          type: object
+          fields:
+            joint_positions:
+              type: array
+              items: float
+              shape: [21]
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.low_controller.BumiLowController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            default_kp: ${components.robot.default_kp}
+            default_kd: ${components.robot.default_kd}
+            damping_kd: ${components.robot.damping_kd}
+            max_delta: ${components.robot.max_delta}
+          start: start
+          stop: shutdown
+          method_name: set_joint_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: damping
+        type: prearranged
+        description: Send zero position/torque with kp=0 and damping kd to all Bumi joints.
+        frame_rate: 1
+        source:
+          connector: module
+          module_name: rynnrcp_robot_bumi.low_controller.BumiLowController
+          init:
+            robot_id: ${manifest.robot_id}
+            sdk_root: ${components.robot.sdk_root}
+            default_kp: ${components.robot.default_kp}
+            default_kd: ${components.robot.default_kd}
+            damping_kd: ${components.robot.damping_kd}
+            max_delta: ${components.robot.max_delta}
+          start: start
+          stop: shutdown
+          method_name: damping
+        codec:
+          adapter: ProtocolActionOutputAdapter

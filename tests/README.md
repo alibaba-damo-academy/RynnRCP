@@ -24,7 +24,9 @@ outside restricted sandboxes.
 | --- | --- |
 | `adapters/test_protocol_adapters.py` | Current protocol input/image/action adapter behavior. |
 | `config/test_core_config.py` | Source config loader and validator coverage. |
+| `config/test_lekiwi_configure_web.py` | LeKiwi web configuration persistence and machine-specific IDs. |
 | `config/test_runtime_config.py` | Runtime initialization directly from server, core, and integration configs. |
+| `config/test_so101_configure_web.py` | SO101 web configuration persistence and machine-specific IDs. |
 | `connectors/test_connector.py` | Connector factory and module/port connector behavior. |
 | `connectors/test_ros2_connector_real.py` | Optional ROS2 connector smoke coverage. |
 | `diagnostics/test_logging.py` | Logging setup and formatting. |
@@ -44,12 +46,23 @@ outside restricted sandboxes.
 | `robot/test_base_controller.py` | Public robot controller interface contract. |
 | `runtime/test_pipeline.py` | Scheduler/channel pipeline integration. |
 | `runtime/test_scheduler.py` | Scheduler component timing and lifecycle. |
+| `services/test_action_service_snapshot.py` | On-demand Action snapshots used by the read-only Debug UI. |
 | `services/test_policy_service.py` | Local policy loading, runtime input updates, and action dispatch. |
 | `utils/test_core_utils.py` | Small shared import/path/timestamp helpers. |
+| `utils/test_device_identity.py` | Stable privacy-preserving suffixes derived for one host. |
+| `visualization/test_visualization_server.py` | Embedded Debug UI lifecycle, idle behavior, and port fallback. |
 
-## SO101 Hardware Validation
+## Live-device benchmark
 
-SO101 hardware validation is not part of the framework test directory. It needs
-real arms, cameras, calibration files, and network credentials. Follow
-[`../robots/so101/README.md`](../robots/so101/README.md) to start the follower /
-leader Servers and validate real workflows with Teleop, MCP, or RynnBot.
+The real-device benchmark is an operator-run integration test and is not collected automatically by pytest. From the repository root, follow [`benchmarks/live_device/README.zh-CN.md`](benchmarks/live_device/README.zh-CN.md) and run:
+
+```bash
+python tests/benchmarks/live_device/live_benchmark.py \
+  --config robots/lerobot_so101/rynnrcp_robot_so101/config/so101_follower_server.yaml
+```
+
+The command prints the result directory when collection completes. Review `summary.json` for latency, frequency, and resource results; use `failure.json` when device validation stops early.
+
+## SO101 hardware validation
+
+SO101 hardware validation needs real arms, cameras, calibration files, and network credentials, so pytest does not run it automatically. Use the live-device benchmark above for repeatable measurements. Follow [`../robots/lerobot_so101/README.md`](../robots/lerobot_so101/README.md) to start follower and leader Servers and validate Teleop, MCP, or RynnBot workflows.

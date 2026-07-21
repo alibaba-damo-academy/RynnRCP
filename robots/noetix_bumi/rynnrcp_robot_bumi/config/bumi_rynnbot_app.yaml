@@ -1,0 +1,8 @@
+config_type: rynnrcp_app_config
+version: 1
+app:
+  app_id: bumi_rynnbot_app
+  product_key: YOUR_PRODUCT_KEY
+  device_name: YOUR_DEVICE_NAME
+  device_secret: YOUR_DEVICE_SECRET
+  http_url: https://robot-access.damo-academy.com

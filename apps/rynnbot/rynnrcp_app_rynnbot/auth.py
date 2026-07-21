@@ -81,13 +81,15 @@ class RynnAuthClient:
             },
         }
 
-    def _post_with_retry(self, url: str, what: str) -> Dict[str, Any]:
+    def _post_with_retry(self, url: str, what: str, extra_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Send an authentication request to the given URL."""
         attempts = 0
         while True:
             attempts += 1
             try:
                 payload = self._build_auth_payload()
+                if extra_payload:
+                    payload.update(extra_payload)
                 resp = requests.post(url, json=payload, timeout=self.request_timeout_s)
 
                 if resp.status_code != 200:
@@ -131,6 +133,8 @@ class RynnAuthClient:
         parsed = urlparse(uri)
         host = parsed.hostname
         path = parsed.path
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
         if parsed.port is not None:
             port = parsed.port
         else:
@@ -142,4 +146,19 @@ class RynnAuthClient:
             "websocket_host": host,
             "websocket_path": path,
             "websocket_port": port,
+        }
+
+    def get_master_source_ws_config(self, endpoint_websocket: str, *, task_id: str, sub_task_id: str) -> Dict[str, Any]:
+        """Get controller-source WebSocket credentials for a master-arm session."""
+        url = f"{self.http_url}{endpoint_websocket}"
+        cfg = self._post_with_retry(
+            url,
+            "master source WS",
+            {"taskId": task_id, "subTaskId": sub_task_id},
+        )
+        return {
+            "token": cfg["token"],
+            "expire": int(cfg["expire"]),
+            "uri": cfg["uri"],
+            "relay_addr": cfg.get("relayAddr"),
         }

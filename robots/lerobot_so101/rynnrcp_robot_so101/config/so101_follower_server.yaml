@@ -1,0 +1,32 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: so101_follower
+  robot_name: SO101 Follower
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_so101/config/robot_integration.yaml
+components:
+  robot:
+    enabled: true
+    role: follower
+    port: /dev/cu.usbmodem-follower
+    home_positions:
+    - -0.028385574647819864
+    - -1.617210577232548
+    - 1.8749822821424798
+    - 0.9766172034236402
+    - -0.34753149501249725
+    - 0.03369672943508424
+  front_camera:
+    enabled: true
+    device_id: 0
+  wrist_camera:
+    enabled: true
+    device_id: 1

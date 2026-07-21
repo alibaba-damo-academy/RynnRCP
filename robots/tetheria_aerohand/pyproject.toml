@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-aero-hand"
+version = "0.1.0"
+description = "Aero Hand robot integration for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "mediapipe==0.10.35",
+    "numpy>=1.24",
+    "opencv-python>=4.9",
+    "pyyaml>=6.0",
+    "rynnrcp>=0.1.0",
+    "pyserial>=3.5",
+]
+
+[project.scripts]
+rynnrcp-aero-hand-configure = "rynnrcp_robot_aero_hand.configure_aero_hand_web:main"
+
+[project.entry-points."rynnrcp.robots"]
+aero_hand = "rynnrcp_robot_aero_hand"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_robot_aero_hand*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_aero_hand" = ["config/*.yaml", "model/*.task"]

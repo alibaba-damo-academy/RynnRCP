@@ -12,7 +12,6 @@ The server is started by the standalone Teleop app.
 
 from __future__ import annotations
 
-import socket
 import threading
 import time
 import webbrowser
@@ -22,6 +21,7 @@ from flask import Flask, Response, jsonify, render_template_string, request
 from flask_socketio import SocketIO
 
 import logging
+from rynnrcp.utils.web_urls import browser_urls, primary_browser_url
 
 if TYPE_CHECKING:
     from .teleop_app import TeleopApp
@@ -29,20 +29,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _get_local_ip() -> str:
-    """Return the LAN IP browsers on this machine should use."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.connect(("8.8.8.8", 80))
-            return str(sock.getsockname()[0])
-    except Exception:
-        return "127.0.0.1"
-
-
 def _browser_url(host: str, port: int) -> str:
     """Resolve a bind host into the URL we should show/open for users."""
-    display_host = _get_local_ip() if str(host) in ("0.0.0.0", "::", "") else str(host)
-    return f"http://{display_host}:{int(port)}"
+    return primary_browser_url(host, port)
 
 
 def _progress_payload(current: float, total: float, message: str) -> Dict[str, Any]:
@@ -438,7 +427,7 @@ HTML_TEMPLATE = '''
                         <span id="transport-mode" class="status-value">-</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">控制周期</span>
+                        <span class="status-label" data-i18n="label-control-loop">控制循环（含状态等待）</span>
                         <span id="action-latency" class="status-value">-</span>
                     </div>
                     <div class="status-item" style="grid-column: 1 / -1;">
@@ -623,6 +612,7 @@ HTML_TEMPLATE = '''
                 'label-record-status': '数采状态',
                 'label-episode': '当前 Episode',
                 'label-command-fps': '控制指令帧率',
+                'label-control-loop': '控制循环（含状态等待）',
                 'label-transport': '通信方式',
                 'label-preview-fps': '执行端图像帧率',
                 'label-export-fps': '导出 FPS',
@@ -701,6 +691,7 @@ HTML_TEMPLATE = '''
                 'msg-record-confirm': '帧数据，是否保留？\\n\\n点击"确定"保留数据\\n点击"取消"丢弃数据',
                 'msg-data-kept': '数据已保留，Episode: ',
                 'msg-data-discarded': '本轮数据已丢弃，下次采集将覆盖',
+                'msg-discard-failed': '丢弃数据失败: ',
                 'msg-no-data': '本个 episode 无有效数据',
                 'msg-export-waiting': '等待执行端响应...',
                 'msg-export-timeout': '导出超时：执行端未响应，请检查执行端是否在线',
@@ -800,6 +791,7 @@ HTML_TEMPLATE = '''
                 'label-record-status': 'Recording',
                 'label-episode': 'Episode',
                 'label-command-fps': 'Command FPS',
+                'label-control-loop': 'Control Loop (incl. state wait)',
                 'label-transport': 'Transport',
                 'label-preview-fps': 'Controlled Image FPS',
                 'label-export-fps': 'Export FPS',
@@ -878,6 +870,7 @@ HTML_TEMPLATE = '''
                 'msg-record-confirm': ' frames collected. Keep this data?\\n\\nOK = Keep\\nCancel = Discard',
                 'msg-data-kept': 'Data kept, episode: ',
                 'msg-data-discarded': 'Data discarded',
+                'msg-discard-failed': 'Failed to discard data: ',
                 'msg-no-data': 'No valid data in this episode',
                 'msg-export-waiting': 'Waiting for controlled robot...',
                 'msg-export-timeout': 'Export timeout: controlled robot not responding',
@@ -1771,9 +1764,13 @@ HTML_TEMPLATE = '''
                         showToast(t('msg-data-kept') + d.episode, 'success');
                         refreshRecords();
                     } else {
-                        fetch('/api/record/discard', {method:'POST'}).then(() => {
-                            showToast(t('msg-data-discarded'), 'info');
-                            refreshRecords();
+                        fetch('/api/record/discard', {method:'POST'}).then(r=>r.json()).then(x => {
+                            if (x.success) {
+                                showToast(t('msg-data-discarded'), 'info');
+                                refreshRecords();
+                            } else {
+                                showToast(t('msg-discard-failed') + (x.message || ''), 'error');
+                            }
                         });
                     }
                 } else {
@@ -2268,7 +2265,9 @@ HTML_TEMPLATE = '''
             const latencyEl = document.getElementById('action-latency');
             if (latencyEl) {
                 const last = num(d.action_latency_last_ms);
-                latencyEl.textContent = `${last.toFixed(1)} ms`;
+                latencyEl.textContent = last > 0
+                    ? `${last.toFixed(1)} ms (${(1000 / last).toFixed(1)} Hz)`
+                    : '-';
             }
             const summaryEl = document.getElementById('rpc-latency-summary');
             if (summaryEl) {
@@ -3451,8 +3450,7 @@ class TeleopWebUI:
 
         @self._app.route("/api/record/discard", methods=["POST"])
         def api_discard_record():
-            self._plugin.discard_record()
-            return jsonify({"success": True})
+            return jsonify(self._plugin.discard_record())
 
         @self._app.route("/api/data/export", methods=["POST"])
         def api_export_data():
@@ -3866,9 +3864,12 @@ class TeleopWebUI:
         )
         self._server_thread.start()
 
-        browser_url = _browser_url(self._host, self._port)
+        urls = browser_urls(self._host, self._port)
+        browser_url = urls[0]
         logger.info("[TeleopWebUI] Web UI bind address: http://%s:%s", self._host, self._port)
-        logger.info("[TeleopWebUI] Open browser URL: %s", browser_url)
+        logger.info("[TeleopWebUI] Web UI Local: %s", urls[0])
+        for url in urls[1:]:
+            logger.info("[TeleopWebUI] Web UI LAN:   %s", url)
 
         # Open browser
         if self._open_browser:

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-lekiwi"
+version = "0.1.0"
+description = "LeKiwi mobile manipulator integration for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "rynnrcp>=0.1.0",
+    "rynnkit>=0.1.0",
+    "feetech-servo-sdk>=1.0.0",
+    "opencv-python-headless>=4.9",
+    "pynput>=1.7",
+    "pyserial>=3.5",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+rynnrcp-lekiwi-configure-web = "rynnrcp_robot_lekiwi.configure_lekiwi_web:main"
+
+[project.entry-points."rynnrcp.robots"]
+lekiwi = "rynnrcp_robot_lekiwi"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lerobot_lekiwi*", "rynnrcp_robot_lekiwi*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_lekiwi" = ["config/*.yaml"]

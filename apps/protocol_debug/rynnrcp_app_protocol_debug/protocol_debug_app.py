@@ -21,6 +21,7 @@ from rynnrcp.interface.client import ClientInterface
 from rynnrcp.interface.discovery import LocalRegistry
 from rynnrcp.interface.protocol_client import RcpProtocolClient
 from rynnrcp.utils.user_paths import new_log_session_id
+from rynnrcp.utils.web_urls import browser_urls, primary_browser_url
 
 
 HTML = r"""<!doctype html>
@@ -570,7 +571,7 @@ connectServer().catch(() => refreshState());
 DEFAULT_CONFIG = (
     Path(__file__).resolve().parents[3]
     / "robots"
-    / "atom01"
+    / "roboparty_atom01"
     / "rynnrcp_robot_atom01"
     / "config"
     / "atom01_server.yaml"
@@ -911,18 +912,20 @@ def _jsonable(value: Any) -> Any:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the RynnRCP protocol debug web app.")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG), help="Default server config path.")
-    parser.add_argument("--host", default="127.0.0.1", help="Web app host.")
+    parser.add_argument("--host", default="0.0.0.0", help="Web app host.")
     parser.add_argument("--port", type=int, default=8091, help="Web app port.")
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser.")
     args = parser.parse_args(argv)
 
     Handler.app = DebugApp(args.config)
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    url = f"http://{args.host}:{httpd.server_port}/"
-    print(f"rynnrcp-protocol-debug: {url}")
+    urls = browser_urls(args.host, httpd.server_port)
+    print(f"rynnrcp-protocol-debug Local: {urls[0]}")
+    for url in urls[1:]:
+        print(f"rynnrcp-protocol-debug LAN:   {url}")
     print(f"default config: {Handler.app.default_config}")
     if not args.no_open:
-        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.4, lambda: webbrowser.open(primary_browser_url(args.host, httpd.server_port))).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -104,6 +104,7 @@ def encode_bgr_frames_to_h264(
             output_path,
             fps,
             reason=str(selected.get("reason") or "ffmpeg unavailable"),
+            preferred_encoder=str(selected.get("encoder") or video_encoder or "") or None,
             progress_callback=progress_callback,
         )
 
@@ -170,21 +171,31 @@ def _encode_bgr_frames_h264_fallback(
     fps: float,
     *,
     reason: str,
+    preferred_encoder: Optional[str] = None,
     progress_callback: Optional[Callable[[float, float, str], None]] = None,
 ) -> Dict[str, Any]:
     if not frames:
         return {"backend": "none", "encoder": "none", "hardware": False, "reason": "no frames"}
     errors: list[str] = []
-    try:
-        return _encode_bgr_frames_pyav_h264(frames, output_path, fps, reason=reason, progress_callback=progress_callback)
-    except Exception as exc:
-        errors.append(f"pyav: {exc}")
+    if (preferred_encoder or "").strip().lower() != "opencv":
+        try:
+            return _encode_bgr_frames_pyav_h264(
+                frames,
+                output_path,
+                fps,
+                reason=reason,
+                preferred_encoder=preferred_encoder,
+                progress_callback=progress_callback,
+            )
+        except Exception as exc:
+            errors.append(f"pyav: {exc}")
+    opencv_reason = reason if not errors else f"{reason}; pyav fallback failed: {errors[-1]}"
     try:
         return _encode_bgr_frames_opencv_h264(
             frames,
             output_path,
             fps,
-            reason=f"{reason}; pyav fallback failed: {errors[-1]}",
+            reason=opencv_reason,
             progress_callback=progress_callback,
         )
     except Exception as exc:
@@ -198,6 +209,7 @@ def _encode_bgr_frames_pyav_h264(
     fps: float,
     *,
     reason: str,
+    preferred_encoder: Optional[str] = None,
     progress_callback: Optional[Callable[[float, float, str], None]] = None,
 ) -> Dict[str, Any]:
     try:
@@ -210,7 +222,7 @@ def _encode_bgr_frames_pyav_h264(
     pix_fmt = "yuv420p"
     rate = Fraction(*_fps_fraction(fps))
     errors: list[str] = []
-    for codec_name in _pyav_h264_codec_chain():
+    for codec_name in _pyav_h264_codec_chain(preferred=preferred_encoder):
         if codec_name not in av.codecs_available:
             errors.append(f"{codec_name}: not available")
             continue
@@ -243,7 +255,10 @@ def _encode_bgr_frames_pyav_h264(
     raise RuntimeError("; ".join(errors) or "no PyAV H.264 codec available")
 
 
-def _pyav_h264_codec_chain() -> tuple[str, ...]:
+def _pyav_h264_codec_chain(preferred: Optional[str] = None) -> tuple[str, ...]:
+    requested = (preferred or "").strip()
+    if requested:
+        return (requested,)
     system = platform.system()
     if system == "Windows":
         return ("h264_mf", "h264_nvenc", "libx264")
@@ -366,7 +381,14 @@ def _encode_video_refs(
 ) -> Dict[str, Any]:
     selected = _select_video_encoder(video_encoder if video_backend != "opencv" else "opencv")
     if video_backend == "opencv":
-        return _encode_video_refs_h264_fallback(reader, refs, output_path, fps, progress_callback=progress_callback)
+        return _encode_video_refs_h264_fallback(
+            reader,
+            refs,
+            output_path,
+            fps,
+            preferred_encoder="opencv",
+            progress_callback=progress_callback,
+        )
     if video_backend == "ffmpeg" and selected["backend"] != "ffmpeg":
         selected = discover_ffmpeg_video_encoder(preferred=video_encoder or None, smoke_test=True)
         if selected["backend"] != "ffmpeg":
@@ -393,7 +415,15 @@ def _encode_video_refs(
         except Exception as exc:
             if video_backend == "ffmpeg":
                 raise
-            return _encode_video_refs_h264_fallback(reader, refs, output_path, fps, reason=f"ffmpeg fallback: {exc}", progress_callback=progress_callback)
+            return _encode_video_refs_h264_fallback(
+                reader,
+                refs,
+                output_path,
+                fps,
+                reason=f"ffmpeg fallback: {exc}",
+                preferred_encoder=video_encoder,
+                progress_callback=progress_callback,
+            )
 
     return _encode_video_refs_h264_fallback(
         reader,
@@ -401,6 +431,7 @@ def _encode_video_refs(
         output_path,
         fps,
         reason=str(selected.get("reason") or "ffmpeg unavailable"),
+        preferred_encoder=str(selected.get("encoder") or video_encoder or "") or None,
         progress_callback=progress_callback,
     )
 
@@ -412,13 +443,21 @@ def _encode_video_refs_h264_fallback(
     fps: float,
     *,
     reason: str = "requested",
+    preferred_encoder: Optional[str] = None,
     progress_callback: Optional[Callable[[float, float, str], None]] = None,
 ) -> Dict[str, Any]:
     if not refs:
         raise RuntimeError("no samples to encode")
     with reader.open_stream_data(refs[0].key) as data_file:
         frames = [_image_to_bgr(reader.read_ref(ref, data_file=data_file)) for ref in refs]
-    return _encode_bgr_frames_h264_fallback(frames, output_path, fps, reason=reason, progress_callback=progress_callback)
+    return _encode_bgr_frames_h264_fallback(
+        frames,
+        output_path,
+        fps,
+        reason=reason,
+        preferred_encoder=preferred_encoder,
+        progress_callback=progress_callback,
+    )
 
 
 def _encode_video_ffmpeg_refs(

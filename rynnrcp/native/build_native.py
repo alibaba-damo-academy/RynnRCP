@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--target-dir",
         default=None,
-        help="Where to copy the built extension. Defaults to the robocore repo root.",
+        help="Where to copy the built extension. Defaults to the RynnRCP repo root.",
     )
     parser.add_argument("--debug", action="store_true", help="Build Debug instead of Release")
     parser.add_argument("--no-copy", action="store_true", help="Do not copy the extension after build")

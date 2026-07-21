@@ -254,9 +254,8 @@ components:
 }
 ```
 
-如果不配置 `health`，不会调用 controller 的 `get_health`。框架仍可以根据 Observation 的 timestamp
-上报 `observation.no_data` 或 `observation.stale`，这属于 RCP Runtime 的数据新鲜度检查，不要求用户实现
-controller 方法。
+配置 `health` 后，Runtime 会调用 controller 的 `get_health`。Runtime 也会根据 Observation 的 timestamp
+上报 `observation.no_data` 或 `observation.stale`，用于提示数据新鲜度。
 
 ## 字段说明
 
@@ -306,9 +305,9 @@ App 本地文件默认保存到：
 同时写了 `server.storage.collection_dir` 和 `storage.collection_dir` 时，优先使用
 `server.storage.collection_dir`。普通配置推荐只写顶层 `storage.collection_dir`。
 
-`components.<name>.enabled` 决定某个 component 是否启动。被禁用的 component 不会解析它的串口、相机编号等参数。
+`components.<name>.enabled` 决定某个 component 是否启动。设为 `false` 时，Runtime 会跳过该 component 的串口、相机编号等参数解析。
 
-`components.<name>` 里的其他字段由该 component 的 `source.init` 决定。例如 SO101 的 `role`、`port` 是 `SO101Controller` 的初始化参数；USB 相机的 `device_id` 是 `USBCamera` 的初始化参数。新增机器人时不要照抄 SO101 字段，而是写自己的 controller 或硬件 source 真正需要的参数。
+`components.<name>` 里的其他字段由该 component 的 `source.init` 决定。例如 SO101 的 `role`、`port` 是 `SO101Controller` 的初始化参数；USB 相机的 `device_id` 是 `USBCamera` 的初始化参数。新增机器人时，按自己的 controller 或硬件 source 参数填写。
 
 开启策略服务时，Server 启动后会注册 `list_policies`、`start_policy`、`update_policy_inputs`、`stop_policy`。`policies.paths` 中的相对路径按 server config 所在目录解析；每个路径下按 `*/policy.yaml` 扫描策略：
 
@@ -348,10 +347,10 @@ policies:
 `manifest.model_refs` 在配置文件里写 server 本机可访问的路径。当
 `manifest.capabilities.resources: true` 时，RynnRCP 启动时会把这些文件注册成 Resource，并在
 `get_manifest` 里返回 `resource_id`、`format`、`hash`、`size_bytes` 等协议字段。App、Agent、
-云端不能使用 server 本地路径读取文件，应通过 Resource 接口读取。
+App、Agent 和云端通过 Resource 接口读取这些文件。
 
 当 `manifest.capabilities.resources: false` 时，表示这个 Server 不对外暴露文件类资源；
-路径型 `model_refs` 只作为本地配置存在，不会进入 Manifest，也不能被 App 读取。
+路径型 `model_refs` 仅作为本地配置存在，并保持在 Server 内部。
 
 相对路径按该机器人本地存储根目录解析；如果模型文件放在别处，建议写绝对路径。为空时写 `null`：
 
@@ -376,13 +375,13 @@ action.<component.name>.<action.name>
 
 | 字段 | 必写 | 怎么写 | 说明 |
 | --- | --- | --- | --- |
-| `name` | 是 | 短名，小写 snake_case，当前 integration 内唯一，例如 `robot` / `front` / `wrist` / `gripper_0` | 协议对象名的一部分。不要写完整协议名。 |
+| `name` | 是 | 短名，小写 snake_case，当前 integration 内唯一，例如 `robot` / `front` / `wrist` / `gripper_0` | 协议对象名的一部分。完整协议名由 Runtime 生成。 |
 | `type` | 是 | 按部件类型写，例如 `arm` / `camera` / `gripper` / `mobile_base` / `imu` / `sensor` | 描述这是哪类硬件部件，供 Manifest、App UI 和 Agent 理解。 |
 | `parent_component` | 否 | 没有父级写 `null`；挂在机械臂上写 `robot` | 用来表达组件层级，例如相机或夹爪挂在机械臂上。 |
 | `dof` | 否 | 数字，例如 6；没有自由度的部件不写 | 机械臂、夹爪、底盘等需要表达自由度时写。相机通常不写。 |
 | `frame` | 否 | 字符串，例如 `base` / `front_camera` / `wrist_camera` | 该部件关联的坐标系名称。坐标系本身由机器人构型定义，不在 Manifest 顶层单独列 frames。 |
 | `description` | 否 | 一句人类可读描述，例如 `SO101 arm hardware` | 给 UI、文档和调试使用。建议写，但不参与协议逻辑。 |
-| `enabled` | 是 | bool 或 `${components.xxx.enabled}` | 控制该部件是否启动。被禁用时，该 component 下的 observation、action、health 都不会启动。 |
+| `enabled` | 是 | bool 或 `${components.xxx.enabled}` | 控制该部件是否启动。设为 `false` 时，Runtime 会跳过该 component 下的 observation、action、health。 |
 | `health` | 否 | 一个 health 配置块 | 该部件有本地健康检查方法时写；没有就不写。 |
 | `observations` | 否 | 列表 | 该部件提供哪些观测数据。没有观测就不写。 |
 | `actions` | 否 | 列表 | 该部件接收哪些控制命令。没有动作就不写。 |
@@ -416,12 +415,12 @@ components:
 `components.front_camera.device_id` 是 server config 里的部署参数组名，由 integration 显式引用。
 如果没有特殊原因，推荐让 server config 参数组名和 component `name` 保持一致。
 
-不要这样写：
+完整协议对象名由 component、observation 和 action 分段生成：
 
 ```yaml
-name: observation.front.image   # 错：component.name 不是完整协议对象名
-observations: []                # 可省略
-actions: []                     # 可省略
+name: front
+observations:
+  - name: image
 ```
 
 ### observation / action
@@ -430,7 +429,7 @@ Observation 和 Action 都写在某个 component 下面。
 
 | 字段 | 必写 | 怎么写 | 说明 |
 | --- | --- | --- | --- |
-| `name` | 是 | 局部对象名，小写 snake_case，例如 `joint_state` / `image` / `joint_position` / `home` / `move_to` | 和 component 名拼成完整协议对象名。不要写 `observation.robot.joint_state`。 |
+| `name` | 是 | 局部对象名，小写 snake_case，例如 `joint_state` / `image` / `joint_position` / `home` / `move_to` | 和 component 名拼成完整协议对象名。 |
 | `type` | 是 | 协议 value 类型，例如 `joint_state` / `image` / `ee_pose` / `joint_position` / `prearranged` / `custom` | 决定 value_schema 或 input_schema。 |
 | `description` | 否 | 一句说明，例如 `Current arm joint positions` | 建议写清楚该数据或命令是什么。 |
 | `frame_rate` | Observation 必写；Action 建议写 | 数字，单位 Hz，例如 60 / 30 / 1 | Observation 中用于 runner 轮询频率；Action 中表示期望执行或数据语义频率。 |
@@ -560,7 +559,18 @@ class MyController:
         ...
 ```
 
-如果 action 是 `type: custom`，框架不会限制 action name，也不会按名字做特殊编码。component 是 `robot`、action name 是 `move_to` 时，会生成 `action.robot.move_to`；调用时 `frames[]` 会作为一个 object 原样传给 `source.method_name` 对应的方法，例如：
+标准 `type` 返回标准协议字段。常用标准字段如下：
+
+| type | 标准 value |
+| --- | --- |
+| `joint_state` observation | `{"joint_positions": [...], "joint_velocities": [...]}`，其中 `joint_velocities` 可选 |
+| `imu` observation | `{"accel": [x,y,z], "gyro": [x,y,z], "orientation_quat_wxyz": [w,x,y,z]}`，其中四元数可选 |
+| `joint_position` action | `{"joint_positions": [...]}` |
+| `base_velocity` action | `{"linear_vel": [x,y,z], "angular_vel": [x,y,z]}` |
+
+`joint_names`、`joint_torques`、`kp`、`kd`、硬件错误码等私有字段用单独的 `type: robot_state` observation 暴露，或定义 `type: custom` action。
+
+如果 action 是 `type: custom`，action name 按配置保留，Runtime 按协议对象名生成规则处理。component 是 `robot`、action name 是 `move_to` 时，会生成 `action.robot.move_to`；调用时 `frames[]` 会作为一个 object 原样传给 `source.method_name` 对应的方法，例如：
 
 ```json
 {"joint_positions": [0.0, -1.2, 1.4, 0.0, 0.0, 0.0]}
@@ -651,22 +661,34 @@ observation.robot.joint_state
 action.robot.joint_position
 ```
 
-单手 `joint_positions` 为 7 维，双手为 14 维，顺序见 `robots/aero_hand/README.zh-CN.md`。
+单手 `joint_positions` 为 7 维，双手为 14 维，顺序见 `robots/tetheria_aerohand/README.zh-CN.md`。
+
+Aero Hand 摄像手势控制端只生成 observation，用于 Teleop 绑定或通过 RynnBot 控制仿真目标：
+
+```text
+observation.robot.joint_state
+```
+
+摄像手势控制端使用 `aero_hand_single_hand_master_server.yaml` 或
+`aero_hand_dual_hand_master_server.yaml` 启动；MediaPipe 归一化参数在
+`normalize_default_mediapipe.yaml` 中维护。
 
 ## 检查配置
 
 不启动硬件，只检查配置展开：
 
 ```bash
-PYTHONPATH=robots/so101:robots/aero_hand:robots/atom01 python - <<'PY'
+PYTHONPATH=robots/lerobot_so101:robots/tetheria_aerohand:robots/roboparty_atom01 python - <<'PY'
 from rynnrcp.config import RuntimeConfig, build_runner_config
 
 for path in [
-    "robots/so101/rynnrcp_robot_so101/config/so101_follower_server.yaml",
-    "robots/so101/rynnrcp_robot_so101/config/so101_leader_server.yaml",
-    "robots/aero_hand/rynnrcp_robot_aero_hand/config/aero_hand_single_server.yaml",
-    "robots/aero_hand/rynnrcp_robot_aero_hand/config/aero_hand_dual_server.yaml",
-    "robots/atom01/rynnrcp_robot_atom01/config/atom01_server.yaml",
+    "robots/lerobot_so101/rynnrcp_robot_so101/config/so101_follower_server.yaml",
+    "robots/lerobot_so101/rynnrcp_robot_so101/config/so101_leader_server.yaml",
+    "robots/tetheria_aerohand/rynnrcp_robot_aero_hand/config/aero_hand_single_server.yaml",
+    "robots/tetheria_aerohand/rynnrcp_robot_aero_hand/config/aero_hand_dual_server.yaml",
+    "robots/tetheria_aerohand/rynnrcp_robot_aero_hand/config/aero_hand_single_hand_master_server.yaml",
+    "robots/tetheria_aerohand/rynnrcp_robot_aero_hand/config/aero_hand_dual_hand_master_server.yaml",
+    "robots/roboparty_atom01/rynnrcp_robot_atom01/config/atom01_server.yaml",
 ]:
     runtime = RuntimeConfig.load(path)
     runner = build_runner_config(runtime)

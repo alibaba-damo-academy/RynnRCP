@@ -27,16 +27,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Failed to start RynnRCP server: {exc}", file=sys.stderr)
         return 2
 
-    print("RynnRCP server is running.")
-    print(f"Config: {args.config}")
-    print(f"Instance: {server.server_instance_id}")
-    print(f"Log session: {log_session_id}")
-    print(f"Local gRPC: 127.0.0.1:{server.bound_port}")
-    for ip in find_lan_ips():
-        print(f"LAN gRPC:   {ip}:{server.bound_port}")
-    print("Press Ctrl+C to stop.")
-
     try:
+        print("RynnRCP server is running.")
+        print(f"Config: {args.config}")
+        print(f"Instance: {server.server_instance_id}")
+        print(f"Log session: {log_session_id}")
+        print(f"Local gRPC: 127.0.0.1:{server.bound_port}")
+        for ip in find_lan_ips():
+            print(f"LAN gRPC:   {ip}:{server.bound_port}")
+        if server.visualization_urls:
+            print(f"Debug UI Local: {server.visualization_urls[0]}")
+            for url in server.visualization_urls[1:]:
+                print(f"Debug UI LAN:   {url}")
+        print("Press Ctrl+C to stop.")
         server.wait_for_termination()
     except KeyboardInterrupt:
         print("\nStopping RynnRCP server.")

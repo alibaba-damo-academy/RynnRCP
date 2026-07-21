@@ -16,7 +16,7 @@ rynnrcp-protocol-debug --config <server-config.yaml>
 Atom01 默认示例：
 
 ```bash
-rynnrcp-protocol-debug --config robots/atom01/rynnrcp_robot_atom01/config/atom01_server.yaml
+rynnrcp-protocol-debug --config robots/roboparty_atom01/rynnrcp_robot_atom01/config/atom01_server.yaml
 ```
 
 默认 Web 地址：

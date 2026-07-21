@@ -1,0 +1,40 @@
+# SO101 Simulation Server Config v2 (6 DOF, 5 cameras: front + top + left + right + wrist)
+config_type: rynnrcp_server_config
+version: 1
+
+manifest:
+  robot_id: lerobot_so101_sim_v2
+  robot_name: SO101 Simulation v2
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: false
+
+integration:
+  config: package://rynnrcp_robot_sim/config/robot_integration_so101.yaml
+
+components:
+  robot:
+    enabled: true
+    robot_id: robot
+    n_dof: 6
+    server_host: localhost
+    server_port: 8080
+  front_camera:
+    enabled: true
+    device_id: camera_front
+  top_camera:
+    enabled: true
+    device_id: camera_top
+  left_camera:
+    enabled: true
+    device_id: camera_left
+  right_camera:
+    enabled: true
+    device_id: camera_right
+  wrist_camera:
+    enabled: true
+    device_id: camera_wrist

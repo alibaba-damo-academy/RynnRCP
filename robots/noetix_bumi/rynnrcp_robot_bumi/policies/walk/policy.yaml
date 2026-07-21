@@ -1,0 +1,24 @@
+policy_id: walk
+name: Bumi Walk ONNX
+description: "Low-level Bumi ONNX walk policy. runtime input cmd_vel is [x, y, yaw]: x>0 forward, x<0 backward, yaw>0 turn left, yaw<0 turn right. Small yaw values under 0.3 are ignored by the SDK-style preprocessing; use 1.0 or -1.0 for visible turn tests."
+entrypoint: policy.py:Policy
+
+inputs:
+  observations:
+    - component: robot
+      name: joint_state
+    - component: robot
+      name: imu
+  runtime_inputs:
+    cmd_vel:
+      type: array
+      items: float
+      shape: [3]
+      default: [0.0, 0.0, 0.0]
+      description: "[x, y, yaw]. x controls forward/back, yaw controls left/right turn. Example left turn: [0, 0, 1.0], right turn: [0, 0, -1.0]."
+      stale_after_ms: 500
+
+outputs:
+  actions:
+    - component: robot
+      name: joint_position

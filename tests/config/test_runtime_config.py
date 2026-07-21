@@ -15,7 +15,7 @@ from rynnrcp.config.runner_config import build_runner_config
 SO101_CONFIG_DIR = (
     Path(__file__).resolve().parents[2]
     / "robots"
-    / "so101"
+    / "lerobot_so101"
     / "rynnrcp_robot_so101"
     / "config"
 )
@@ -90,6 +90,30 @@ def test_full_runtime_has_robot_action_and_enabled_cameras() -> None:
     assert cameras["observation.wrist.image"].info["device_id"] == 1
     assert cameras["observation.front.image"].channel == "observation.front.image"
     assert cameras["observation.front.image"].msg_size == 16384
+
+
+def test_bimanual_runtime_is_one_12_dof_robot_with_three_cameras() -> None:
+    runtime_config = RuntimeConfig.load(
+        str(SO101_CONFIG_DIR / "so101_bimanual_follower_server.yaml")
+    )
+    runner_config = build_runner_config(runtime_config)
+
+    assert runner_config.runner_names == ["robot", "front", "left_wrist", "right_wrist"]
+    joint_state = next(
+        spec for spec in runner_config.input_specs if spec.name == "observation.robot.joint_state"
+    )
+    action = next(
+        spec for spec in runner_config.output_specs if spec.name == "action.robot.joint_position"
+    )
+    assert joint_state.info["description"].startswith("Merged 12-dim")
+    assert action.params["module_name"].endswith("SO101BimanualController")
+    assert action.params["input_schema"]["fields"]["joint_positions"]["shape"] == [12]
+    cameras = {spec.object_name for spec in runner_config.input_specs if spec.protocol == "port"}
+    assert cameras == {
+        "observation.front.image",
+        "observation.left_wrist.image",
+        "observation.right_wrist.image",
+    }
 
 
 def test_joint_state_msg_size_depends_on_type_not_protocol_name(tmp_path: Path) -> None:
