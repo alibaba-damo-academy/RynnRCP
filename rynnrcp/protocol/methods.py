@@ -239,7 +239,7 @@ DELETE_RESOURCE = MethodSpec(
     name="delete_resource",
     input_schema={"resource_id": "str"},
     output_schema={"deleted": "bool"},
-    description="Delete a log Resource.",
+    description="Delete a log or managed temporary Resource.",
 )
 
 SNAPSHOT_RESOURCE = MethodSpec(

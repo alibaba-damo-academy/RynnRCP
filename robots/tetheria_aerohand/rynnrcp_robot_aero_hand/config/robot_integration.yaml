@@ -111,7 +111,7 @@ components:
             url: ${components.front_camera.url}
             frame_server_port: ${components.front_camera.frame_server_port}
             width: 640
-            height: 360
+            height: 480
             encoding: jpg
             fps: 30
           method_name: read

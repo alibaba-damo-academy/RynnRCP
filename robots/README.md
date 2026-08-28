@@ -17,6 +17,9 @@ scripts, and optional policies.
 | `noetix_bumi/` | Noetix Bumi high-level, low-level, and local walking policy | [`noetix_bumi/README.md`](noetix_bumi/README.md) |
 | `sim_robot/` | Isaac Sim robot profiles | [`sim_robot/README.md`](sim_robot/README.md) |
 | `lerobot_lekiwi/` | LeKiwi mobile manipulator | [`lerobot_lekiwi/README.md`](lerobot_lekiwi/README.md) |
+| `franka_fr3/` | Franka Research 3 through official libfranka | [`franka_fr3/README.md`](franka_fr3/README.md) |
+| `meta_quest3/` | Meta Quest 3 left, right, and dual-arm leaders | [`meta_quest3/README.md`](meta_quest3/README.md) |
+| `astribot_s1/` | Astribot S1 through the official ROS 2 Python SDK | [`astribot_s1/README.md`](astribot_s1/README.md) |
 
 ## Installation Convention
 

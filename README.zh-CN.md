@@ -43,6 +43,7 @@ RynnRCP Runtime、官方 App 和机器人构型包都在这个仓库内维护。
 | 使用 SO101 机器人 | [robots/lerobot_so101/README.zh-CN.md](robots/lerobot_so101/README.zh-CN.md)，按其中的 `bash setup_so101.sh` 自动安装和配置 |
 | 使用 Aero Hand（绳肌妙算） | [robots/tetheria_aerohand/README.zh-CN.md](robots/tetheria_aerohand/README.zh-CN.md)，按其中的 `bash setup_aero_hand.sh` 自动安装和配置 |
 | 使用 Atom01 人形机器人 | [robots/roboparty_atom01/README.zh-CN.md](robots/roboparty_atom01/README.zh-CN.md)，按其中的 `bash setup_atom01.sh` 自动安装、编译和配置 |
+| 使用 Franka Research 3 | [robots/franka_fr3/README.zh-CN.md](robots/franka_fr3/README.zh-CN.md)，拉取并编译兼容版本的官方 libfranka |
 | 使用其他机器人 | [robots/README.zh-CN.md](robots/README.zh-CN.md)，选择 Booster T1、Noetix Bumi 或 Isaac Sim |
 | 使用 Teleop / MCP / RynnBot App | [apps/README.zh-CN.md](apps/README.zh-CN.md)，再进入对应 App README |
 | 查看单个 Server 协议接口 | [apps/protocol_debug/README.zh-CN.md](apps/protocol_debug/README.zh-CN.md) |
@@ -50,6 +51,7 @@ RynnRCP Runtime、官方 App 和机器人构型包都在这个仓库内维护。
 | 新增一个机器人构型 | [docs/RCP 机器人构型接入指南.html](docs/RCP%20机器人构型接入指南.html) |
 | 接入本地推理策略 | [docs/RCP 策略服务接入指南.html](docs/RCP%20策略服务接入指南.html) |
 | 查询配置字段怎么写 | [docs/RCP配置文件说明.md](docs/RCP配置文件说明.md) |
+| 按运行链路查看日志和排障 | [docs/RCP日志与排障.md](docs/RCP日志与排障.md) |
 | 查询协议对象和接口格式 | [docs/RCP使用场景及协议.md](docs/RCP使用场景及协议.md) |
 | 测试实机延迟和 CPU/内存负载 | [tests/benchmarks/live_device/README.zh-CN.md](tests/benchmarks/live_device/README.zh-CN.md) |
 | 选择文档入口 | [docs/README.zh-CN.md](docs/README.zh-CN.md) |

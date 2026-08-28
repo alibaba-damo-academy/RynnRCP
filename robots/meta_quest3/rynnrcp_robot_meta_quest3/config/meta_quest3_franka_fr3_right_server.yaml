@@ -1,0 +1,71 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: meta_quest3_franka_fr3_right
+  robot_name: Meta Quest 3 Right Leader for Franka FR3
+  capabilities:
+    observations: true
+    actions: false
+    health: true
+    resources: false
+    data_collection: false
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_meta_quest3/config/joint_leader_integration.yaml
+server:
+  interface:
+    host: 0.0.0.0
+    port: 0
+    local_registry: true
+    mdns: true
+components:
+  robot:
+    enabled: true
+    target_model: franka_fr3
+    target_urdf: package://rynnrcp_robot_meta_quest3/models/fr3.urdf
+    target_dof: 7
+    control_dof: 8
+    joint_order: joints_then_gripper
+    has_gripper: true
+    home_includes_gripper: false
+    native_gripper_joint: ""
+    joint_names: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6, joint_7]
+    base_link: fr3_link0
+    tip_link: fr3_hand_tcp
+    controller_side: right
+    bind_host: 0.0.0.0
+    udp_port: 8888
+    source_ip: 192.168.1.120
+    stale_timeout_s: 0.2
+    gripper_invert: true
+    calibration_button: primaryButton
+    # Measured UDP sender mapping:
+    # RCP x = -sender z, RCP y = sender x, RCP z = sender y.
+    coordinate_basis:
+      - [0.0, 0.0, -1.0]
+      - [1.0, 0.0, 0.0]
+      - [0.0, 1.0, 0.0]
+    rotation_basis:
+      - [0.0, 0.0, 1.0]
+      - [-1.0, 0.0, 0.0]
+      - [0.0, 1.0, 0.0]
+    # Flip rotation about RCP forward/left; keep rotation about up.
+    rotation_component_signs: [-1.0, -1.0, 1.0]
+    translation_scale: 1.0
+    max_joint_velocity_rad_s: 0.25
+    max_joint_acceleration_rad_s2: 0.5
+    max_target_translation_m_s: 0.15
+    max_target_rotation_rad_s: 0.6
+    home_joint_positions:
+      - 0.0
+      - -0.785
+      - 0.0
+      - -2.356
+      - 0.0
+      - 1.571
+      - 0.785
+    # Relative to the FR3 Home end-effector pose, in meters.
+    workspace_delta_limits_m:
+      - [-0.18, 0.40]
+      - [-0.50, 0.50]
+      - [-0.50, 0.00]

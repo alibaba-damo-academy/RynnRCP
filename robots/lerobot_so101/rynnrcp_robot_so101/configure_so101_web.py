@@ -518,7 +518,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       <div id="follower-single-calib">
       <div class="tip-box">
         <h4>SO101 标定流程</h4>
-        <p>点击“启动标定”后，后端会启动 RynnRCP SO101 标定进程，并在同一个串口连接内读取各关节 Present_Position。先把所有关节移动到中间位置并点击“记录中间位置”，然后缓慢推动每个关节走完整范围，观察 Min / 当前 / Max 是否持续变化，最后点击“结束并保存”。标定期间请保持 MCP、Teleop 和 RynnBot 处于停止状态。</p>
+        <p>点击“启动标定”后，后端会启动 RynnRCP SO101 标定进程，并在同一个串口连接内读取各关节 Present_Position。先把所有关节移动到中间位置并点击“记录中间位置”，再点击“开始记录范围”，然后缓慢推动每个关节走完整范围，观察 Min / 当前 / Max 是否持续变化，最后点击“结束并保存”。标定期间请保持 MCP、Teleop 和 RynnBot 处于停止状态。</p>
       </div>
       <div class="calib-steps">
         <div class="calib-step" id="follower-calib-step-1"><div class="calib-step-number">1</div><div><div class="calib-step-title">启动标定进程</div><div class="calib-step-desc">连接 follower 串口并启动 SO101 calibration。</div></div></div>
@@ -529,6 +529,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       <div class="button-group">
         <button class="btn btn-primary" id="follower-calib-start-btn" onclick="calibStart('follower')">启动标定</button>
         <button class="btn btn-warning" id="follower-calib-middle-btn" onclick="calibRecordMiddle('follower')" disabled>记录中间位置</button>
+        <button class="btn btn-success" id="follower-calib-range-btn" onclick="calibBeginRange('follower')" disabled>开始记录范围</button>
         <button class="btn btn-success" id="follower-calib-finish-btn" onclick="calibFinishRange('follower')" disabled>结束并保存</button>
         <button class="btn btn-danger" id="follower-calib-stop-btn" onclick="calibStop('follower')" disabled>停止</button>
       </div>
@@ -581,7 +582,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       <div id="leader-single-calib">
       <div class="tip-box">
         <h4>SO101 标定流程</h4>
-        <p>点击“启动标定”后，后端会启动 RynnRCP SO101 标定进程，并在同一个串口连接内读取各关节 Present_Position。leader 标定同样需要先确认中间位置，再推动完整关节范围并保存；标定时请观察 Min / 当前 / Max 是否覆盖每个关节的真实运动范围。标定期间请保持 Teleop leader 处于停止状态。</p>
+        <p>点击“启动标定”后，后端会启动 RynnRCP SO101 标定进程，并在同一个串口连接内读取各关节 Present_Position。leader 标定先确认中间位置，再点击“开始记录范围”，推动完整关节范围并点击“结束并保存”；标定时请观察 Min / 当前 / Max 是否覆盖每个关节的真实运动范围。标定期间请保持 Teleop leader 处于停止状态。</p>
       </div>
       <div class="calib-steps">
         <div class="calib-step" id="leader-calib-step-1"><div class="calib-step-number">1</div><div><div class="calib-step-title">启动标定进程</div><div class="calib-step-desc">连接 leader 串口并启动 SO101 calibration。</div></div></div>
@@ -592,6 +593,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       <div class="button-group">
         <button class="btn btn-primary" id="leader-calib-start-btn" onclick="calibStart('leader')">启动标定</button>
         <button class="btn btn-warning" id="leader-calib-middle-btn" onclick="calibRecordMiddle('leader')" disabled>记录中间位置</button>
+        <button class="btn btn-success" id="leader-calib-range-btn" onclick="calibBeginRange('leader')" disabled>开始记录范围</button>
         <button class="btn btn-success" id="leader-calib-finish-btn" onclick="calibFinishRange('leader')" disabled>结束并保存</button>
         <button class="btn btn-danger" id="leader-calib-stop-btn" onclick="calibStop('leader')" disabled>停止</button>
         <button class="btn btn-primary" onclick="showSection('motion-test')">进入动作测试</button>
@@ -822,6 +824,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         <div class="button-group">
           <button class="btn btn-primary" id="${device}-calib-start-btn" onclick="calibStart('${device}')">启动标定</button>
           <button class="btn btn-warning" id="${device}-calib-middle-btn" onclick="calibRecordMiddle('${device}')" disabled>记录中间位置</button>
+          <button class="btn btn-success" id="${device}-calib-range-btn" onclick="calibBeginRange('${device}')" disabled>开始记录范围</button>
           <button class="btn btn-success" id="${device}-calib-finish-btn" onclick="calibFinishRange('${device}')" disabled>结束并保存</button>
           <button class="btn btn-danger" id="${device}-calib-stop-btn" onclick="calibStop('${device}')" disabled>停止</button>
         </div>
@@ -1211,12 +1214,20 @@ HTML_TEMPLATE = r"""<!doctype html>
       await calibSendEnter(arm, "middle position captured", 2);
     }
 
-    async function calibFinishRange(arm) {
-      if (calibrationPhases[arm] !== "recording_range") {
-        showToast("请先记录中间位置，并等待进入 Min / Max 记录阶段。", "info", 5000);
+    async function calibBeginRange(arm) {
+      if (calibrationPhases[arm] !== "range_prompt") {
+        showToast("请先记录中间位置，并等待进入“开始记录范围”阶段。", "info", 5000);
         return;
       }
-      await calibSendEnter(arm, "range motion captured", 3);
+      await calibSendEnter(arm, "range recording started", 3);
+    }
+
+    async function calibFinishRange(arm) {
+      if (calibrationPhases[arm] !== "recording_range") {
+        showToast("请先点击“开始记录范围”，完成关节范围移动后再保存。", "info", 5000);
+        return;
+      }
+      await calibSendEnter(arm, "range motion captured", 4);
     }
 
     async function calibSendEnter(arm, label, step) {
@@ -1287,6 +1298,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         connecting: "正在连接机械臂",
         existing_cache_prompt: "检测到已有缓存，正在切换为重新标定",
         middle_position: "等待确认中间位置",
+        range_prompt: "等待开始记录范围",
         recording_range: "正在记录 Min / Max，请移动所有关节",
         saving: "正在保存标定",
         saved: "标定文件已保存",
@@ -1301,7 +1313,8 @@ HTML_TEMPLATE = r"""<!doctype html>
       calibrationPhases[arm] = phase || "idle";
       updateCalibrationControls(arm, phase || "idle", !!running, returncode);
       if (phase === "middle_position") completeCalibSteps(arm, 1);
-      if (phase === "recording_range") completeCalibSteps(arm, 2);
+      if (phase === "range_prompt") completeCalibSteps(arm, 2);
+      if (phase === "recording_range") completeCalibSteps(arm, 3);
       if (phase === "saving" || phase === "saved") completeCalibSteps(arm, 3);
       if (!running && returncode === 0) completeCalibSteps(arm, 4);
     }
@@ -1309,21 +1322,26 @@ HTML_TEMPLATE = r"""<!doctype html>
     function updateCalibrationControls(arm, phase, running, returncode) {
       const startBtn = $(arm + "-calib-start-btn");
       const middleBtn = $(arm + "-calib-middle-btn");
+      const rangeBtn = $(arm + "-calib-range-btn");
       const finishBtn = $(arm + "-calib-finish-btn");
       const stopBtn = $(arm + "-calib-stop-btn");
       const hint = $(arm + "-calib-hint");
       const readyForMiddle = phase === "middle_position";
+      const readyForRange = phase === "range_prompt";
       const readyForFinish = phase === "recording_range";
       if (startBtn) startBtn.disabled = !!running;
       if (middleBtn) middleBtn.disabled = !readyForMiddle;
+      if (rangeBtn) rangeBtn.disabled = !readyForRange;
       if (finishBtn) finishBtn.disabled = !readyForFinish;
       if (stopBtn) stopBtn.disabled = !running;
       if (!hint) return;
-      hint.classList.toggle("ready", readyForMiddle || readyForFinish || phase === "saved");
+      hint.classList.toggle("ready", readyForMiddle || readyForRange || readyForFinish || phase === "saved");
       if (phase === "starting" || phase === "connecting" || phase === "existing_cache_prompt") {
         hint.textContent = "标定进程正在启动并读取第一帧关节数据，CPU 较慢时可能需要几秒。请等待按钮变亮后再记录中间位置。";
       } else if (readyForMiddle) {
         hint.textContent = "已准备好。请把所有关节放在运动范围中间，然后点击“记录中间位置”。";
+      } else if (readyForRange) {
+        hint.textContent = "中间位置已记录。请点击“开始记录范围”，再缓慢推动每个关节走完整范围。";
       } else if (readyForFinish) {
         hint.textContent = "正在记录关节范围。请缓慢推动每个关节走完整范围，完成后点击“结束并保存”。";
       } else if (phase === "saving") {
@@ -1333,7 +1351,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       } else if (phase === "failed") {
         hint.textContent = "标定失败，请查看下方日志并确认串口未被其他程序占用。";
       } else {
-        hint.textContent = "点击“启动标定”后，请等待进入“等待确认中间位置”阶段，再点击“记录中间位置”。";
+        hint.textContent = "点击“启动标定”后，按“记录中间位置”“开始记录范围”“结束并保存”的顺序完成标定。";
       }
     }
 
@@ -2074,6 +2092,8 @@ class CalibrationJob:
             self._phase = "existing_cache_prompt"
         elif "move" in lower and "middle of its range" in lower:
             self._phase = "middle_position"
+        elif "start recording" in lower and "range" in lower:
+            self._phase = "range_prompt"
         elif "recording positions" in lower or "entire ranges of motion" in lower:
             self._phase = "recording_range"
         elif "calibration saved to" in lower:
@@ -3380,13 +3400,33 @@ def probe_camera(index: int) -> Dict[str, Any]:
     return _probe_camera_with_cv2(cv2, index)
 
 
-def _probe_camera_with_cv2(cv2_module: Any, index: int) -> Dict[str, Any]:
+def _open_camera_preferred(cv2_module: Any, index: int):
+    """Open *index* camera, preferring 640×360; fall back to default if unsupported."""
     cap = cv2_module.VideoCapture(index)
+    if not cap.isOpened():
+        return cap
+    cap.set(cv2_module.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2_module.CAP_PROP_FRAME_HEIGHT, 360)
+    return cap
+
+
+def _probe_camera_with_cv2(cv2_module: Any, index: int) -> Dict[str, Any]:
+    cap = _open_camera_preferred(cv2_module, index)
     try:
         if not cap.isOpened():
             return {"ok": False, "index": index, "opened": False}
         ok, frame = cap.read()
-        item: Dict[str, Any] = {"index": index, "opened": True}
+        if ok and frame is not None and frame.shape[1] == 640 and frame.shape[0] == 360:
+            item: Dict[str, Any] = {"index": index, "opened": True}
+            item.update(_encode_frame(cv2_module, frame))
+            return {"ok": True, "camera": item}
+        # 640×360 not supported — reopen with default resolution
+        cap.release()
+        cap = cv2_module.VideoCapture(index)
+        if not cap.isOpened():
+            return {"ok": False, "index": index, "opened": False}
+        ok, frame = cap.read()
+        item = {"index": index, "opened": True}
         if ok and frame is not None:
             item.update(_encode_frame(cv2_module, frame))
             return {"ok": True, "camera": item}
@@ -3403,8 +3443,19 @@ def capture_camera_preview(index: int) -> Dict[str, Any]:
     except Exception as exc:
         return {"ok": False, "error": f"OpenCV is not available: {exc}"}
 
-    cap = cv2.VideoCapture(index)
+    cap = _open_camera_preferred(cv2, index)
     try:
+        if not cap.isOpened():
+            return {"ok": False, "error": f"camera {index} could not be opened"}
+        ok, frame = cap.read()
+        if ok and frame is not None and frame.shape[1] == 640 and frame.shape[0] == 360:
+            encoded = _encode_frame(cv2, frame)
+            encoded["ok"] = True
+            encoded["index"] = index
+            return encoded
+        # 640×360 not supported — reopen with default resolution
+        cap.release()
+        cap = cv2.VideoCapture(index)
         if not cap.isOpened():
             return {"ok": False, "error": f"camera {index} could not be opened"}
         ok, frame = cap.read()
@@ -3592,6 +3643,13 @@ def _run_calibration_cli(argv: list[str]) -> int:
 
         _calib_emit(
             "phase",
+            phase="range_prompt",
+            message="Click Start Recording Range, then move every joint through its full range.",
+        )
+        _calib_wait_for_enter_with_positions(bus, phase="range_prompt")
+
+        _calib_emit(
+            "phase",
             phase="recording_range",
             message="Move every joint through its full range, then click Finish And Save.",
         )
@@ -3732,11 +3790,9 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--no-open", action="store_true", help="Skip automatic browser launch.")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        handlers=[logging.StreamHandler()],
-    )
+    from rynnrcp.utils.logging import configure_logging
+
+    configure_logging(level=logging.INFO, sinks=["stderr"])
 
     try:
         app = create_app()

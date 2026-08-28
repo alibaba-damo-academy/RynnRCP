@@ -125,8 +125,42 @@ def test_aero_hand_package_declares_camera_master_dependencies_and_assets() -> N
     dependencies = _dependency_names(config)
     package_data = config["tool"]["setuptools"]["package-data"]["rynnrcp_robot_aero_hand"]
 
-    assert {"rynnrcp", "pyserial", "mediapipe", "numpy", "opencv-python", "pyyaml"}.issubset(dependencies)
-    assert "model/*.task" in package_data
+    assert {
+        "rynnrcp",
+        "pyserial",
+        "opencv-python-headless",
+    }.issubset(dependencies)
+    assert {
+        "mediapipe",
+        "opencv-python",
+        "opencv-contrib-python",
+        "opencv-contrib-python-headless",
+    }.isdisjoint(dependencies)
+    assert {"numpy", "pyyaml"}.isdisjoint(dependencies)
+    # hand_landmarker.task is no longer shipped: the weights moved to the model
+    # zoo and no gesture backend loads it -- it is only an optional Tasks-API
+    # comparison baseline for benchmark_gesture_inference.py (--task-model).
+    assert "model/*.task" not in package_data
+    assert {"config/*.yaml", "accelerators/*.so"}.issubset(package_data)
+
+
+def test_franka_package_declares_robot_entry_point_and_config_assets() -> None:
+    config = _pyproject("robots/franka_fr3")
+    dependencies = _dependency_names(config)
+    scripts = config["project"]["scripts"]
+    robot_entry_points = config["project"]["entry-points"]["rynnrcp.robots"]
+    package_data = config["tool"]["setuptools"]["package-data"]["rynnrcp_robot_franka_fr3"]
+
+    assert dependencies == {"flask", "rynnrcp"}
+    assert scripts == {
+        "rynnrcp-franka-fr3-check": "rynnrcp_robot_franka_fr3.diagnostics:main",
+        "rynnrcp-franka-fr3-configure": (
+            "rynnrcp_robot_franka_fr3.configure_franka_fr3_web:main"
+        ),
+    }
+    assert robot_entry_points == {"franka_fr3": "rynnrcp_robot_franka_fr3"}
+    assert "config/*.yaml" in package_data
+    assert "*.so" in package_data
 
 
 def test_core_import_smoke_does_not_pull_robot_or_teleop_modules() -> None:

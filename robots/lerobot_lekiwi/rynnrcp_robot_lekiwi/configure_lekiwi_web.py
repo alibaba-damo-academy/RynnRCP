@@ -63,11 +63,11 @@ table{width:100%;border-collapse:collapse;margin-top:15px}th,td{border-bottom:1p
 
 <section class="section" id="section-follower-serial"><h2 class="title">从臂串口配置</h2><div class="tip"><strong>一条总线，九个电机</strong>从臂机械臂 ID 1–6 与底盘轮 ID 7–9 使用同一个串口。先记录拔出设备时的基线，再插入设备并检测新增串口。</div><div class="buttons"><button class="warning" onclick="baseline('follower')">记录基线</button><button class="primary" onclick="scanSerial('follower',true)">检测新增</button><button class="plain" onclick="scanSerial('follower',false)">刷新列表</button></div><div class="status" id="follower-serial-status">等待扫描。</div><div class="serial-list" id="follower-serial-list"></div><div class="mapping"><div class="row"><span class="key">从臂串口</span><span class="value" id="follower-selected"></span></div></div><div class="buttons"><button class="success" onclick="savePort('follower')">保存并检查 1–9 号电机</button><button class="primary" onclick="show('follower-calib')">下一步</button></div></section>
 
-<section class="section" id="section-follower-calib"><h2 class="title">从臂标定</h2><div class="tip"><strong>标定六轴机械臂</strong>启动后将机械臂放在各关节中间位置；记录中位后，缓慢推动肩、肘和夹爪走完整范围。底盘轮保持架空和静止。</div><div id="follower-steps" class="steps"></div><div class="buttons"><button class="primary" onclick="calibStart('follower')">启动标定</button><button class="success" id="follower-enter" onclick="calibAdvance('follower')" disabled>记录中间位置</button><button class="danger" onclick="calibStop('follower')">停止</button><button class="primary" onclick="show('leader-serial')">下一步</button></div><div class="hint" id="follower-hint">点击“启动标定”。</div><div id="follower-ranges"></div><div class="log" id="follower-log"></div></section>
+<section class="section" id="section-follower-calib"><h2 class="title">从臂标定</h2><div class="tip"><strong>标定六轴机械臂</strong>启动后将机械臂放在各关节中间位置；记录中位后点击“开始记录范围”，再缓慢推动肩、肘和夹爪走完整范围，完成后点击“结束并保存”。底盘轮保持架空和静止。</div><div id="follower-steps" class="steps"></div><div class="buttons"><button class="primary" onclick="calibStart('follower')">启动标定</button><button class="success" id="follower-enter" onclick="calibAdvance('follower')" disabled>记录中间位置</button><button class="success" id="follower-range" onclick="calibAdvance('follower')" disabled>开始记录范围</button><button class="success" id="follower-finish" onclick="calibAdvance('follower')" disabled>结束并保存</button><button class="danger" onclick="calibStop('follower')">停止</button><button class="primary" onclick="show('leader-serial')">下一步</button></div><div class="hint" id="follower-hint">点击“启动标定”。</div><div id="follower-ranges"></div><div class="log" id="follower-log"></div></section>
 
 <section class="section" id="section-leader-serial"><h2 class="title">主臂串口配置</h2><div class="tip"><strong>主臂六个电机</strong>主臂使用独立串口，读取 ID 1–6。可使用拔插识别或直接选择列表中的串口。</div><div class="buttons"><button class="warning" onclick="baseline('leader')">记录基线</button><button class="primary" onclick="scanSerial('leader',true)">检测新增</button><button class="plain" onclick="scanSerial('leader',false)">刷新列表</button></div><div class="status" id="leader-serial-status">等待扫描。</div><div class="serial-list" id="leader-serial-list"></div><div class="mapping"><div class="row"><span class="key">主臂串口</span><span class="value" id="leader-selected"></span></div></div><div class="buttons"><button class="success" onclick="savePort('leader')">保存并检查 1–6 号电机</button><button class="primary" onclick="show('leader-calib')">下一步</button></div></section>
 
-<section class="section" id="section-leader-calib"><h2 class="title">主臂标定</h2><div class="tip"><strong>标定六轴主臂</strong>流程与从臂相同。标定期间保持主臂 Server 和 Teleop App 停止。</div><div id="leader-steps" class="steps"></div><div class="buttons"><button class="primary" onclick="calibStart('leader')">启动标定</button><button class="success" id="leader-enter" onclick="calibAdvance('leader')" disabled>记录中间位置</button><button class="danger" onclick="calibStop('leader')">停止</button></div><div class="hint" id="leader-hint">点击“启动标定”。</div><div id="leader-ranges"></div><div class="log" id="leader-log"></div></section>
+<section class="section" id="section-leader-calib"><h2 class="title">主臂标定</h2><div class="tip"><strong>标定六轴主臂</strong>启动后将机械臂放在各关节中间位置；记录中位后点击“开始记录范围”，再缓慢推动各关节走完整范围，完成后点击“结束并保存”。标定期间保持主臂 Server 和 Teleop App 停止。</div><div id="leader-steps" class="steps"></div><div class="buttons"><button class="primary" onclick="calibStart('leader')">启动标定</button><button class="success" id="leader-enter" onclick="calibAdvance('leader')" disabled>记录中间位置</button><button class="success" id="leader-range" onclick="calibAdvance('leader')" disabled>开始记录范围</button><button class="success" id="leader-finish" onclick="calibAdvance('leader')" disabled>结束并保存</button><button class="danger" onclick="calibStop('leader')">停止</button></div><div class="hint" id="leader-hint">点击“启动标定”。</div><div id="leader-ranges"></div><div class="log" id="leader-log"></div></section>
 </div><div class="toast" id="toast"></div><script>
 const $=id=>document.getElementById(id), arms=['follower','leader'];let config={},camera={front:null,wrist:null},foundCameras=[],selected={follower:'',leader:''},bases={follower:[],leader:[]},pollers={};
 async function api(url,opt){const r=await fetch(url,opt),x=await r.json();if(!r.ok)throw Error(x.error||r.statusText);return x}function post(url,value={}){return api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)})}function toast(text,type='success'){const e=$('toast');e.textContent=text;e.className='toast '+type+' show';setTimeout(()=>e.classList.remove('show'),3500)}function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
@@ -77,9 +77,9 @@ async function update(patch){config=await post('/api/config',patch);return confi
 function updateMappings(){$('map-front').textContent=camera.front===null?'(未绑定)':'Camera '+camera.front;$('map-wrist').textContent=camera.wrist===null?'(未绑定)':'Camera '+camera.wrist;arms.forEach(a=>$(a+'-selected').textContent=selected[a]||'(未选择)')}
 async function scanCameras(){const grid=$('camera-grid');grid.innerHTML='<div class="desc">正在扫描相机…</div>';try{foundCameras=(await api('/api/cameras?max_index=10')).cameras;renderCameras()}catch(e){grid.textContent=e.message;toast(e.message,'error')}}function renderCameras(){const grid=$('camera-grid');grid.innerHTML='';if(!foundCameras.length)grid.innerHTML='<div class="desc">未检测到可读取画面的相机。</div>';foundCameras.forEach(c=>{const card=document.createElement('div');card.className='camera'+([camera.front,camera.wrist].includes(c.index)?' selected':'');card.innerHTML=`<img src="${c.image}" alt="Camera ${c.index}"><div class="camera-info"><strong>Camera ${c.index} (${c.width} × ${c.height})</strong><div class="camera-actions"><button class="primary" onclick="bindCamera(${c.index},'front')">绑定前置</button><button class="warning" onclick="bindCamera(${c.index},'wrist')">绑定腕部</button></div></div>`;grid.appendChild(card)})}function bindCamera(i,k){camera[k]=i;updateMappings();renderCameras()}function clearCameras(){camera={front:null,wrist:null};updateMappings();renderCameras()}async function saveCameras(){if(camera.front===null||camera.wrist===null)return toast('请先绑定两路相机','error');try{await update({hardware:{front_camera:camera.front,wrist_camera:camera.wrist}});done('camera');toast('相机配置已保存')}catch(e){toast(e.message,'error')}}
 async function serials(){return (await api('/api/serial')).ports}async function baseline(a){bases[a]=(await serials()).map(p=>p.device);$(a+'-serial-status').textContent='已记录 '+bases[a].length+' 个串口；现在插入设备后点击“检测新增”。'}async function scanSerial(a,newOnly){try{const ports=await serials(),fresh=new Set(newOnly?ports.map(p=>p.device).filter(x=>!bases[a].includes(x)):[]);renderSerial(a,ports,fresh);$(a+'-serial-status').textContent=fresh.size?'检测到新增串口：'+[...fresh].join(', '):'已列出 '+ports.length+' 个串口。'}catch(e){toast(e.message,'error')}}function renderSerial(a,ports,fresh){const box=$(a+'-serial-list');box.innerHTML='';ports.forEach(p=>{const e=document.createElement('div');e.className='serial'+(fresh.has(p.device)?' new':'');e.innerHTML=`<div><div class="device">${esc(p.device)}</div><div class="desc">${esc(p.description||p.hwid)}</div></div><button class="primary">选择</button>`;e.querySelector('button').onclick=()=>{selected[a]=p.device;updateMappings()};box.appendChild(e)});if(!ports.length)box.innerHTML='<div class="desc">未检测到串口。</div>'}async function savePort(a){if(!selected[a])return toast('请选择串口','error');try{await update({hardware:{[a+'_port']:selected[a]}});$(a+'-serial-status').textContent='正在检查电机，请保持设备静止…';const x=await post('/api/check-bus',{arm:a,port:selected[a]});$(a+'-serial-status').textContent=x.message;done(a+'-serial');toast(x.message)}catch(e){$(a+'-serial-status').textContent=e.message;toast(e.message,'error')}}
-function renderSteps(a,phase){const labels=[['连接设备','打开串口并读取电机'],['记录中位','将各关节放在中间位置'],['采集范围','推动关节走完整范围'],['保存完成','写入电机和标定文件']],states={starting:0,middle_position:1,recording_range:2,saving:3,saved:4,finished:4,failed:-1,stopped:-1,idle:-1};const n=states[phase]??-1;$(a+'-steps').innerHTML=labels.map((x,i)=>`<div class="step ${i<n?'done':i===n?'active':''}"><div class="num">${i+1}</div><div><div class="step-title">${x[0]}</div><div class="step-desc">${x[1]}</div></div></div>`).join('')}
+function renderSteps(a,phase){const labels=[['连接设备','打开串口并读取电机'],['记录中位','将各关节放在中间位置'],['开始记录范围','推动关节走完整范围'],['保存完成','写入电机和标定文件']],states={starting:0,middle_position:1,range_prompt:2,recording_range:3,saving:3,saved:4,finished:4,failed:-1,stopped:-1,idle:-1};const n=states[phase]??-1;$(a+'-steps').innerHTML=labels.map((x,i)=>`<div class="step ${i<n?'done':i===n?'active':''}"><div class="num">${i+1}</div><div><div class="step-title">${x[0]}</div><div class="step-desc">${x[1]}</div></div></div>`).join('')}
 async function calibStart(a){try{await post('/api/calibration/start',{arm:a});startPoll(a);toast((a==='follower'?'从臂':'主臂')+'标定已启动')}catch(e){toast(e.message,'error')}}async function calibAdvance(a){try{await post('/api/calibration/advance',{arm:a})}catch(e){toast(e.message,'error')}}async function calibStop(a){try{await post('/api/calibration/stop',{arm:a});await poll(a)}catch(e){toast(e.message,'error')}}function startPoll(a){clearInterval(pollers[a]);pollers[a]=setInterval(()=>poll(a),250);poll(a)}
-async function poll(a){try{const x=await api('/api/calibration/status?arm='+a),p=x.phase;renderSteps(a,p);const enter=$(a+'-enter'),hint=$(a+'-hint');enter.disabled=!['middle_position','recording_range'].includes(p);enter.textContent=p==='recording_range'?'结束并保存':'记录中间位置';const hints={starting:'正在连接并读取电机…',middle_position:'把机械臂放到各关节中间位置，然后点击“记录中间位置”。',recording_range:'缓慢推动肩、肘和夹爪走完整范围，然后点击“结束并保存”。',saving:'正在写入标定，请等待。',saved:'标定文件已保存：'+(x.path||''),failed:'标定失败，请查看日志。',stopped:'标定已停止。',idle:'点击“启动标定”。'};hint.textContent=hints[p]||p;hint.className='hint '+(['middle_position','recording_range','saved'].includes(p)?'ready':'');renderRanges(a,x.ranges||{});$(a+'-log').innerHTML=(x.logs||[]).map(l=>`<div class="${esc(l.type)}">[${esc(l.time)}] ${esc(l.text)}</div>`).join('');if(!x.running&&['saved','failed','stopped'].includes(p)){clearInterval(pollers[a]);if(p==='saved'){done(a+'-calib');toast((a==='follower'?'从臂':'主臂')+'标定完成')}}}catch(e){clearInterval(pollers[a]);toast(e.message,'error')}}function renderRanges(a,r){const names=Object.keys(r);$(a+'-ranges').innerHTML=names.length?`<table><thead><tr><th>关节</th><th>Min</th><th>当前</th><th>Max</th></tr></thead><tbody>${names.map(n=>`<tr><td>${esc(n)}</td><td>${r[n].min}</td><td>${r[n].position}</td><td>${r[n].max}</td></tr>`).join('')}</tbody></table>`:''}
+async function poll(a){try{const x=await api('/api/calibration/status?arm='+a),p=x.phase;renderSteps(a,p);const enter=$(a+'-enter'),range=$(a+'-range'),finish=$(a+'-finish'),hint=$(a+'-hint');enter.disabled=p!=='middle_position';range.disabled=p!=='range_prompt';finish.disabled=p!=='recording_range';const hints={starting:'正在连接并读取电机…',middle_position:'把机械臂放到各关节中间位置，然后点击“记录中间位置”。',range_prompt:'中间位置已记录，请点击“开始记录范围”。',recording_range:'正在记录范围。请缓慢推动各关节走完整范围，然后点击“结束并保存”。',saving:'正在写入标定，请等待。',saved:'标定文件已保存：'+(x.path||''),failed:'标定失败，请查看日志。',stopped:'标定已停止。',idle:'点击“启动标定”。'};hint.textContent=hints[p]||p;hint.className='hint '+(['middle_position','range_prompt','recording_range','saved'].includes(p)?'ready':'');renderRanges(a,x.ranges||{});$(a+'-log').innerHTML=(x.logs||[]).map(l=>`<div class="${esc(l.type)}">[${esc(l.time)}] ${esc(l.text)}</div>`).join('');if(!x.running&&['saved','failed','stopped'].includes(p)){clearInterval(pollers[a]);if(p==='saved'){done(a+'-calib');toast((a==='follower'?'从臂':'主臂')+'标定完成')}}}catch(e){clearInterval(pollers[a]);toast(e.message,'error')}}function renderRanges(a,r){const names=Object.keys(r);$(a+'-ranges').innerHTML=names.length?`<table><thead><tr><th>关节</th><th>Min</th><th>当前</th><th>Max</th></tr></thead><tbody>${names.map(n=>`<tr><td>${esc(n)}</td><td>${r[n].min}</td><td>${r[n].position}</td><td>${r[n].max}</td></tr>`).join('')}</tbody></table>`:''}
 async function shutdown(){try{await post('/api/shutdown');document.body.innerHTML='<div class="container"><h1>配置工具已退出</h1><p>可以关闭此页面。</p></div>'}catch(e){toast(e.message,'error')}}load().catch(e=>toast(e.message,'error'));
 </script></body></html>"""
 
@@ -184,7 +184,7 @@ class CalibrationJob:
 
     def advance(self) -> dict[str, Any]:
         with self._lock:
-            if not self.running or self._phase not in {"middle_position", "recording_range"}:
+            if not self.running or self._phase not in {"middle_position", "range_prompt", "recording_range"}:
                 raise RuntimeError("当前标定阶段不能继续")
             self._advance.set()
             return self.status()
@@ -241,6 +241,13 @@ class CalibrationJob:
                 if self.arm == "follower":
                     from lerobot_lekiwi.kinematics import WHEEL_NAMES
                     homings.update(dict.fromkeys(WHEEL_NAMES, 0))
+
+                self._set_phase("range_prompt", "中间位置已记录，请点击开始记录范围")
+                while not self._stop.is_set() and not self._advance.wait(0.1):
+                    self._sample(bus, list(ARM_MOTORS))
+                self._advance.clear()
+                if self._stop.is_set():
+                    return
 
                 full_turn = {"arm_wrist_flex", "arm_wrist_roll"}
                 measured = [name for name in ARM_MOTORS if name not in full_turn]
@@ -561,16 +568,32 @@ def _serial_device_sort_key(device: str) -> tuple[int, int | str]:
     return (1, device.casefold())
 
 
+def _open_camera_preferred(cv2, index: int):
+    """Open *index* camera, preferring 640×360; fall back to default if unsupported."""
+    capture = cv2.VideoCapture(index)
+    if not capture.isOpened():
+        return capture, False, None
+    capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
+    ok, frame = capture.read()
+    if ok and frame is not None and frame.shape[1] == 640 and frame.shape[0] == 360:
+        return capture, ok, frame
+    # 640×360 not supported — reopen with default resolution
+    capture.release()
+    capture = cv2.VideoCapture(index)
+    if not capture.isOpened():
+        return capture, False, None
+    ok, frame = capture.read()
+    return capture, ok, frame
+
+
 def scan_cameras(max_index: int) -> dict[str, Any]:
     import cv2
     cameras = []
     with HARDWARE_LOCK:
         for index in range(max(0, min(int(max_index), 20)) + 1):
-            capture = cv2.VideoCapture(index)
-            try:
-                ok, frame = capture.read() if capture.isOpened() else (False, None)
-            finally:
-                capture.release()
+            capture, ok, frame = _open_camera_preferred(cv2, index)
+            capture.release()
             if not ok or frame is None:
                 continue
             height, width = frame.shape[:2]
@@ -600,7 +623,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=28405)
     parser.add_argument("--no-open", action="store_true")
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from rynnrcp.utils.logging import configure_logging
+
+    configure_logging(level=logging.INFO, sinks=["stderr"])
     port = available_port(args.host, args.port)
     server = ThreadingHTTPServer((args.host, port), Handler)
     urls = browser_urls(args.host, port)

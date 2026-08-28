@@ -185,8 +185,9 @@ components:
             encoding: jpg
             fps: 30
             rotate: 0
-            native_compressed: true
-            capture_backend: auto
+            native_compressed: false
+            capture_backend: opencv
+            capture_fourcc: YUYV
           method_name: read
         codec:
           adapter: ProtocolImageInputAdapter
@@ -213,8 +214,9 @@ components:
             encoding: jpg
             fps: 30
             rotate: 0
-            native_compressed: true
-            capture_backend: auto
+            native_compressed: false
+            capture_backend: opencv
+            capture_fourcc: YUYV
           method_name: read
         codec:
           adapter: ProtocolImageInputAdapter

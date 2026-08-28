@@ -13,11 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
-import time
 import struct
+import time
 from serial import Serial, SerialTimeoutException
 from typing import Iterator
+
+from rynnrcp.utils.log_gate import LogGate
 
 from .aero_hand_constants import AeroHandConstants
 from .joints_to_actuations import MOTOR_PULLEY_RADIUS, JointsToActuationsModel
@@ -48,11 +51,17 @@ _UINT16_MAX = 65535
 _RAD_TO_DEG = 180.0 / 3.141592653589793
 _DEG_TO_RAD = 3.141592653589793 / 180.0
 
+logger = logging.getLogger(__name__)
+
+
 class AeroHand:
     def __init__(self, port=None, baudrate=921600):
+        self._read_log_gates: dict[str, LogGate] = {}
         ## Connect to serial port
         if port is None:
-            print("No port specified. Attempting to auto-detect Aero Hand serial port...")
+            logger.info(
+                "[AeroHand][PORT_AUTO_DETECT] searching for a connected Aero Hand"
+            )
             port = self._detect_port()
         self.ser = Serial(port, baudrate, timeout=0.01, write_timeout=0.01)
 
@@ -73,10 +82,25 @@ class AeroHand:
         self.joints_to_actuations_model = JointsToActuationsModel()
         self.actuations_to_joints_model = ActuationsToJointsModelCompact()
 
-    def _detect_port(self):
+    def _read_log_gate(self, operation: str) -> LogGate:
+        return self._read_log_gates.setdefault(
+            operation,
+            LogGate(
+                logger,
+                f"AeroHand/SERIAL_READ/{operation}",
+                interval_s=5.0,
+                level=logging.WARNING,
+            ),
+        )
 
-        base_path = '/dev/serial/by-id/'
-        esp_32_prefix = 'usb-Espressif_USB_JTAG_serial_debug_unit_'
+    def _recover_read_log(self, operation: str) -> None:
+        gate = self._read_log_gates.pop(operation, None)
+        if gate is not None:
+            gate.success()
+
+    def _detect_port(self):
+        base_path = "/dev/serial/by-id/"
+        esp_32_prefix = "usb-Espressif_USB_JTAG_serial_debug_unit_"
 
         if not os.path.exists(base_path):
             raise RuntimeError(
@@ -89,13 +113,19 @@ class AeroHand:
         detected_ports = [d for d in os.listdir(base_path) if esp_32_prefix in d]
 
         if len(detected_ports) == 0:
-            raise RuntimeError("No Aero Hand serial port detected. Check connection and try again.")
+            raise RuntimeError(
+                "No Aero Hand serial port detected. Check connection and try again."
+            )
         elif len(detected_ports) > 1:
-            raise RuntimeError("Multiple Aero Hand serial ports detected. Please specify the port manually.")
+            raise RuntimeError(
+                "Multiple Aero Hand serial ports detected. Please specify the port manually."
+            )
         else:
             return os.path.join(base_path, detected_ports[0])
 
-    def create_trajectory(self, trajectory: list[tuple[list[float], float]]) -> Iterator[list[float]]:
+    def create_trajectory(
+        self, trajectory: list[tuple[list[float], float]]
+    ) -> Iterator[list[float]]:
         rate = 100  # Hz
 
         def _interp_keypoints(start, end, t):
@@ -121,11 +151,22 @@ class AeroHand:
 
     def convert_seven_joints_to_sixteen(self, positions: list) -> list:
         return [
-            positions[0], positions[1], positions[2], positions[2],
-            positions[3], positions[3], positions[3],
-            positions[4], positions[4], positions[4],
-            positions[5], positions[5], positions[5],
-            positions[6], positions[6], positions[6],
+            positions[0],
+            positions[1],
+            positions[2],
+            positions[2],
+            positions[3],
+            positions[3],
+            positions[3],
+            positions[4],
+            positions[4],
+            positions[4],
+            positions[5],
+            positions[5],
+            positions[5],
+            positions[6],
+            positions[6],
+            positions[6],
         ]
 
     def set_joint_positions(self, positions: list):
@@ -159,8 +200,7 @@ class AeroHand:
         ]
         try:
             self._send_data(CTRL_POS, [int(a) for a in actuations])
-        except SerialTimeoutException as e:
-            print(f"Serial Timeout while sending joint positions: {e}")
+        except SerialTimeoutException:
             return
 
     def tendon_to_actuations(self, tendon_extension: float) -> float:
@@ -219,8 +259,7 @@ class AeroHand:
 
         try:
             self._send_data(CTRL_POS, [int(a) for a in actuations])
-        except SerialTimeoutException as e:
-            print(f"Error while writing to serial port: {e}")
+        except SerialTimeoutException:
             return
 
     def _wait_for_ack(self, opcode: int, timeout_s: float) -> bytes:
@@ -231,7 +270,9 @@ class AeroHand:
                 continue
             if frame[0] == (opcode & 0xFF) and frame[1] == 0x00:
                 return frame[2:]
-        raise TimeoutError(f"ACK (opcode 0x{opcode:02X}) not received within {timeout_s}s")
+        raise TimeoutError(
+            f"ACK (opcode 0x{opcode:02X}) not received within {timeout_s}s"
+        )
 
     def set_id(self, id: int, current_limit: int):
         """This fn is used by the GUI to set actuator IDs and current limits for the first time."""
@@ -246,7 +287,7 @@ class AeroHand:
             pass
 
         payload = [0] * 7
-        payload[0] = id & 0xFF   # stored in low byte of word0
+        payload[0] = id & 0xFF  # stored in low byte of word0
         payload[1] = current_limit & 0x03FF
         self._send_data(SET_ID_MODE, payload)
         payload = self._wait_for_ack(SET_ID_MODE, 5.0)
@@ -279,11 +320,11 @@ class AeroHand:
 
     def set_torque(self, id: int, torque: int):
         """
-         Set the torque of a specific actuator. This torque setting is max by default when the motor moves.
-         This is different from torque control mode. It only affect the dynamic of motion execution during position control.
-         Args:
-            id (int): Actuator ID (0..6)
-            torque (int): Torque value (0..1000)
+        Set the torque of a specific actuator. This torque setting is max by default when the motor moves.
+        This is different from torque control mode. It only affect the dynamic of motion execution during position control.
+        Args:
+           id (int): Actuator ID (0..6)
+           torque (int): Torque value (0..1000)
         """
         if not (0 <= id <= 6):
             raise ValueError("id must be 0..6")
@@ -334,8 +375,12 @@ class AeroHand:
 
     def _send_data(self, header: int, payload: list[int] = [0] * 7):
         assert self.ser is not None, "Serial port is not initialized"
-        assert len(payload) == 7, "Payload must be a list of 7 integers in Range 0-65535"
-        assert all(0 <= v <= 65535 for v in payload), "Payload values must be in Range 0-65535"
+        assert len(payload) == 7, (
+            "Payload must be a list of 7 integers in Range 0-65535"
+        )
+        assert all(0 <= v <= 65535 for v in payload), (
+            "Payload values must be in Range 0-65535"
+        )
         msg = struct.pack("<2B7H", header & 0xFF, 0x00, *(v & 0xFFFF for v in payload))
         self.ser.write(msg)
         self.ser.flush()
@@ -390,20 +435,27 @@ class AeroHand:
 
         try:
             self._send_data(GET_POS)
-        except SerialTimeoutException as e:
-            print(f"Error while writing to serial port: {e}")
+        except SerialTimeoutException:
             return None
 
         ## Read the response
         resp = self.ser.read(2 + 7 * 2)  # 2
         if len(resp) != 16:
-            print(f"Timeout while reading actuations. Got {len(resp)} bytes.")
+            self._read_log_gate("actuations").failure(
+                "expected_bytes=16 received_bytes=%d; verify the serial connection",
+                len(resp),
+            )
             return None
         data = struct.unpack("<2B7H", resp)
         if data[0] != GET_POS:
-            print(f"Invalid response from hand in get_actuations. Expected {GET_POS}, got {data[0]}")
+            self._read_log_gate("actuations").failure(
+                "expected_command=%d received_command=%d; resetting the serial input buffer",
+                GET_POS,
+                data[0],
+            )
             self.ser.reset_input_buffer()
             return None
+        self._recover_read_log("actuations")
         positions_uint16 = data[2:]
         ## Convert to degrees
         positions = [
@@ -425,20 +477,27 @@ class AeroHand:
 
         try:
             self._send_data(GET_CURR)
-        except SerialTimeoutException as e:
-            print(f"Error while writing to serial port: {e}")
+        except SerialTimeoutException:
             return None
 
         ## Read the response, signed values
         resp = self.ser.read(2 + 7 * 2)  # 2
         if len(resp) != 16:
-            print(f"Timeout while reading currents. Got {len(resp)} bytes.")
+            self._read_log_gate("currents").failure(
+                "expected_bytes=16 received_bytes=%d; verify the serial connection",
+                len(resp),
+            )
             return None
         data = struct.unpack("<2B7h", resp)
         if data[0] != GET_CURR:
-            print(f"Invalid response from hand in get_actuator_currents. Expected {GET_CURR}, got {data[0]}")
+            self._read_log_gate("currents").failure(
+                "expected_command=%d received_command=%d; resetting the serial input buffer",
+                GET_CURR,
+                data[0],
+            )
             self.ser.reset_input_buffer()
             return None
+        self._recover_read_log("currents")
         ## Convert to mA using the conversion factor 1 unit = 6.5 mA as per Feetech documentation
         currents_mA = [val * 6.5 for val in data[2:]]
         return currents_mA
@@ -453,20 +512,27 @@ class AeroHand:
 
         try:
             self._send_data(GET_TEMP)
-        except SerialTimeoutException as e:
-            print(f"Error while writing to serial port: {e}")
+        except SerialTimeoutException:
             return None
 
         ## Read the response, unsigned values
         resp = self.ser.read(2 + 7 * 2)  # 2
         if len(resp) != 16:
-            print(f"Timeout while reading temperatures. Got {len(resp)} bytes.")
+            self._read_log_gate("temperatures").failure(
+                "expected_bytes=16 received_bytes=%d; verify the serial connection",
+                len(resp),
+            )
             return None
         data = struct.unpack("<2B7H", resp)
         if data[0] != GET_TEMP:
-            print(f"Invalid response from hand in get_actuator_temperatures. Expected {GET_TEMP}, got {data[0]}")
+            self._read_log_gate("temperatures").failure(
+                "expected_command=%d received_command=%d; resetting the serial input buffer",
+                GET_TEMP,
+                data[0],
+            )
             self.ser.reset_input_buffer()
             return None
+        self._recover_read_log("temperatures")
         ## Temperatures are in degree Celsius directly
         temperatures = [float(val) for val in data[2:]]
         return temperatures
@@ -481,20 +547,27 @@ class AeroHand:
 
         try:
             self._send_data(GET_VEL)
-        except SerialTimeoutException as e:
-            print(f"Error while writing to serial port: {e}")
+        except SerialTimeoutException:
             return None
 
         ## Read the response, signed values
         resp = self.ser.read(2 + 7 * 2)  # 2
         if len(resp) != 16:
-            print(f"Timeout while reading speeds. Got {len(resp)} bytes.")
+            self._read_log_gate("speeds").failure(
+                "expected_bytes=16 received_bytes=%d; verify the serial connection",
+                len(resp),
+            )
             return None
         data = struct.unpack("<2B7h", resp)
         if data[0] != GET_VEL:
-            print(f"Invalid response from hand in get_actuator_speeds. Expected {GET_VEL}, got {data[0]}")
+            self._read_log_gate("speeds").failure(
+                "expected_command=%d received_command=%d; resetting the serial input buffer",
+                GET_VEL,
+                data[0],
+            )
             self.ser.reset_input_buffer()
             return None
+        self._recover_read_log("speeds")
         ## Convert to RPM using the conversion factor 1 unit = 0.732 RPM as per Feetech documentation
         speeds_rpm = [val * 0.732 for val in data[2:]]
         return speeds_rpm

@@ -45,6 +45,7 @@ class SimRobotController(BaseRobotController):
         server_host: str = "localhost",
         server_port: int = 8080,
         n_dof: int = 6,
+        robot_family: str | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         super().__init__(logger=logger)
@@ -53,12 +54,32 @@ class SimRobotController(BaseRobotController):
         self.server_port = _resolve_port(server_port)
         self._joint_port = self.server_port + 1
         self._n_dof = int(n_dof)
+        self._robot_family = robot_family
 
         self._joint_client: JointClient | None = None
         self._lock = threading.Lock()
         self._running = False
         self._cached_positions: List[float] = [0.0] * self._n_dof
         self._cached_command: List[float] = [0.0] * self._n_dof
+
+    def _collapse_franka_state(self, positions: List[float]) -> List[float]:
+        """Collapse physical Franka joints (7 arm + N fingers) to 8-DOF RCP state.
+
+        Handles 9-DOF (7+2 prismatic) and 14-DOF (7+2 prismatic + coupled) alike.
+        """
+        if len(positions) <= 8:
+            return positions[: self._n_dof]
+        arm = positions[:7]
+        gripper = (positions[7] + positions[8]) / 2.0
+        return arm + [gripper]
+
+    def _expand_franka_action(self, positions: List[float]) -> List[float]:
+        """Expand 8-DOF RCP action (7 arm + 1 gripper) to 9 physical Franka joints."""
+        if len(positions) != 8:
+            return positions
+        arm = positions[:7]
+        gripper = positions[7]
+        return arm + [gripper, gripper]
 
     def start(self) -> None:
         """Connect to the simulation JointManager ZMQ server."""
@@ -96,8 +117,13 @@ class SimRobotController(BaseRobotController):
 
             joint_data = self._joint_client.get_joint_data()
             if joint_data and "positions" in joint_data:
-                positions = joint_data["positions"][:self._n_dof]
-                self._cached_positions = list(positions)
+                positions = joint_data["positions"]
+                if self._robot_family == "franka_r3":
+                    positions = self._collapse_franka_state(positions)
+                else:
+                    positions = positions[: self._n_dof]
+                if len(positions) == self._n_dof:
+                    self._cached_positions = list(positions)
             return {"joint_positions": list(self._cached_positions)}
 
     def set_joint_positions(self, value: Dict[str, Any]) -> None:
@@ -107,12 +133,19 @@ class SimRobotController(BaseRobotController):
 
         positions = [float(v) for v in value["joint_positions"]]
         if len(positions) != self._n_dof:
-            raise ValueError(f"Expected {self._n_dof} joint values, got {len(positions)}")
+            # action_bridge may send raw sim joints for Franka R3 (9 or 14 DOF);
+            # accept and collapse to 8-DOF before expanding back.
+            if self._robot_family == "franka_r3" and len(positions) > 8:
+                positions = self._collapse_franka_state(positions)
+            else:
+                raise ValueError(f"Expected {self._n_dof} joint values, got {len(positions)}")
 
         with self._lock:
             if not self._running or self._joint_client is None:
                 self.logger.warning("SimRobotController not started, cannot set positions")
                 return
+            if self._robot_family == "franka_r3":
+                positions = self._expand_franka_action(positions)
             self._joint_client.update_joint_data({"positions": positions})
 
     def get_joint_command(self) -> Dict[str, List[float]]:
@@ -123,8 +156,12 @@ class SimRobotController(BaseRobotController):
 
             joint_command = self._joint_client.get_joint_command()
             if joint_command and "positions" in joint_command:
-                positions = joint_command["positions"][:self._n_dof]
-                if any(p != 0.0 for p in positions):
+                positions = joint_command["positions"]
+                if self._robot_family == "franka_r3":
+                    positions = self._collapse_franka_state(positions)
+                else:
+                    positions = positions[: self._n_dof]
+                if len(positions) == self._n_dof:
                     self._cached_command = list(positions)
             return {"joint_positions": list(self._cached_command)}
 
@@ -285,14 +322,11 @@ class SimBimanualRobotController(BaseRobotController):
             right_cmd = self._right_client.get_joint_command()
             left_pos = self._cached_command[:n]
             right_pos = self._cached_command[n:]
-            if left_cmd and "positions" in left_cmd:
-                candidate = left_cmd["positions"][:n]
-                if any(p != 0.0 for p in candidate):
-                    left_pos = candidate
-            if right_cmd and "positions" in right_cmd:
-                candidate = right_cmd["positions"][:n]
-                if any(p != 0.0 for p in candidate):
-                    right_pos = candidate
+            # 全零命令也是合法命令，不再用 any(p != 0.0) 过滤
+            if left_cmd and "positions" in left_cmd and len(left_cmd["positions"]) >= n:
+                left_pos = left_cmd["positions"][:n]
+            if right_cmd and "positions" in right_cmd and len(right_cmd["positions"]) >= n:
+                right_pos = right_cmd["positions"][:n]
             self._cached_command = list(left_pos) + list(right_pos)
             return {"joint_positions": list(self._cached_command)}
 

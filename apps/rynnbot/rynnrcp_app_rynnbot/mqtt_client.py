@@ -27,7 +27,8 @@ import threading
 import time
 
 import paho.mqtt.client as mqtt
-from paho.mqtt.client import CallbackAPIVersion
+
+from rynnrcp.utils.redaction import describe_payload
 
 from .auth import RynnAuthClient
 import logging
@@ -124,7 +125,11 @@ class RynnMqttClient:
         """Callback when an MQTT message is received."""
         topic = msg.topic
         payload = msg.payload.decode("utf-8", errors="ignore")
-        logger.debug("[MQTT] Message: topic=%s payload_preview=%s", topic, payload[:200])
+        logger.debug(
+            "[MQTT][MESSAGE] topic=%s payload=%s",
+            topic,
+            describe_payload(msg.payload),
+        )
 
         if self._on_message_callback:
             self._on_message_callback(

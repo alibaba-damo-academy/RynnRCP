@@ -24,6 +24,7 @@ outside restricted sandboxes.
 | --- | --- |
 | `adapters/test_protocol_adapters.py` | Current protocol input/image/action adapter behavior. |
 | `config/test_core_config.py` | Source config loader and validator coverage. |
+| `config/test_franka_configure_web.py` | Franka FR3 connection, single-joint test, and Home persistence. |
 | `config/test_lekiwi_configure_web.py` | LeKiwi web configuration persistence and machine-specific IDs. |
 | `config/test_runtime_config.py` | Runtime initialization directly from server, core, and integration configs. |
 | `config/test_so101_configure_web.py` | SO101 web configuration persistence and machine-specific IDs. |

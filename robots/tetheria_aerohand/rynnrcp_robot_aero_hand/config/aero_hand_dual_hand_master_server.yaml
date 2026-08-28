@@ -21,10 +21,15 @@ components:
     side: right
     camera_index: 0
     fps: 30.0
-    hand_landmarker_model: ''
-    swap_handedness: true
+    inference_fps: 15.0
+    inference_backend: auto
+    inference_backend_module: ''
+    inference_threads: 1
+    prefer_platform_acceleration: false
+    swap_handedness: false
     camera_width: 640
-    camera_height: 360
+    camera_height: 480
+    inference_width: 640
     frame_server_port: 28412
     min_hand_area: 0.005
     ema_alpha: 0.7

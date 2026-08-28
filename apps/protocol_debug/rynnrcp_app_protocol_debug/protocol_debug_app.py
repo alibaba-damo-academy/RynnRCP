@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import logging
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,9 +21,11 @@ except ModuleNotFoundError:  # keep the debug page usable before optional deps a
 from rynnrcp.interface.client import ClientInterface
 from rynnrcp.interface.discovery import LocalRegistry
 from rynnrcp.interface.protocol_client import RcpProtocolClient
-from rynnrcp.utils.user_paths import new_log_session_id
+from rynnrcp.utils.logging import configure_logging, resolve_log_run_id, set_log_context
+from rynnrcp.utils.user_paths import app_root, logs_dir, new_log_session_id
 from rynnrcp.utils.web_urls import browser_urls, primary_browser_url
 
+logger = logging.getLogger(__name__)
 
 HTML = r"""<!doctype html>
 <html lang="zh-CN">
@@ -790,6 +793,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"success": False, "error": "not found"})
         except Exception as exc:
             self.app.last_error = str(exc)
+            logger.exception(
+                "[ProtocolDebug][REQUEST_FAILED] path=%s error=%s; "
+                "inspect the selected server config and server logs for the same run_id",
+                path,
+                exc,
+            )
             self._json(500, {"success": False, "error": str(exc)})
 
     def log_message(self, fmt: str, *args: Any) -> None:
@@ -916,6 +925,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8091, help="Web app port.")
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser.")
     args = parser.parse_args(argv)
+
+    app_id = "protocol_debug"
+    set_log_context(
+        app_id=app_id,
+        run_id=resolve_log_run_id(),
+        process="protocol_debug_app",
+    )
+    configure_logging(
+        sinks=["stderr", "file"],
+        file_path=str(logs_dir(app_root(app_id)) / "protocol_debug.log"),
+    )
+    logger.info(
+        "[ProtocolDebug][START] host=%s port=%d default_config=%s",
+        args.host,
+        args.port,
+        args.config,
+    )
 
     Handler.app = DebugApp(args.config)
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)

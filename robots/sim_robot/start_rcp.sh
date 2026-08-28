@@ -7,6 +7,7 @@
 #   bash start_rcp.sh --config lerobot_so101_sim_v2
 #   bash start_rcp.sh --config lerobot_so101_dual_sim_v1
 #   bash start_rcp.sh --config lerobot_so101_dual_sim_v2
+#   bash start_rcp.sh --config aero_hand_sim_v1
 #   bash start_rcp.sh --config aero_hand_dual_sim_v1
 #   bash start_rcp.sh --config aero_hand_dual_sim_v2
 #   bash start_rcp.sh --config rm75_rmg24_sim_v1
@@ -151,18 +152,20 @@ else
 fi
 
 # 3. action_bridge
-ACTION_BRIDGE_ARGS=(--robot-id "$ROBOT_ID")
-for mapping in "${ACTION_BRIDGE_MAPPINGS[@]}"; do
-    ACTION_BRIDGE_ARGS+=(--mapping "$mapping")
-done
+if [[ "${SKIP_ACTION_BRIDGE:-0}" == "1" ]]; then
+    echo "[RCP] 跳过 action_bridge (SKIP_ACTION_BRIDGE=1)"
+else
+    ACTION_BRIDGE_ARGS=(--robot-id "$ROBOT_ID" --port "${PORT:-8080}")
+    for mapping in "${ACTION_BRIDGE_MAPPINGS[@]}"; do
+        ACTION_BRIDGE_ARGS+=(--mapping "$mapping")
+    done
 
-
-
-echo "[RCP] 启动 action_bridge..."
-python "$ACTION_BRIDGE" "${ACTION_BRIDGE_ARGS[@]}" &
-PIDS+=($!)
-sleep 0.2
-kill -0 "${PIDS[2]}" 2>/dev/null && echo "[RCP] action_bridge OK (PID ${PIDS[2]})"
+    echo "[RCP] 启动 action_bridge..."
+    python "$ACTION_BRIDGE" "${ACTION_BRIDGE_ARGS[@]}" &
+    PIDS+=($!)
+    sleep 0.2
+    kill -0 "${PIDS[-1]}" 2>/dev/null && echo "[RCP] action_bridge OK (PID ${PIDS[-1]})"
+fi
 
 echo ""
 echo "============================================================"

@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import re
 
 import yaml
 
 from rynnrcp.config.loader import load_config
 from rynnrcp.config.runtime_config import RuntimeConfig
 from rynnrcp.config.runner_config import build_runner_config
+
+
+_GENERATED_SUFFIX = re.compile(r"_[0-9a-fA-F]{8}$")
+
+
+def _base_robot_id(robot_id: str) -> str:
+    """Strip the optional machine-generated suffix appended by configure tools."""
+    return _GENERATED_SUFFIX.sub("", robot_id)
 
 
 SO101_CONFIG_DIR = (
@@ -25,7 +34,7 @@ def test_loader_returns_server_config_without_expansion() -> None:
     config = load_config(str(SO101_CONFIG_DIR / "so101_follower_server.yaml"))
 
     assert config["config_type"] == "rynnrcp_server_config"
-    assert config["manifest"]["robot_id"] == "so101_follower"
+    assert _base_robot_id(config["manifest"]["robot_id"]) == "so101_follower"
     assert "runners" not in config
     assert "robot_type" not in config
 
@@ -35,7 +44,9 @@ def test_leader_runtime_skips_camera_runner_when_cameras_are_absent() -> None:
     runner_config = build_runner_config(runtime_config)
 
     assert runtime_config.runner_mode == "process"
-    assert runtime_config.runtime_context["manifest"]["robot_id"] == "so101_leader"
+    assert _base_robot_id(
+        runtime_config.runtime_context["manifest"]["robot_id"]
+    ) == "so101_leader"
     assert runner_config.runner_names == ["robot"]
     assert runner_config.capabilities == {
         "observations": True,

@@ -221,6 +221,14 @@ class ResourceRegistry:
         self._path_to_id.pop(record.path, None)
         return existed
 
+    def is_managed_temporary(self, record: ResourceRecord) -> bool:
+        """Return whether a Resource is an RynnRCP-owned temporary artifact."""
+        if record.metadata.get("temporary") is not True:
+            return False
+        tmp_root = os.path.realpath(self._tmp_dir)
+        resource_path = os.path.realpath(record.path)
+        return resource_path != tmp_root and os.path.commonpath([tmp_root, resource_path]) == tmp_root
+
 
 class ResourceService(BaseService):
     """Protocol Resource tools backed by a local ResourceRegistry."""
@@ -337,8 +345,12 @@ class ResourceService(BaseService):
             return ToolBus.make_result(False, result={"deleted": False}, message="resource_id is required")
         try:
             record = self._registry.resolve(rid)
-            if record.domain != "log":
-                return ToolBus.make_result(False, result={"deleted": False}, message="only log resources can be deleted")
+            if record.domain != "log" and not self._registry.is_managed_temporary(record):
+                return ToolBus.make_result(
+                    False,
+                    result={"deleted": False},
+                    message="only log and managed temporary resources can be deleted",
+                )
             deleted = self._registry.delete(rid)
         except Exception as exc:
             return ToolBus.make_result(False, result={"deleted": False}, message=str(exc))
@@ -360,7 +372,7 @@ class ResourceService(BaseService):
                 name=record.name,
                 format=record.format,
                 mode="snapshot",
-                metadata=record.metadata,
+                metadata={**record.metadata, "temporary": True},
             )
             return ToolBus.make_result(True, result={"resource": resource}, message="OK")
         except Exception as exc:
@@ -392,7 +404,10 @@ class ResourceService(BaseService):
                 name=os.path.basename(archive_path),
                 format="zip",
                 mode="snapshot",
-                metadata={"source_resource_ids": [record.resource_id for record in records]},
+                metadata={
+                    "source_resource_ids": [record.resource_id for record in records],
+                    "temporary": True,
+                },
             )
             return ToolBus.make_result(True, result={"resource": resource}, message="OK")
         except Exception as exc:

@@ -22,7 +22,7 @@ components:
     robot_id: robot
     n_dof: 8
     server_host: localhost
-    server_port: 8080
+    server_port: 0  # 0 = read from PORT env var (set by simulation)
   front_camera:
     enabled: true
     device_id: camera_front

@@ -18,6 +18,9 @@ RCP 协议层由仓库根包提供，配套 App 位于 `apps/`。
 | `noetix_bumi/` | Noetix Bumi high-level、low-level 和本地行走策略接入包 | [`noetix_bumi/README.zh-CN.md`](noetix_bumi/README.zh-CN.md) |
 | `sim_robot/` | Isaac Sim 仿真机器人接入包 | [`sim_robot/README.zh-CN.md`](sim_robot/README.zh-CN.md) |
 | `lerobot_lekiwi/` | LeKiwi 移动操作机器人接入包 | [`lerobot_lekiwi/README.zh-CN.md`](lerobot_lekiwi/README.zh-CN.md) |
+| `franka_fr3/` | 基于官方 libfranka 的 Franka Research 3 接入包 | [`franka_fr3/README.zh-CN.md`](franka_fr3/README.zh-CN.md) |
+| `meta_quest3/` | Meta Quest 3 左臂、右臂和双臂主臂接入包 | [`meta_quest3/README.zh-CN.md`](meta_quest3/README.zh-CN.md) |
+| `astribot_s1/` | Astribot S1 官方 ROS 2 Python SDK 接入包 | [`astribot_s1/README.zh-CN.md`](astribot_s1/README.zh-CN.md) |
 
 ## 安装约定
 

@@ -25,6 +25,7 @@ from rynnrcp.native import (
     open_or_create_notifier,
 )
 from rynnrcp.ipc.ring_buffer import RingBuffer
+from rynnrcp.utils.log_gate import LogGate
 
 logger = logging.getLogger(__name__)
 _SHM_ENVELOPE_MAGIC = b"RCT1"
@@ -32,14 +33,48 @@ _SHM_ENVELOPE_HEADER_SIZE = 16
 _DEFAULT_SHM_POLL_INTERVAL_US = 1000
 
 
+def _callback_log_gate(
+    gates: Dict[int, LogGate],
+    transport_name: str,
+    callback: Callable[[bytes], None],
+) -> LogGate:
+    callback_name = str(
+        getattr(callback, "__qualname__", None)
+        or getattr(callback, "__name__", None)
+        or type(callback).__name__
+    )
+    return gates.setdefault(
+        id(callback),
+        LogGate(
+            logger,
+            f"IPC/CALLBACK_ERROR/{transport_name}/{callback_name}",
+            interval_s=5.0,
+            level=logging.ERROR,
+        ),
+    )
+
+
+def _recover_callback_log_gate(
+    gates: Dict[int, LogGate],
+    callback: Callable[[bytes], None],
+) -> None:
+    """Finish a callback outage without touching LogGate on healthy calls."""
+    gate = gates.pop(id(callback), None)
+    if gate is not None:
+        gate.success()
+
+
 class TransportLevel(IntEnum):
     """Transport routing levels."""
-    L0_INTRA_THREAD = 0    # Same thread: direct callback
-    L1_INTRA_PROCESS = 1   # Same process: reference + Event notification
-    L2_SHM = 2             # Cross-process: SHM Ring Buffer
+
+    L0_INTRA_THREAD = 0  # Same thread: direct callback
+    L1_INTRA_PROCESS = 1  # Same process: reference + Event notification
+    L2_SHM = 2  # Cross-process: SHM Ring Buffer
 
 
-def parse_transport_level(value: TransportLevel | str | int | None) -> TransportLevel | None:
+def parse_transport_level(
+    value: TransportLevel | str | int | None,
+) -> TransportLevel | None:
     """Parse a user/config transport value into a TransportLevel.
 
     ``None`` means auto-detect at the ChannelManager layer. Explicit "shm" is
@@ -99,8 +134,7 @@ class TransportBase(ABC):
 
     @property
     @abstractmethod
-    def level(self) -> TransportLevel:
-        ...
+    def level(self) -> TransportLevel: ...
 
 
 class IntraProcessTransport(TransportBase):
@@ -118,6 +152,7 @@ class IntraProcessTransport(TransportBase):
         self._lock = threading.Lock()
         self._event = Event()
         self._callbacks: List[Callable[[bytes], None]] = []
+        self._callback_error_logs: Dict[int, LogGate] = {}
         self._closed = False
         self._next_index = 0
         self._last_read_index = -1
@@ -139,8 +174,13 @@ class IntraProcessTransport(TransportBase):
         for cb in self._callbacks:
             try:
                 cb(data)
+                _recover_callback_log_gate(self._callback_error_logs, cb)
             except Exception as e:
-                logger.error("Callback error: %s", e)
+                _callback_log_gate(self._callback_error_logs, self._name, cb).failure(
+                    "error=%s; inspect the subscriber callback for this channel",
+                    e,
+                    exc_info=True,
+                )
 
     def subscribe(self, callback: Callable[[bytes], None]) -> None:
         """Register a callback invoked on each publish."""
@@ -155,7 +195,9 @@ class IntraProcessTransport(TransportBase):
         self._last_read_index, data = self.poll_from(self._last_read_index, timeout_ms)
         return data
 
-    def poll_from(self, last_read_index: int, timeout_ms: int = 100) -> tuple[int, Optional[bytes]]:
+    def poll_from(
+        self, last_read_index: int, timeout_ms: int = 100
+    ) -> tuple[int, Optional[bytes]]:
         """Poll from a reader-specific cursor."""
         deadline = time.monotonic() + timeout_ms / 1000.0
         while True:
@@ -165,7 +207,9 @@ class IntraProcessTransport(TransportBase):
                         return index, data
             if time.monotonic() >= deadline:
                 return last_read_index, None
-            self._event.wait(timeout_ms=min(10, max(0, int((deadline - time.monotonic()) * 1000))))
+            self._event.wait(
+                timeout_ms=min(10, max(0, int((deadline - time.monotonic()) * 1000)))
+            )
 
     def latest(self) -> Optional[bytes]:
         """Get the latest message without blocking (non-consuming peek)."""
@@ -191,6 +235,7 @@ class IntraProcessTransport(TransportBase):
         self._closed = True
         self._event.close()
         self._callbacks.clear()
+        self._callback_error_logs.clear()
 
 
 class ShmTransport(TransportBase):
@@ -230,6 +275,7 @@ class ShmTransport(TransportBase):
             create=create,
         )
         self._callbacks: List[Callable[[bytes], None]] = []
+        self._callback_error_logs: Dict[int, LogGate] = {}
         self._event = Event()
         self._closed = False
         self._io_lock = threading.RLock()
@@ -252,7 +298,9 @@ class ShmTransport(TransportBase):
                 return
             total_len = sum(len(part) for part in parts)
             if total_len > self._payload_size:
-                raise ValueError(f"Data size {total_len} exceeds msg_size {self._payload_size}")
+                raise ValueError(
+                    f"Data size {total_len} exceeds msg_size {self._payload_size}"
+                )
             self._ring.write_envelope_parts(total_len, parts)
             self._event.signal()
             self._notify_waiters()
@@ -262,8 +310,15 @@ class ShmTransport(TransportBase):
                 for cb in self._callbacks:
                     try:
                         cb(data)
+                        _recover_callback_log_gate(self._callback_error_logs, cb)
                     except Exception as e:
-                        logger.error("Callback error: %s", e)
+                        _callback_log_gate(
+                            self._callback_error_logs, self._name, cb
+                        ).failure(
+                            "error=%s; inspect the subscriber callback for this channel",
+                            e,
+                            exc_info=True,
+                        )
 
     def subscribe(self, callback: Callable[[bytes], None]) -> None:
         """Register a local callback for this process."""
@@ -286,7 +341,9 @@ class ShmTransport(TransportBase):
                 exc,
             )
             return
-        self._registry.register_subscriber(self._name, subscriber_id, os.getpid(), notifier_name)
+        self._registry.register_subscriber(
+            self._name, subscriber_id, os.getpid(), notifier_name
+        )
         self._subscriber_ids.append(subscriber_id)
         self._subscriber_notifier = notifier
         self._subscriber_notifier_name = notifier_name
@@ -306,13 +363,17 @@ class ShmTransport(TransportBase):
         self._last_read_index, data = self.poll_from(self._last_read_index, timeout_ms)
         return data
 
-    def poll_from(self, last_read_index: int, timeout_ms: int = 100) -> tuple[int, Optional[bytes]]:
+    def poll_from(
+        self, last_read_index: int, timeout_ms: int = 100
+    ) -> tuple[int, Optional[bytes]]:
         """Poll for new data using a reader-specific cursor."""
         with self._io_lock:
             if self._closed:
                 return last_read_index, None
 
-            deadline = None if timeout_ms < 0 else time.monotonic() + timeout_ms / 1000.0
+            deadline = (
+                None if timeout_ms < 0 else time.monotonic() + timeout_ms / 1000.0
+            )
 
             while True:
                 # Check ring buffer for new data
@@ -325,7 +386,9 @@ class ShmTransport(TransportBase):
                     continue  # Event fired -> re-check ring buffer immediately
 
                 # Deadline check
-                if timeout_ms == 0 or (deadline is not None and time.monotonic() >= deadline):
+                if timeout_ms == 0 or (
+                    deadline is not None and time.monotonic() >= deadline
+                ):
                     return last_read_index, None
 
                 self._wait_for_cross_process_signal(deadline)
@@ -360,8 +423,12 @@ class ShmTransport(TransportBase):
             if self._registry is not None:
                 for subscriber_id in list(self._subscriber_ids):
                     try:
-                        self._registry.unregister_subscriber(self._name, subscriber_id, os.getpid())
+                        self._registry.unregister_subscriber(
+                            self._name, subscriber_id, os.getpid()
+                        )
                     except Exception:
+                        # Best-effort teardown: the registry may already be
+                        # closed by the owning process during shutdown.
                         pass
             if self._subscriber_notifier is not None:
                 self._subscriber_notifier.close()
@@ -376,9 +443,11 @@ class ShmTransport(TransportBase):
                 try:
                     notifier.close()
                 except Exception:
+                    # Best-effort teardown of per-publisher notifiers.
                     pass
             self._publisher_notifiers.clear()
             self._callbacks.clear()
+            self._callback_error_logs.clear()
 
     def unlink(self) -> None:
         """Remove the SHM ring buffer from the system."""
@@ -409,7 +478,10 @@ class ShmTransport(TransportBase):
             return
         now = time.monotonic()
         registry_version = self._subscriber_registry_version()
-        if registry_version != self._publisher_notifier_registry_version or now >= self._publisher_notifier_refresh_at:
+        if (
+            registry_version != self._publisher_notifier_registry_version
+            or now >= self._publisher_notifier_refresh_at
+        ):
             self._refresh_publisher_notifiers()
             self._publisher_notifier_registry_version = registry_version
             self._publisher_notifier_refresh_at = now + 60.0
@@ -417,6 +489,9 @@ class ShmTransport(TransportBase):
             try:
                 notifier.notify()
             except Exception:
+                # Hot path (every publish): a peer that died leaves a stale
+                # notifier until the 60s refresh above replaces it. Silent by
+                # design to avoid per-tick log spam.
                 pass
 
     def _subscriber_registry_version(self) -> int | None:
@@ -444,7 +519,9 @@ class ShmTransport(TransportBase):
             if subscriber_id in self._publisher_notifiers:
                 continue
             try:
-                self._publisher_notifiers[subscriber_id] = open_notifier(entry.notifier_name)
+                self._publisher_notifiers[subscriber_id] = open_notifier(
+                    entry.notifier_name
+                )
                 self._publisher_notifier_failures.discard(subscriber_id)
             except NotifierUnavailable as exc:
                 first_failure = subscriber_id not in self._publisher_notifier_failures
@@ -457,7 +534,9 @@ class ShmTransport(TransportBase):
                     exc,
                 )
                 try:
-                    self._registry.unregister_subscriber(self._name, subscriber_id, entry.pid)
+                    self._registry.unregister_subscriber(
+                        self._name, subscriber_id, entry.pid
+                    )
                 except Exception as cleanup_exc:
                     logger.debug(
                         "Failed to unregister stale subscriber %s on %s: %s",
@@ -478,7 +557,10 @@ class ShmTransport(TransportBase):
                     return
                 if result == WaitResult.TIMEOUT:
                     return
-                logger.debug("IPC notifier wait failed for %s; falling back to polling", self._name)
+                logger.debug(
+                    "IPC notifier wait failed for %s; falling back to polling",
+                    self._name,
+                )
         if deadline is None:
             time.sleep(self._poll_interval)
             return
@@ -558,5 +640,7 @@ def _subscriber_notifier_name(channel_name: str, subscriber_id: str) -> str:
     names can be much longer than that field, so use a deterministic digest
     instead of the raw channel path.
     """
-    digest = hashlib.sha1(f"{channel_name}:{subscriber_id}".encode("utf-8")).hexdigest()[:24]
+    digest = hashlib.sha1(
+        f"{channel_name}:{subscriber_id}".encode("utf-8")
+    ).hexdigest()[:24]
     return f"rc_sub_{digest}"

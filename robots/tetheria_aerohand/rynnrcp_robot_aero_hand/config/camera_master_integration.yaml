@@ -38,10 +38,15 @@ components:
           side: ${components.robot.side}
           camera_index: ${components.robot.camera_index}
           fps: ${components.robot.fps}
-          hand_landmarker_model: ${components.robot.hand_landmarker_model}
+          inference_fps: ${components.robot.inference_fps}
+          inference_backend: ${components.robot.inference_backend}
+          inference_backend_module: ${components.robot.inference_backend_module}
+          inference_threads: ${components.robot.inference_threads}
+          prefer_platform_acceleration: ${components.robot.prefer_platform_acceleration}
           swap_handedness: ${components.robot.swap_handedness}
           camera_width: ${components.robot.camera_width}
           camera_height: ${components.robot.camera_height}
+          inference_width: ${components.robot.inference_width}
           frame_server_port: ${components.robot.frame_server_port}
           min_hand_area: ${components.robot.min_hand_area}
           ema_alpha: ${components.robot.ema_alpha}

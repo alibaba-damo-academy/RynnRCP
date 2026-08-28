@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import logging
 import pickle
-import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import zmq
+
+from rynnrcp.utils.log_gate import LogGate
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +51,29 @@ class JointClient:
         self._socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
         self._socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
         self._socket.connect(f"tcp://{server_host}:{server_port}")
+        self._log_gates: Dict[str, LogGate] = {}
         logger.info(
-            "JointClient connected to tcp://%s:%s for robot '%s'",
+            "[SimZMQ][JOINT_CONNECTED] endpoint=tcp://%s:%s robot=%s",
             server_host,
             server_port,
             robot_name,
         )
+
+    def _gate(self, operation: str) -> LogGate:
+        return self._log_gates.setdefault(
+            operation,
+            LogGate(
+                logger,
+                f"SimZMQ/JointClient/{self.robot_name}/{operation}",
+                interval_s=5.0,
+                level=logging.WARNING,
+            ),
+        )
+
+    def _recover(self, operation: str) -> None:
+        gate = self._log_gates.pop(operation, None)
+        if gate is not None:
+            gate.success()
 
     def get_joint_data(self) -> Optional[Dict[str, Any]]:
         """Fetch current joint state (positions, velocities, efforts, etc.)."""
@@ -64,18 +82,34 @@ class JointClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("get_joint_data")
                 return response.get("joint_data")
-            logger.warning(
-                "get_joint_data failed for '%s': %s",
+            self._gate("get_joint_data").failure(
+                "robot=%s endpoint=tcp://%s:%s status=%s message=%s",
                 self.robot_name,
+                self.server_host,
+                self.server_port,
+                response.get("status"),
                 response.get("message"),
             )
             return None
         except zmq.Again:
-            logger.warning("Timeout getting joint data for '%s'", self.robot_name)
+            self._gate("get_joint_data").failure(
+                "robot=%s endpoint=tcp://%s:%s request timed out",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+            )
             return None
         except Exception as e:
-            logger.error("Error getting joint data: %s", e)
+            self._gate("get_joint_data").failure(
+                "robot=%s endpoint=tcp://%s:%s error=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return None
 
     def get_joint_command(self) -> Optional[Dict[str, Any]]:
@@ -85,18 +119,34 @@ class JointClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("get_joint_command")
                 return response.get("joint_command")
-            logger.warning(
-                "get_joint_command failed for '%s': %s",
+            self._gate("get_joint_command").failure(
+                "robot=%s endpoint=tcp://%s:%s status=%s message=%s",
                 self.robot_name,
+                self.server_host,
+                self.server_port,
+                response.get("status"),
                 response.get("message"),
             )
             return None
         except zmq.Again:
-            logger.warning("Timeout getting joint command for '%s'", self.robot_name)
+            self._gate("get_joint_command").failure(
+                "robot=%s endpoint=tcp://%s:%s request timed out",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+            )
             return None
         except Exception as e:
-            logger.error("Error getting joint command: %s", e)
+            self._gate("get_joint_command").failure(
+                "robot=%s endpoint=tcp://%s:%s error=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return None
 
     def get_joint_ee_pose(self) -> Optional[Dict[str, Any]]:
@@ -106,13 +156,34 @@ class JointClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("get_joint_ee_pose")
                 return response.get("joint_ee_pose")
+            self._gate("get_joint_ee_pose").failure(
+                "robot=%s endpoint=tcp://%s:%s status=%s message=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                response.get("status"),
+                response.get("message"),
+            )
             return None
         except zmq.Again:
-            logger.warning("Timeout getting joint ee_pose for '%s'", self.robot_name)
+            self._gate("get_joint_ee_pose").failure(
+                "robot=%s endpoint=tcp://%s:%s request timed out",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+            )
             return None
         except Exception as e:
-            logger.error("Error getting joint ee_pose: %s", e)
+            self._gate("get_joint_ee_pose").failure(
+                "robot=%s endpoint=tcp://%s:%s error=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return None
 
     def update_joint_data(self, joint_data: Dict[str, Any]) -> bool:
@@ -125,12 +196,35 @@ class JointClient:
             }
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
-            return response.get("status") == "success"
+            if response.get("status") == "success":
+                self._recover("update_joint_data")
+                return True
+            self._gate("update_joint_data").failure(
+                "robot=%s endpoint=tcp://%s:%s status=%s message=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                response.get("status"),
+                response.get("message"),
+            )
+            return False
         except zmq.Again:
-            logger.warning("Timeout updating joint data for '%s'", self.robot_name)
+            self._gate("update_joint_data").failure(
+                "robot=%s endpoint=tcp://%s:%s request timed out",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+            )
             return False
         except Exception as e:
-            logger.error("Error updating joint data: %s", e)
+            self._gate("update_joint_data").failure(
+                "robot=%s endpoint=tcp://%s:%s error=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return False
 
     def get_robot_info(self) -> Optional[Dict[str, Any]]:
@@ -140,13 +234,34 @@ class JointClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("get_robot_info")
                 return response.get("info")
+            self._gate("get_robot_info").failure(
+                "robot=%s endpoint=tcp://%s:%s status=%s message=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                response.get("status"),
+                response.get("message"),
+            )
             return None
         except zmq.Again:
-            logger.warning("Timeout getting robot info for '%s'", self.robot_name)
+            self._gate("get_robot_info").failure(
+                "robot=%s endpoint=tcp://%s:%s request timed out",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+            )
             return None
         except Exception as e:
-            logger.error("Error getting robot info: %s", e)
+            self._gate("get_robot_info").failure(
+                "robot=%s endpoint=tcp://%s:%s error=%s",
+                self.robot_name,
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return None
 
     def list_robots(self) -> List[str]:
@@ -156,9 +271,31 @@ class JointClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("list_robots")
                 return response.get("robots", [])
+            self._gate("list_robots").failure(
+                "endpoint=tcp://%s:%s status=%s message=%s",
+                self.server_host,
+                self.server_port,
+                response.get("status"),
+                response.get("message"),
+            )
             return []
-        except (zmq.Again, Exception):
+        except zmq.Again:
+            self._gate("list_robots").failure(
+                "endpoint=tcp://%s:%s request timed out",
+                self.server_host,
+                self.server_port,
+            )
+            return []
+        except Exception as exc:
+            self._gate("list_robots").failure(
+                "endpoint=tcp://%s:%s error=%s",
+                self.server_host,
+                self.server_port,
+                exc,
+                exc_info=True,
+            )
             return []
 
     def close(self) -> None:
@@ -196,11 +333,33 @@ class FrameClient:
         self._socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
         self._socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
         self._socket.connect(f"tcp://{server_host}:{server_port}")
+        self._log_gates: Dict[str, LogGate] = {}
         logger.info(
-            "FrameClient connected to tcp://%s:%s",
+            "[SimZMQ][FRAME_CONNECTED] endpoint=tcp://%s:%s",
             server_host,
             server_port,
         )
+
+    def _gate(self, operation: str, target: str | None = None) -> LogGate:
+        gate_key = f"{operation}:{target}" if target else operation
+        source = f"SimZMQ/FrameClient/{operation}"
+        if target:
+            source = f"{source}/{target}"
+        return self._log_gates.setdefault(
+            gate_key,
+            LogGate(
+                logger,
+                source,
+                interval_s=5.0,
+                level=logging.WARNING,
+            ),
+        )
+
+    def _recover(self, operation: str, target: str | None = None) -> None:
+        gate_key = f"{operation}:{target}" if target else operation
+        gate = self._log_gates.pop(gate_key, None)
+        if gate is not None:
+            gate.success()
 
     def get_frame(self, camera_name: str) -> Optional[np.ndarray]:
         """Fetch a single camera frame by name (e.g. 'camera_front')."""
@@ -209,18 +368,34 @@ class FrameClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("get_frame", camera_name)
                 return response.get("frame")
-            logger.warning(
-                "get_frame failed for '%s': %s",
+            self._gate("get_frame", camera_name).failure(
+                "camera=%s endpoint=tcp://%s:%s status=%s message=%s",
                 camera_name,
+                self.server_host,
+                self.server_port,
+                response.get("status"),
                 response.get("message"),
             )
             return None
         except zmq.Again:
-            logger.warning("Timeout getting frame for '%s'", camera_name)
+            self._gate("get_frame", camera_name).failure(
+                "camera=%s endpoint=tcp://%s:%s request timed out",
+                camera_name,
+                self.server_host,
+                self.server_port,
+            )
             return None
         except Exception as e:
-            logger.error("Error getting frame: %s", e)
+            self._gate("get_frame", camera_name).failure(
+                "camera=%s endpoint=tcp://%s:%s error=%s",
+                camera_name,
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return None
 
     def get_frames(self) -> Dict[str, np.ndarray]:
@@ -230,13 +405,31 @@ class FrameClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("get_frames")
                 return response.get("frames", {})
+            self._gate("get_frames").failure(
+                "endpoint=tcp://%s:%s status=%s message=%s",
+                self.server_host,
+                self.server_port,
+                response.get("status"),
+                response.get("message"),
+            )
             return {}
         except zmq.Again:
-            logger.warning("Timeout getting all frames")
+            self._gate("get_frames").failure(
+                "endpoint=tcp://%s:%s request timed out",
+                self.server_host,
+                self.server_port,
+            )
             return {}
         except Exception as e:
-            logger.error("Error getting frames: %s", e)
+            self._gate("get_frames").failure(
+                "endpoint=tcp://%s:%s error=%s",
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return {}
 
     def get_camera_info(self, camera_name: str) -> Optional[Dict[str, Any]]:
@@ -246,13 +439,34 @@ class FrameClient:
             self._socket.send(pickle.dumps(request))
             response = pickle.loads(self._socket.recv())
             if response.get("status") == "success":
+                self._recover("get_camera_info", camera_name)
                 return response.get("info")
+            self._gate("get_camera_info", camera_name).failure(
+                "camera=%s endpoint=tcp://%s:%s status=%s message=%s",
+                camera_name,
+                self.server_host,
+                self.server_port,
+                response.get("status"),
+                response.get("message"),
+            )
             return None
         except zmq.Again:
-            logger.warning("Timeout getting camera info for '%s'", camera_name)
+            self._gate("get_camera_info", camera_name).failure(
+                "camera=%s endpoint=tcp://%s:%s request timed out",
+                camera_name,
+                self.server_host,
+                self.server_port,
+            )
             return None
         except Exception as e:
-            logger.error("Error getting camera info: %s", e)
+            self._gate("get_camera_info", camera_name).failure(
+                "camera=%s endpoint=tcp://%s:%s error=%s",
+                camera_name,
+                self.server_host,
+                self.server_port,
+                e,
+                exc_info=True,
+            )
             return None
 
     def close(self) -> None:

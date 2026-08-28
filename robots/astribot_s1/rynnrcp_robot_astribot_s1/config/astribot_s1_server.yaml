@@ -1,0 +1,44 @@
+config_type: rynnrcp_server_config
+version: 1
+
+manifest:
+  robot_id: astribot_s1
+  robot_name: Astribot S1
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: false
+
+integration:
+  config: package://rynnrcp_robot_astribot_s1/config/robot_integration.yaml
+
+server:
+  interface:
+    host: 0.0.0.0
+    port: 0
+    local_registry: true
+    mdns: false
+
+components:
+  robot:
+    enabled: true
+    sdk_root: /home/astribot/astribot_sdk_aarch64
+    frequency_hz: 100.0
+    high_control_rights: false
+    node_name: rynnrcp_astribot_s1
+    control_way: filter
+    use_wbc: false
+    activate_cameras: true
+    base_command_dt_s: 0.02
+    max_base_x_m_s: 0.3
+    max_base_y_m_s: 0.3
+    max_base_yaw_rad_s: 0.5
+  head_camera:
+    enabled: true
+  left_wrist_camera:
+    enabled: true
+  right_wrist_camera:
+    enabled: true

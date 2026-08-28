@@ -64,6 +64,11 @@ config/rynnbot_config.yaml
 *.log
 logs/
 
+# Model weights and NPU runtimes: distributed by the gitee model zoo
+# (https://gitee.com/alibaba-damo-academy/rynnmodelzoo), not git-tracked;
+# see models/README.md for the layout and fetch instructions.
+/models/
+
 # Runtime data
 teleop_records/
 teleop_dataset_*.zip

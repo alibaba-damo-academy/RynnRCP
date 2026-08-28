@@ -9,7 +9,7 @@ description = "Booster T1 high-level and low-level SDK integration for RynnRCP"
 requires-python = ">=3.10"
 dependencies = [
     "rynnrcp>=0.1.0",
-    "onnxruntime",
+    "onnxruntime>=1.16",
 ]
 
 [project.entry-points."rynnrcp.robots"]

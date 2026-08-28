@@ -1,0 +1,93 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: dual_arm
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    device: Meta Quest 3
+    role: leader
+    controller_side: dual
+    control_output: joint_position
+    joint_order: ${components.robot.joint_order}
+    coordinate_convention:
+      id: rcp_cartesian_v1
+      base_axes:
+        x: forward
+        y: left
+        z: up
+      handedness: right
+      position_unit: m
+      quaternion_order: xyzw
+
+components:
+  - name: robot
+    type: dual_arm
+    parent_component: null
+    dof: ${components.robot.control_dof}
+    frame: base
+    description: Configured left-arm values followed by configured right-arm values
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_meta_quest3.joint_leader.MetaQuest3DualUrdfJointController
+        init: &quest_init
+          robot_id: ${manifest.robot_id}
+          arms: ${components.robot.arms}
+          control_dof: ${components.robot.control_dof}
+          joint_order: ${components.robot.joint_order}
+          bind_host: ${components.robot.bind_host}
+          udp_port: ${components.robot.udp_port}
+          source_ip: ${components.robot.source_ip}
+          stale_timeout_s: ${components.robot.stale_timeout_s}
+          gripper_invert: ${components.robot.gripper_invert}
+          calibration_button: ${components.robot.calibration_button}
+          coordinate_basis: ${components.robot.coordinate_basis}
+          rotation_basis: ${components.robot.rotation_basis}
+          rotation_component_signs: ${components.robot.rotation_component_signs}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Configured left-arm values followed by configured right-arm values
+        frame_rate: 60
+        source:
+          connector: module
+          module_name: rynnrcp_robot_meta_quest3.joint_leader.MetaQuest3DualUrdfJointController
+          init: *quest_init
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+
+      - name: controller_state
+        type: robot_state
+        description: Calibration, controller buttons, IK, and packet freshness
+        frame_rate: 10
+        source:
+          connector: module
+          module_name: rynnrcp_robot_meta_quest3.joint_leader.MetaQuest3DualUrdfJointController
+          init: *quest_init
+          start: start
+          stop: shutdown
+          method_name: get_controller_state
+        codec:
+          adapter: ProtocolInputAdapter

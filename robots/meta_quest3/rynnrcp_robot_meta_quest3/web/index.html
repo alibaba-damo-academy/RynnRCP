@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meta Quest 3 机械臂 Web 仿真</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#10131a;color:#edf2f7}
+header{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #29313f;background:#171c25}
+h1{font-size:17px;margin:0}.badge{padding:6px 10px;border-radius:999px;background:#29313f;font-size:12px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 360px;height:calc(100vh - 58px)}
+.view{position:relative;min-width:0;overflow:hidden;background:radial-gradient(circle at 50% 42%,#202a37,#0c0f14 72%)}
+#viewport{position:absolute;inset:0}canvas{width:100%;height:100%;display:block}
+.hint{position:absolute;left:16px;bottom:14px;color:#9aa7b7;font-size:12px;background:#111722c9;border:1px solid #303948;border-radius:7px;padding:7px 9px;pointer-events:none}
+.panel{overflow:auto;border-left:1px solid #29313f;padding:16px;background:#151a22}
+.card{background:#1c222d;border:1px solid #303948;border-radius:10px;padding:13px;margin-bottom:12px}
+.card h2{font-size:13px;margin:0 0 11px;color:#b8c3d1}.row{display:grid;grid-template-columns:38px 1fr 62px;gap:8px;align-items:center;margin:8px 0}
+label{font-size:12px;color:#aab5c2}input[type=range]{width:100%;accent-color:#35d0a0}.value{text-align:right;font:12px ui-monospace,SFMono-Regular,monospace;color:#75e7c1}
+button{width:100%;border:0;border-radius:8px;background:#35d0a0;color:#07120f;padding:10px;font-weight:750;cursor:pointer}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metric{background:#151a22;border-radius:7px;padding:8px}.metric b{display:block;font:12px ui-monospace,SFMono-Regular,monospace;margin-top:5px}
+.ok{color:#75e7c1}.bad{color:#ff7b88}.joint{display:flex;justify-content:space-between;font:12px ui-monospace,SFMono-Regular,monospace;padding:4px 0;border-bottom:1px solid #29313f}
+@media(max-width:850px){main{grid-template-columns:1fr;grid-template-rows:58vh auto;height:auto}.panel{border-left:0;border-top:1px solid #29313f}}
+</style>
+<script src="/static/three.min.js"></script>
+<script src="/static/STLLoader.classic.js"></script>
+<script src="/static/sim_shared.js"></script>
+</head>
+<body>
+<header><h1>Meta Quest 3 机械臂 Web 仿真</h1><span id="source" class="badge">正在加载模型</span></header>
+<main>
+<section class="view">
+  <div id="viewport"></div>
+  <div class="hint">左键拖动旋转 · 滚轮缩放 · 彩色坐标轴为末端目标</div>
+</section>
+<aside class="panel">
+  <div class="card"><button id="home">平滑回到 Home</button></div>
+  <div class="card"><h2>末端位置（基坐标系，米）</h2><div id="position-controls"></div></div>
+  <div class="card"><h2>末端旋转（基坐标系 RPY，弧度）</h2><div id="rotation-controls"></div></div>
+  <div class="card" id="gripper-card"><h2>夹爪位置（0 闭合，1 打开）</h2><div id="gripper-control"></div></div>
+  <div class="card"><h2>60 Hz 跟踪状态</h2><div class="metrics">
+    <div class="metric">IK<b id="ik-status">-</b></div>
+    <div class="metric">迭代次数<b id="iterations">-</b></div>
+    <div class="metric">位置误差<b id="pos-error">-</b></div>
+    <div class="metric">旋转误差<b id="rot-error">-</b></div>
+  </div></div>
+  <div class="card"><h2>Quest 右手柄</h2><div id="quest">未启用</div></div>
+  <div class="card"><h2 id="control-shape">关节与夹爪控制数据</h2><div id="joints"></div></div>
+</aside>
+</main>
+<script>
+const Sim=window.MetaQuestSim;
+const viewport=document.getElementById("viewport");
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x111720);
+scene.fog=new THREE.Fog(0x111720,1.6,3.2);
+
+const camera=new THREE.PerspectiveCamera(42,1,.01,10);
+camera.up.set(0,0,1);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=.9;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+viewport.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xdcecff,0x253042,1.0));
+const keyLight=new THREE.DirectionalLight(0xffffff,1.8);
+keyLight.position.set(1.2,-1.1,2.2);
+keyLight.castShadow=true;
+keyLight.shadow.mapSize.set(2048,2048);
+keyLight.shadow.camera.left=-1.2;keyLight.shadow.camera.right=1.2;
+keyLight.shadow.camera.top=1.2;keyLight.shadow.camera.bottom=-1.2;
+scene.add(keyLight);
+const rimLight=new THREE.DirectionalLight(0x6fe8c1,.45);
+rimLight.position.set(-1,1,.8);scene.add(rimLight);
+
+const floor=new THREE.Mesh(
+  new THREE.CircleGeometry(1.25,96),
+  new THREE.MeshStandardMaterial({color:0x161e29,roughness:.94,metalness:.05})
+);
+floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(2.4,24,0x435064,0x283342);
+grid.rotation.x=Math.PI/2;grid.position.z=.001;scene.add(grid);
+const baseAxes=new THREE.AxesHelper(.18);scene.add(baseAxes);
+
+const genericRobot=new THREE.Group();scene.add(genericRobot);
+const skeleton=new THREE.Group();scene.add(skeleton);
+let skeletonSegments=[],skeletonJoints=[];
+const loader=new THREE.STLLoader();
+
+const fingerMaterial=new THREE.MeshStandardMaterial({color:0xaeb8c4,roughness:.58,metalness:.1});
+const fingers=new THREE.Group();fingers.matrixAutoUpdate=false;scene.add(fingers);
+const fingerParts=[];
+for(const side of [-1,1]){
+  const finger=new THREE.Mesh(new THREE.BoxGeometry(.018,.014,.065),fingerMaterial);
+  finger.position.set(0,side*.032,.032);
+  finger.rotation.x=side*.12;
+  finger.castShadow=true;fingers.add(finger);
+  const tip=new THREE.Mesh(new THREE.BoxGeometry(.019,.018,.022),new THREE.MeshStandardMaterial({color:0x46515f,roughness:.82}));
+  tip.position.set(0,side*.038,.068);tip.castShadow=true;fingers.add(tip);
+  fingerParts.push({side,finger,tip});
+}
+
+const targetMarker=new THREE.AxesHelper(.09);scene.add(targetMarker);
+const targetRing=new THREE.Mesh(
+  new THREE.TorusGeometry(.018,.0025,12,40),
+  new THREE.MeshBasicMaterial({color:0xff6878})
+);
+targetRing.rotation.x=Math.PI/2;targetMarker.add(targetRing);
+
+let orbit={azimuth:-1.0,elevation:.42,radius:1.65,target:new THREE.Vector3(0,0,.42)};
+Sim.attachOrbitControls(renderer,camera,orbit,.55,3.2);
+
+function resize(){
+  Sim.resizeRenderer(viewport,renderer,camera);
+}
+let genericModelKey="",genericMeshes={};
+function ensureGenericMeshes(state){
+  const key=state.model_name+":"+state.visuals.map(item=>item.url).join("|");
+  if(key===genericModelKey)return;
+  genericModelKey=key;genericMeshes={};
+  while(genericRobot.children.length)genericRobot.remove(genericRobot.children[0]);
+  for(const visual of state.visuals){
+    loader.load(visual.url,geometry=>{
+      geometry.computeVertexNormals();
+      const mesh=new THREE.Mesh(
+        geometry,
+        new THREE.MeshStandardMaterial({
+          color:Sim.colorForLink(visual.link_name),roughness:.68,metalness:.06
+        })
+      );
+      mesh.matrixAutoUpdate=false;mesh.castShadow=true;mesh.receiveShadow=true;
+      genericMeshes[visual.id]={mesh,visual};genericRobot.add(mesh);
+      document.getElementById("source").textContent=`${state.display_name} 实体模型已加载`;
+    },undefined,error=>{
+      console.error(error);
+      document.getElementById("source").textContent="模型 STL 加载失败";
+    });
+  }
+}
+function updateSkeleton(points){
+  while(skeletonSegments.length<points.length-1){
+    const segment=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,1,18),new THREE.MeshStandardMaterial({color:0xe7ebef,roughness:.55}));
+    skeleton.add(segment);skeletonSegments.push(segment);
+  }
+  while(skeletonJoints.length<points.length){
+    const joint=new THREE.Mesh(new THREE.SphereGeometry(.035,18,12),new THREE.MeshStandardMaterial({color:0x7f91a6,roughness:.5}));
+    skeleton.add(joint);skeletonJoints.push(joint);
+  }
+  points.forEach((value,index)=>{
+    const point=new THREE.Vector3(...value);skeletonJoints[index].position.copy(point);
+    if(index===0)return;
+    const previous=new THREE.Vector3(...points[index-1]),delta=point.clone().sub(previous);
+    const segment=skeletonSegments[index-1];segment.position.copy(previous).add(point).multiplyScalar(.5);
+    segment.scale.set(1,delta.length(),1);segment.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.clone().normalize());
+  });
+}
+function applyRobotState(state){
+  const hasVisuals=Array.isArray(state.visuals)&&state.visuals.length>0;
+  hasGripper=state.has_gripper;
+  genericRobot.visible=hasVisuals;skeleton.visible=!hasVisuals;
+  fingers.visible=hasGripper&&!state.native_gripper_visual;
+  document.getElementById("gripper-card").hidden=!hasGripper;
+  document.querySelector("header h1").textContent=`${state.display_name} Web 仿真`;
+  document.getElementById("control-shape").textContent=hasGripper
+    ?`${state.control_dof} 维控制数据（${state.joint_names.length} 关节 + 夹爪）`
+    :`${state.control_dof} 维控制数据（${state.joint_names.length} 关节）`;
+  if(!controlsInitialized){
+    homePose.position=[...state.home_pose.position];
+    homePose.orientation_rpy=[...state.home_pose.orientation_rpy];
+    target.position=[...homePose.position];
+    target.orientation_rpy=[...homePose.orientation_rpy];
+    const positionRanges=state.workspace_delta_limits_m.map((range,index)=>[
+      homePose.position[index]+range[0],homePose.position[index]+range[1]
+    ]);
+    const rotationRanges=homePose.orientation_rpy.map(value=>[value-.60,value+.60]);
+    controls("position-controls",["X","Y","Z"],"position",positionRanges);
+    controls("rotation-controls",["RX","RY","RZ"],"orientation_rpy",rotationRanges);
+    controlsInitialized=true;
+  }
+  if(hasVisuals){
+    ensureGenericMeshes(state);
+    for(const item of Object.values(genericMeshes)){
+      Sim.applyVisual(item.mesh,item.visual,state.link_transforms);
+    }
+  }else{
+    updateSkeleton(state.link_points);
+    document.getElementById("source").textContent="未找到 STL，显示 URDF 骨架";
+  }
+  if(hasGripper&&!state.native_gripper_visual){
+    const mount=state.gripper_mount_link
+      ?state.link_transforms[state.gripper_mount_link]
+      :null;
+    if(mount){
+      fingers.matrix.copy(Sim.matrixFromRows(mount));
+    }else{
+      const pose=state.ee_pose;
+      fingers.matrix.compose(
+        new THREE.Vector3(...pose.position),
+        new THREE.Quaternion(...pose.orientation_quat_xyzw),
+        new THREE.Vector3(1,1,1)
+      );
+    }
+  }
+  if(hasGripper&&!state.native_gripper_visual){
+    const opening=.012+.026*state.gripper_position;
+    for(const {side,finger,tip} of fingerParts){
+      finger.position.y=side*opening;
+      tip.position.y=side*(opening+.006);
+    }
+    fingers.matrixWorldNeedsUpdate=true;
+  }
+  const pose=state.target_pose;
+  targetMarker.position.fromArray(pose.position);
+  targetMarker.quaternion.set(
+    pose.orientation_quat_xyzw[0],pose.orientation_quat_xyzw[1],
+    pose.orientation_quat_xyzw[2],pose.orientation_quat_xyzw[3]
+  );
+}
+
+const homePose={position:[0,0,0],orientation_rpy:[0,0,0]};
+const target={position:[0,0,0],orientation_rpy:[0,0,0],gripper:1};
+let controlsInitialized=false;
+let hasGripper=true;
+function controls(rootId,names,key,ranges){
+  const root=document.getElementById(rootId);
+  names.forEach((name,index)=>{
+    const [minimum,maximum]=ranges[index];
+    const row=document.createElement("div");row.className="row";
+    const label=document.createElement("label");label.textContent=name;
+    const input=document.createElement("input");input.type="range";
+    input.min=minimum;input.max=maximum;input.step=(maximum-minimum)/200;input.value=target[key][index];
+    const value=document.createElement("span");value.className="value";value.textContent=target[key][index].toFixed(3);
+    input.oninput=()=>{
+      target[key][index]=Number(input.value);value.textContent=Number(input.value).toFixed(3);
+      scheduleTarget();
+    };
+    row.append(label,input,value);root.append(row);
+  });
+}
+const gripperRow=document.createElement("div");gripperRow.className="row";
+const gripperLabel=document.createElement("label");gripperLabel.textContent="夹爪";
+const gripperInput=document.createElement("input");gripperInput.type="range";
+gripperInput.min=0;gripperInput.max=1;gripperInput.step=.005;gripperInput.value=1;
+const gripperValue=document.createElement("span");gripperValue.className="value";gripperValue.textContent="1.000";
+gripperInput.oninput=()=>{target.gripper=Number(gripperInput.value);gripperValue.textContent=target.gripper.toFixed(3);scheduleTarget()};
+gripperRow.append(gripperLabel,gripperInput,gripperValue);document.getElementById("gripper-control").append(gripperRow);
+
+let sendScheduled=false,sendPending=false;
+function scheduleTarget(){
+  sendPending=true;
+  if(sendScheduled)return;
+  sendScheduled=true;
+  requestAnimationFrame(flushTarget);
+}
+async function flushTarget(){
+  sendPending=false;
+  const payload={ee_pose:{position:target.position,orientation_rpy:target.orientation_rpy}};
+  if(hasGripper)payload.gripper=target.gripper;
+  try{await post("/api/target",payload)}finally{
+    sendScheduled=false;
+    if(sendPending)scheduleTarget();
+  }
+}
+const post=Sim.postJson;
+document.getElementById("home").onclick=async()=>{
+  target.position=[...homePose.position];target.orientation_rpy=[...homePose.orientation_rpy];
+  for(const [rootId,values] of [["position-controls",target.position],["rotation-controls",target.orientation_rpy]]){
+    document.getElementById(rootId).querySelectorAll('input[type="range"]').forEach((input,index)=>{
+      input.value=values[index];input.nextElementSibling.textContent=values[index].toFixed(3);
+    });
+  }
+  await post("/api/home");
+};
+
+function updateText(state){
+  document.getElementById("source").textContent=`输入：${state.source} · 60 Hz`;
+  const ik=state.ik,ok=ik.converged;
+  const status=document.getElementById("ik-status");
+  status.textContent=ok?"已收敛":"目标不可达";status.className=ok?"ok":"bad";
+  document.getElementById("iterations").textContent=ik.iterations;
+  document.getElementById("pos-error").textContent=(ik.position_error_m*1000).toFixed(2)+" mm";
+  document.getElementById("rot-error").textContent=ik.rotation_error_rad.toFixed(4)+" rad";
+  const controlNames=hasGripper?[...state.joint_names,"gripper"]:[...state.joint_names];
+  const controlPositions=hasGripper?[...state.joint_positions,state.gripper_position]:[...state.joint_positions];
+  document.getElementById("joints").innerHTML=controlNames.map((name,index)=>
+    `<div class="joint"><span>${name}</span><b>${controlPositions[index].toFixed(4)}</b></div>`
+  ).join("");
+  const quest=state.quest;
+  if(hasGripper&&document.activeElement!==gripperInput){
+    gripperInput.value=state.gripper_position;
+    gripperValue.textContent=state.gripper_position.toFixed(3);
+    target.gripper=state.gripper_position;
+  }
+  const gripperStatus=hasGripper?`<br>夹爪：${state.gripper_position.toFixed(3)}`:"";
+  document.getElementById("quest").innerHTML=quest.enabled
+    ?`标定：<b class="${quest.calibrated?"ok":"bad"}">${quest.calibrated?"完成":"按 A"}</b><br>离合器：${quest.clutch_pressed?"按下":"松开"}${gripperStatus}<br>数据包：${quest.packet_count}`
+    :"未启用（启动命令增加 --quest）";
+}
+async function poll(){
+  try{
+    const response=await fetch("/api/state");
+    const state=await response.json();
+    applyRobotState(state);updateText(state);
+  }catch(error){console.error(error)}
+  setTimeout(poll,16);
+}
+renderer.setAnimationLoop(()=>{resize();renderer.render(scene,camera)});
+poll();
+</script>
+</body>
+</html>

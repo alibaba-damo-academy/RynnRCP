@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterator, Mapping
 
 from rynnrcp.interface.client import ClientInterface
@@ -452,18 +452,52 @@ def _fetch_manifest(
     endpoint: Endpoint,
     request_timeout_ms: int,
 ) -> ServerManifest | None:
-    conn = None
-    try:
-        conn = client.connect(endpoint)
-        response = conn.request(GET_MANIFEST.name, {}, timeout_ms=request_timeout_ms)
-    except Exception:
-        return None
-    finally:
-        if conn is not None:
-            conn.close()
-    if response.ok and isinstance(response.payload, dict):
-        return ServerManifest.from_payload(response.payload, endpoint=endpoint)
+    for candidate in _endpoint_address_candidates(endpoint):
+        conn = None
+        try:
+            conn = client.connect(candidate)
+            response = conn.request(GET_MANIFEST.name, {}, timeout_ms=request_timeout_ms)
+        except Exception:
+            continue
+        finally:
+            if conn is not None:
+                conn.close()
+        if response.ok and isinstance(response.payload, dict):
+            return ServerManifest.from_payload(response.payload, endpoint=candidate)
     return None
+
+
+def _endpoint_address_candidates(endpoint: Endpoint) -> list[Endpoint]:
+    """Return endpoint variants sorted by routing metric (lower is better)."""
+    candidates_with_metrics: list[tuple[Endpoint, int]] = []
+    
+    # Parse metrics from mdns_addresses metadata
+    mdns_addr = str(endpoint.metadata.get("mdns_addresses") or "")
+    ip_metrics: dict[str, int] = {}
+    for entry in mdns_addr.split(","):
+        if ":" in entry:
+            parts = entry.rsplit(":", 1)
+            if len(parts) == 2:
+                ip, metric_str = parts
+                try:
+                    ip_metrics[ip] = int(metric_str)
+                except ValueError:
+                    pass
+    
+    # Add primary endpoint with its metric (or default 999)
+    primary_host = endpoint.address.rsplit(":", 1)[0] if ":" in endpoint.address else endpoint.address
+    primary_metric = ip_metrics.get(primary_host, 999)
+    candidates_with_metrics.append((endpoint, primary_metric))
+    
+    # Add alternative addresses with their metrics
+    for ip, metric in ip_metrics.items():
+        if ip != primary_host and ":" in endpoint.address:
+            address = f"{ip}:{endpoint.address.rsplit(':', 1)[1]}"
+            candidates_with_metrics.append((replace(endpoint, address=address), metric))
+    
+    # Sort by metric (ascending) and return endpoints
+    candidates_with_metrics.sort(key=lambda x: x[1])
+    return [ep for ep, _ in candidates_with_metrics]
 
 
 def _dedupe_manifests_by_instance(manifests: list[ServerManifest]) -> list[ServerManifest]:

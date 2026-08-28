@@ -1,0 +1,17 @@
+manifest:
+  robot_name: Meta Quest 3 → RealMan RM75
+components:
+  robot:
+    target_model: rm75
+    target_urdf: package://rynnrcp_robot_meta_quest3/models/rm75.urdf
+    target_dof: 7
+    has_gripper: false
+    base_link: base_link
+    tip_link: Link7
+    controller_side: right
+    home_joint_positions: [0.0, 0.74, 1.47, 1.4, 0.9, -0.07, 0.0]
+    workspace_delta_limits_m:
+      - [-0.30, 0.30]
+      - [-0.30, 0.30]
+      - [-0.30, 0.30]
+    translation_scale: 1.0

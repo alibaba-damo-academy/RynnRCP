@@ -835,6 +835,19 @@ class RynnBotCaptureManager:
             status.get("per_name_counts") or status.get("counts") or {},
             status.get("stream_stats") or {},
         )
+        counts = status.get("per_name_counts") or status.get("counts") or {}
+        empty_streams = [
+            str(name)
+            for name, count in counts.items()
+            if int(count or 0) == 0
+        ]
+        if empty_streams:
+            logger.warning(
+                "[RynnBot][%s:stop] capture completed with empty streams=%s; "
+                "check the corresponding RCP publisher logs",
+                kind,
+                empty_streams,
+            )
 
         # Mark the stream stopped before resource transfer so a download error
         # cannot leave state streaming alive after the Server already stopped.

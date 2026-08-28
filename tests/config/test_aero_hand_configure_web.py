@@ -229,7 +229,7 @@ def test_camera_teleop_job_uses_smoothed_controller(monkeypatch: Any) -> None:
         "_new_camera_teleop_controller",
         lambda profile, payload: controller,
     )
-    job = web.CameraTeleopJob()
+    job = web.CameraTeleopJob(preview_enabled=True)
 
     job.start({"profile": "single"})
     deadline = time.monotonic() + 1.0
@@ -246,6 +246,61 @@ def test_camera_teleop_job_uses_smoothed_controller(monkeypatch: Any) -> None:
     assert status["active"] is False
     assert status["state"] == "stopped"
     assert job.preview_jpeg() == b"jpeg-preview"
+
+
+def test_camera_teleop_preview_is_disabled_by_default() -> None:
+    job = web.CameraTeleopJob()
+
+    assert job.status()["preview_enabled"] is False
+
+
+def test_configure_web_enables_camera_teleop_preview() -> None:
+    assert web._CAMERA_TELEOP_JOB.status()["preview_enabled"] is True
+
+
+def test_configure_teleop_uses_same_inference_baseline_as_master() -> None:
+    # _new_camera_teleop_vision mirrors the master server config key-for-key, so
+    # assert against that config rather than literals: the literals belong to
+    # test_aero_hand_vision_master.py, and duplicating them here is what let the
+    # two drift apart when the master switched to the accelerated backend.
+    robot = web._load_camera_master_config("single")["components"]["robot"]
+    vision = web._new_camera_teleop_vision("single", {})
+
+    assert vision.inference_backend == robot["inference_backend"]
+    assert vision.inference_backend_module == (
+        robot["inference_backend_module"] or None
+    )
+    assert vision.inference_threads == robot["inference_threads"]
+    assert (vision.camera_width, vision.camera_height) == (
+        robot["camera_width"],
+        robot["camera_height"],
+    )
+    assert vision.inference_width == robot["inference_width"]
+
+
+def test_configure_teleop_can_select_an_external_acceleration_backend(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        web,
+        "_load_camera_master_config",
+        lambda _profile: {
+            "manifest": {"robot_id": "accelerated-master"},
+            "components": {
+                "robot": {
+                    "inference_backend": "device_accelerator",
+                    "inference_backend_module": "accelerators.device",
+                    "inference_threads": 2,
+                }
+            },
+        },
+    )
+
+    vision = web._new_camera_teleop_vision("single", {})
+
+    assert vision.inference_backend == "device_accelerator"
+    assert vision.inference_backend_module == "accelerators.device"
+    assert vision.inference_threads == 2
 
 
 def test_homing_sends_all_hands_without_reading_state(monkeypatch: Any) -> None:

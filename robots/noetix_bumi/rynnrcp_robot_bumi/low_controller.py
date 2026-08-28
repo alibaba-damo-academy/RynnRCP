@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import importlib
+import logging
 import os
 import sys
 import time
@@ -13,6 +14,8 @@ from typing import Any, Mapping
 import yaml
 
 from rynnrcp.robot.base_controller import BaseRobotController
+
+logger = logging.getLogger(__name__)
 
 JOINT_NAMES = [
     "leg_l1_joint", "leg_r1_joint", "waist_1_joint",
@@ -54,7 +57,7 @@ class BumiLowController(BaseRobotController):
     def start(self) -> None:
         if self._ctrl is not None:
             return
-        print(f"Bumi low controller start sdk_root={self.sdk_root}", flush=True)
+        logger.info("[BumiLow][START] sdk_root=%s", self.sdk_root)
         _load_sdk(self.sdk_root)
         module = importlib.import_module("lowcontrol_py")
         self._cmd_cls = module.MotorCmd
@@ -63,17 +66,16 @@ class BumiLowController(BaseRobotController):
         if ok is False:
             raise RuntimeError("Bumi low-level controller init failed")
         self._load_default_gains()
-        print(
-            "Bumi low controller ready "
-            f"kp0={self._kp[0]:.3f} "
-            f"kd0={self._kd[0]:.3f} "
-            f"max_delta={self.max_delta:.3f}",
-            flush=True,
+        logger.info(
+            "[BumiLow][READY] kp0=%.3f kd0=%.3f max_delta=%.3f",
+            self._kp[0],
+            self._kd[0],
+            self.max_delta,
         )
 
     def shutdown(self) -> None:
         if self._ctrl is not None:
-            print("Bumi low controller shutdown: damping", flush=True)
+            logger.info("[BumiLow][SHUTDOWN] applying damping before disconnect")
             self.damping()
         self._ctrl = None
 
@@ -118,11 +120,11 @@ class BumiLowController(BaseRobotController):
         current = self.get_joint_positions()["joint_positions"]
         max_delta = max(abs(a - b) for a, b in zip(target, current))
         if self.max_delta > 0 and max_delta > self.max_delta:
-            print(
-                "Bumi low joint_position blocked "
-                f"max_delta={max_delta:.3f} "
-                f"limit={self.max_delta:.3f}",
-                flush=True,
+            logger.warning(
+                "[BumiLow][COMMAND_BLOCKED] max_delta=%.3f limit=%.3f; "
+                "send a target closer to the current joint positions",
+                max_delta,
+                self.max_delta,
             )
             raise RuntimeError(f"joint target delta {max_delta:.3f} exceeds max_delta {self.max_delta:.3f}")
 
@@ -145,18 +147,18 @@ class BumiLowController(BaseRobotController):
         if self._command_count > 3 and now - self._last_command_log_at < 1.0:
             return
         self._last_command_log_at = now
-        print(
-            "Bumi low joint_position command "
-            f"count={self._command_count} "
-            f"max_delta={max_delta:.3f} "
-            f"current_abs_max={max(abs(x) for x in current):.3f} "
-            f"target_abs_max={max(abs(x) for x in target):.3f}",
-            flush=True,
+        logger.debug(
+            "[BumiLow][JOINT_COMMAND] count=%d max_delta=%.3f "
+            "current_abs_max=%.3f target_abs_max=%.3f",
+            self._command_count,
+            max_delta,
+            max(abs(x) for x in current),
+            max(abs(x) for x in target),
         )
 
     def damping(self, value: Mapping[str, Any] | None = None) -> dict[str, Any]:
         self._ensure_started()
-        print("Bumi low damping command", flush=True)
+        logger.info("[BumiLow][DAMPING] kd=%.3f", self.damping_kd)
         cmds = self._empty_cmds()
         for cmd in cmds:
             cmd.kp = 0.0
@@ -210,7 +212,10 @@ def _load_sdk(sdk_root: Path) -> None:
         for lib in ("libcrypto.so.1.1", "libssl.so.1.1"):
             path = lib_dir / lib
             if path.exists():
-                ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+                try:
+                    ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+                except OSError as e:
+                    raise RuntimeError(f"Failed to load library {lib}: {e}") from e
     build = str(sdk_root / "build")
     if build not in sys.path:
         sys.path.insert(0, build)

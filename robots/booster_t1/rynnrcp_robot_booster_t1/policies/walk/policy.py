@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import math
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from rynnrcp.utils.redaction import describe_payload
+
+logger = logging.getLogger(__name__)
 
 JOINT_NUM = 23
 JOINT_NAMES = [
@@ -157,18 +162,23 @@ class Policy:
         self.smoothed_cmd = np.zeros(3, dtype=np.float32)
         self.last_actions = np.zeros(self.action_size, dtype=np.float32)
         self.gait_frequency = GAIT_FREQUENCY
-        print(
-            "Booster T1 policy loaded "
-            f"model={model_path} frame_rate={self.frame_rate:.1f} "
-            f"obs_size={self.obs_size} action_size={self.action_size}",
-            flush=True,
+        logger.info(
+            "[BoosterT1Policy][LOADED] model=%s frame_rate=%.1f "
+            "obs_size=%d action_size=%d",
+            model_path,
+            self.frame_rate,
+            self.obs_size,
+            self.action_size,
         )
 
     def reset(self, runtime_inputs: dict[str, Any]) -> None:
         self.smoothed_cmd.fill(0.0)
         self.last_actions.fill(0.0)
         self.gait_frequency = GAIT_FREQUENCY
-        print(f"Booster T1 policy reset runtime_inputs={runtime_inputs}", flush=True)
+        logger.info(
+            "[BoosterT1Policy][RESET] runtime_inputs=%s",
+            describe_payload(runtime_inputs),
+        )
 
     def step(self, obs: dict[str, Any]) -> dict[str, Any]:
         policy_obs = self._compute_observation(obs)

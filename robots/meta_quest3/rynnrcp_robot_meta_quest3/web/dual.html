@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meta Quest 3 双臂 Web 仿真</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#10131a;color:#edf2f7}
+header{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #29313f;background:#171c25}
+h1{font-size:17px;margin:0}.badge{padding:6px 10px;border-radius:999px;background:#29313f;font-size:12px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 390px;height:calc(100vh - 58px)}
+.view{position:relative;min-width:0;overflow:hidden;background:radial-gradient(circle at 50% 42%,#202a37,#0c0f14 72%)}
+#viewport{position:absolute;inset:0}canvas{width:100%;height:100%;display:block}
+.hint{position:absolute;left:16px;bottom:14px;color:#9aa7b7;font-size:12px;background:#111722d9;border:1px solid #303948;border-radius:7px;padding:7px 9px;pointer-events:none}
+.arm-label{position:absolute;top:14px;padding:6px 10px;border-radius:999px;background:#111722d9;border:1px solid #303948;font-size:12px}.arm-label.left{left:24%}.arm-label.right{right:24%}
+.panel{overflow:auto;border-left:1px solid #29313f;padding:16px;background:#151a22}
+.card{background:#1c222d;border:1px solid #303948;border-radius:10px;padding:13px;margin-bottom:12px}
+.card h2{font-size:13px;margin:0 0 11px;color:#b8c3d1}.row{display:grid;grid-template-columns:38px 1fr 62px;gap:8px;align-items:center;margin:8px 0}
+label{font-size:12px;color:#aab5c2}input[type=range]{width:100%;accent-color:#35d0a0}.value{text-align:right;font:12px ui-monospace,SFMono-Regular,monospace;color:#75e7c1}
+button{border:0;border-radius:8px;background:#35d0a0;color:#07120f;padding:10px;font-weight:750;cursor:pointer}.wide{width:100%}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metric{background:#151a22;border-radius:7px;padding:8px}.metric b{display:block;font:12px ui-monospace,SFMono-Regular,monospace;margin-top:5px}
+.ok{color:#75e7c1}.bad{color:#ff7b88}.joint{display:flex;justify-content:space-between;font:12px ui-monospace,SFMono-Regular,monospace;padding:4px 0;border-bottom:1px solid #29313f}
+.order{font:12px ui-monospace,SFMono-Regular,monospace;color:#75e7c1;margin-bottom:8px}
+.arm-note{font-size:12px;line-height:1.65;color:#aab5c2;margin-bottom:10px}.arm-card.left{border-color:#315779}.arm-card.right{border-color:#70424a}
+@media(max-width:850px){main{grid-template-columns:1fr;grid-template-rows:58vh auto;height:auto}.panel{border-left:0;border-top:1px solid #29313f}}
+</style>
+<script src="/static/three.min.js"></script>
+<script src="/static/STLLoader.classic.js"></script>
+<script src="/static/sim_shared.js"></script>
+</head>
+<body>
+<header><h1>Meta Quest 3 双臂 Web 仿真</h1><span id="source" class="badge">正在加载模型</span></header>
+<main>
+<section class="view">
+  <div id="viewport"></div>
+  <div id="left-arm-label" class="arm-label left">左臂</div>
+  <div id="right-arm-label" class="arm-label right">右臂</div>
+  <div class="hint">左键拖动旋转 · 滚轮缩放 · X+A 标定 · 左右 grip 分别控制</div>
+</section>
+<aside class="panel">
+  <div class="card"><button id="home" class="wide">双臂平滑回到 Home</button></div>
+  <div class="card"><h2>双臂遥操</h2><div class="arm-note">左右手柄始终同时启用。左 grip 控制左臂，右 grip 控制右臂；同时按 X+A 标定双臂。</div></div>
+  <div class="card arm-card left">
+    <h2>左臂手动调试</h2>
+    <div class="arm-note">以下滑块显示并修改左臂基坐标系下的绝对末端位姿。</div>
+    <div id="left-position-controls"></div>
+    <div id="left-rotation-controls"></div>
+    <div id="left-gripper-control"></div>
+    <div class="metrics">
+      <div class="metric">IK<b id="left-ik-status">-</b></div>
+      <div class="metric">迭代次数<b id="left-iterations">-</b></div>
+      <div class="metric">位置误差<b id="left-pos-error">-</b></div>
+      <div class="metric">旋转误差<b id="left-rot-error">-</b></div>
+    </div>
+    <div class="arm-note" id="left-quest">Quest 左手柄未启用</div>
+  </div>
+  <div class="card arm-card right">
+    <h2>右臂手动调试</h2>
+    <div class="arm-note">以下滑块显示并修改右臂基坐标系下的绝对末端位姿。</div>
+    <div id="right-position-controls"></div>
+    <div id="right-rotation-controls"></div>
+    <div id="right-gripper-control"></div>
+    <div class="metrics">
+      <div class="metric">IK<b id="right-ik-status">-</b></div>
+      <div class="metric">迭代次数<b id="right-iterations">-</b></div>
+      <div class="metric">位置误差<b id="right-pos-error">-</b></div>
+      <div class="metric">旋转误差<b id="right-rot-error">-</b></div>
+    </div>
+    <div class="arm-note" id="right-quest">Quest 右手柄未启用</div>
+  </div>
+  <div class="card"><h2 id="control-shape">双臂关节与夹爪控制数据</h2>
+    <div id="control-order" class="order">[左臂关节, 左夹爪, 右臂关节, 右夹爪]</div><div id="joints"></div>
+  </div>
+</aside>
+</main>
+<script>
+const Sim=window.MetaQuestSim;
+const viewport=document.getElementById("viewport");
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x111720);
+scene.fog=new THREE.Fog(0x111720,2.0,4.0);
+const camera=new THREE.PerspectiveCamera(42,1,.01,10);camera.up.set(0,0,1);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=.9;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;viewport.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xdcecff,0x253042,1.0));
+const keyLight=new THREE.DirectionalLight(0xffffff,1.8);keyLight.position.set(1.4,-1.4,2.4);
+keyLight.castShadow=true;keyLight.shadow.mapSize.set(2048,2048);scene.add(keyLight);
+const rimLight=new THREE.DirectionalLight(0x6fe8c1,.45);rimLight.position.set(-1,1,.8);scene.add(rimLight);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(1.55,96),new THREE.MeshStandardMaterial({color:0x161e29,roughness:.94,metalness:.05}));
+floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(3,30,0x435064,0x283342);grid.rotation.x=Math.PI/2;grid.position.z=.001;scene.add(grid);
+
+function createArm(side,y){
+  const group=new THREE.Group();group.position.y=y;scene.add(group);
+  const axes=new THREE.AxesHelper(.14);group.add(axes);
+  const targetMarker=new THREE.AxesHelper(.09);group.add(targetMarker);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.018,.0025,12,40),new THREE.MeshBasicMaterial({color:side==="left"?0x55aaff:0xff6878}));
+  ring.rotation.x=Math.PI/2;targetMarker.add(ring);
+  const fingers=new THREE.Group();fingers.matrixAutoUpdate=false;group.add(fingers);
+  const fingerParts=[];
+  const fingerMaterial=new THREE.MeshStandardMaterial({color:0xaeb8c4,roughness:.58,metalness:.1});
+  for(const direction of [-1,1]){
+    const finger=new THREE.Mesh(new THREE.BoxGeometry(.018,.014,.065),fingerMaterial);
+    finger.position.set(0,direction*.032,.032);finger.rotation.x=direction*.12;finger.castShadow=true;fingers.add(finger);
+    const tip=new THREE.Mesh(new THREE.BoxGeometry(.019,.018,.022),new THREE.MeshStandardMaterial({color:0x46515f,roughness:.82}));
+    tip.position.set(0,direction*.038,.068);tip.castShadow=true;fingers.add(tip);
+    fingerParts.push({side:direction,finger,tip});
+  }
+  const skeleton=new THREE.Group();group.add(skeleton);
+  return{group,genericMeshes:{},genericModelKey:"",fingers,fingerParts,targetMarker,skeleton,skeletonSegments:[],skeletonJoints:[]};
+}
+const arms={left:createArm("left",.43),right:createArm("right",-.43)};
+const loader=new THREE.STLLoader();
+
+let orbit={azimuth:-1.0,elevation:.42,radius:2.15,target:new THREE.Vector3(0,0,.42)};
+Sim.attachOrbitControls(renderer,camera,orbit,.75,4);
+function resize(){Sim.resizeRenderer(viewport,renderer,camera)}
+function ensureGenericMeshes(view,state){
+  const key=state.model_name+":"+state.visuals.map(item=>item.url).join("|");
+  if(key===view.genericModelKey)return;
+  for(const item of Object.values(view.genericMeshes))view.group.remove(item.mesh);
+  view.genericMeshes={};view.genericModelKey=key;
+  for(const visual of state.visuals){
+    loader.load(visual.url,geometry=>{
+      geometry.computeVertexNormals();
+      const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({
+        color:Sim.colorForLink(visual.link_name),roughness:.68,metalness:.06
+      }));
+      mesh.matrixAutoUpdate=false;mesh.castShadow=true;mesh.receiveShadow=true;
+      view.genericMeshes[visual.id]={mesh,visual};view.group.add(mesh);
+    },undefined,error=>{console.error(error);document.getElementById("source").textContent="模型 STL 加载失败"});
+  }
+}
+function updateSkeleton(view,points){
+  while(view.skeletonSegments.length<points.length-1){const segment=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,1,18),new THREE.MeshStandardMaterial({color:0xe7ebef,roughness:.55}));view.skeleton.add(segment);view.skeletonSegments.push(segment)}
+  while(view.skeletonJoints.length<points.length){const joint=new THREE.Mesh(new THREE.SphereGeometry(.035,18,12),new THREE.MeshStandardMaterial({color:0x7f91a6,roughness:.5}));view.skeleton.add(joint);view.skeletonJoints.push(joint)}
+  points.forEach((value,index)=>{const point=new THREE.Vector3(...value);view.skeletonJoints[index].position.copy(point);if(index===0)return;const previous=new THREE.Vector3(...points[index-1]),delta=point.clone().sub(previous),segment=view.skeletonSegments[index-1];segment.position.copy(previous).add(point).multiplyScalar(.5);segment.scale.set(1,delta.length(),1);segment.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.clone().normalize())})
+}
+function applyArmState(view,state){
+  const hasVisuals=Array.isArray(state.visuals)&&state.visuals.length>0;
+  view.fingers.visible=true;view.skeleton.visible=!hasVisuals;
+  if(hasVisuals){
+    ensureGenericMeshes(view,state);
+    for(const item of Object.values(view.genericMeshes)){
+      item.mesh.visible=true;
+      Sim.applyVisual(item.mesh,item.visual,state.link_transforms);
+    }
+  }else{
+    for(const item of Object.values(view.genericMeshes))item.mesh.visible=false;
+    updateSkeleton(view,state.link_points);
+  }
+  const mount=state.gripper_mount_link
+    ?state.link_transforms[state.gripper_mount_link]
+    :null;
+  if(mount){
+    view.fingers.matrix.copy(Sim.matrixFromRows(mount));
+  }else{
+    view.fingers.matrix.compose(
+      new THREE.Vector3(...state.ee_pose.position),
+      new THREE.Quaternion(...state.ee_pose.orientation_quat_xyzw),
+      new THREE.Vector3(1,1,1)
+    );
+  }
+  view.fingers.visible=state.has_gripper;
+  if(state.has_gripper){
+    const opening=.012+.026*state.gripper_position;
+    for(const {side,finger,tip} of view.fingerParts){
+      finger.position.y=side*opening;
+      tip.position.y=side*(opening+.006);
+    }
+  }
+  view.fingers.matrixWorldNeedsUpdate=true;
+  const pose=state.target_pose;view.targetMarker.position.fromArray(pose.position);
+  view.targetMarker.quaternion.set(...pose.orientation_quat_xyzw);
+}
+
+const targets={left:{side:"left",position:[0,0,0],orientation_rpy:[0,0,0],gripper:1},right:{side:"right",position:[0,0,0],orientation_rpy:[0,0,0],gripper:1}};
+const homePoses={left:{position:[0,0,0],orientation_rpy:[0,0,0]},right:{position:[0,0,0],orientation_rpy:[0,0,0]}};
+const inputs={left:{position:[],orientation_rpy:[],gripper:null},right:{position:[],orientation_rpy:[],gripper:null}};
+const controlsInitialized={left:false,right:false};
+function controls(side,rootId,names,key,ranges){
+  const root=document.getElementById(rootId);
+  names.forEach((name,index)=>{
+    const [minimum,maximum]=ranges[index],row=document.createElement("div");row.className="row";
+    const label=document.createElement("label");label.textContent=name;
+    const input=document.createElement("input");input.type="range";input.min=minimum;input.max=maximum;input.step=(maximum-minimum)/200;input.value=targets[side][key][index];
+    const value=document.createElement("span");value.className="value";value.textContent=targets[side][key][index].toFixed(3);
+    input.oninput=()=>{targets[side][key][index]=Number(input.value);value.textContent=Number(input.value).toFixed(3);scheduleTarget(side)};
+    inputs[side][key].push({input,value});row.append(label,input,value);root.append(row);
+  });
+}
+function gripperControl(side,rootId){
+  const root=document.getElementById(rootId),row=document.createElement("div");row.className="row";
+  const label=document.createElement("label");label.textContent="夹爪";
+  const input=document.createElement("input");input.type="range";input.min=0;input.max=1;input.step=.005;input.value=1;
+  const value=document.createElement("span");value.className="value";value.textContent="1.000";
+  input.oninput=()=>{targets[side].gripper=Number(input.value);value.textContent=Number(input.value).toFixed(3);scheduleTarget(side)};
+  inputs[side].gripper={input,value};row.append(label,input,value);root.append(row);
+}
+const sendState={left:{scheduled:false,pending:false},right:{scheduled:false,pending:false}};
+function scheduleTarget(side){const state=sendState[side];state.pending=true;if(state.scheduled)return;state.scheduled=true;requestAnimationFrame(()=>flushTarget(side))}
+async function flushTarget(side){const state=sendState[side],target=targets[side],payload={side,ee_pose:{position:target.position,orientation_rpy:target.orientation_rpy}};if(inputs[side].gripper)payload.gripper=target.gripper;state.pending=false;try{await post("/api/target",payload)}finally{state.scheduled=false;if(state.pending)scheduleTarget(side)}}
+const post=Sim.postJson;
+document.getElementById("home").onclick=async()=>{
+  for(const side of ["left","right"]){
+    targets[side].position=[...homePoses[side].position];targets[side].orientation_rpy=[...homePoses[side].orientation_rpy];
+    for(const key of ["position","orientation_rpy"])inputs[side][key].forEach((item,index)=>{item.input.value=targets[side][key][index];item.value.textContent=targets[side][key][index].toFixed(3)});
+  }
+  await post("/api/home");
+};
+
+function updateArmText(side,arm){
+  const ik=arm.ik,ok=ik.converged,status=document.getElementById(`${side}-ik-status`);
+  status.textContent=ok?"已收敛":"目标不可达";status.className=ok?"ok":"bad";
+  document.getElementById(`${side}-iterations`).textContent=ik.iterations;
+  document.getElementById(`${side}-pos-error`).textContent=(ik.position_error_m*1000).toFixed(2)+" mm";
+  document.getElementById(`${side}-rot-error`).textContent=ik.rotation_error_rad.toFixed(4)+" rad";
+  const quest=arm.quest;
+  if(arm.has_gripper&&document.activeElement!==inputs[side].gripper.input){
+    inputs[side].gripper.input.value=arm.gripper_position;
+    inputs[side].gripper.value.textContent=arm.gripper_position.toFixed(3);
+    targets[side].gripper=arm.gripper_position;
+  }
+  const gripperText=arm.has_gripper?` · 夹爪：${arm.gripper_position.toFixed(3)}`:"";
+  document.getElementById(`${side}-quest`).innerHTML=quest.enabled?`Quest：<b class="${quest.calibrated?"ok":"bad"}">${quest.calibrated?"已标定":"同时按 X+A 标定"}</b> · grip：${quest.clutch_pressed?"按下":"松开"}${gripperText} · 数据包：${quest.packet_count}`:`Quest ${side==="left"?"左":"右"}手柄未启用`;
+}
+function updateText(state){
+  document.getElementById("source").textContent=`双臂遥操 · 60 Hz`;
+  updateArmText("left",state.left);updateArmText("right",state.right);
+  document.getElementById("joints").innerHTML=state.joint_names.map((name,index)=>`<div class="joint"><span>${index+1}. ${name}</span><b>${state.joint_positions[index].toFixed(4)}</b></div>`).join("");
+}
+async function poll(){try{const response=await fetch("/api/state"),state=await response.json();const leftDof=state.left.joint_names.length,rightDof=state.right.joint_names.length;document.querySelector("header h1").textContent=`${state.display_name} Web 仿真`;document.getElementById("control-shape").textContent=`${state.control_dof} 维双臂控制数据`;document.getElementById("left-arm-label").textContent=`左臂 · ${leftDof} 关节${state.left.has_gripper?" + 夹爪":""}`;document.getElementById("right-arm-label").textContent=`右臂 · ${rightDof} 关节${state.right.has_gripper?" + 夹爪":""}`;document.getElementById("control-order").textContent=`[${state.joint_names.join(", ")}]`;for(const side of ["left","right"]){if(!controlsInitialized[side]){const home=state[side].home_pose;homePoses[side]={position:[...home.position],orientation_rpy:[...home.orientation_rpy]};targets[side].position=[...home.position];targets[side].orientation_rpy=[...home.orientation_rpy];const positionRanges=state[side].workspace_delta_limits_m.map((range,index)=>[home.position[index]+range[0],home.position[index]+range[1]]),rotationRanges=home.orientation_rpy.map(value=>[value-.60,value+.60]);controls(side,`${side}-position-controls`,["X","Y","Z"],"position",positionRanges);controls(side,`${side}-rotation-controls`,["RX","RY","RZ"],"orientation_rpy",rotationRanges);if(state[side].has_gripper)gripperControl(side,`${side}-gripper-control`);controlsInitialized[side]=true}}applyArmState(arms.left,state.left);applyArmState(arms.right,state.right);updateText(state)}catch(error){console.error(error)}setTimeout(poll,16)}
+renderer.setAnimationLoop(()=>{resize();renderer.render(scene,camera)});poll();
+</script>
+</body>
+</html>

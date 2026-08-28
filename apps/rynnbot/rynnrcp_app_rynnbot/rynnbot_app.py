@@ -35,7 +35,8 @@ from PIL import Image
 
 from rynnrcp.interface.client import ClientInterface
 from rynnrcp.interface.protocol_client import RcpProtocolClient, ServerManifest, resolve_server_manifest
-from rynnrcp.utils.logging import configure_logging
+from rynnrcp.utils.logging import configure_logging, resolve_log_run_id, set_log_context
+from rynnrcp.utils.redaction import describe_payload, redact
 from rynnrcp.utils.user_paths import (
     data_dir,
     local_root_from_config,
@@ -1251,7 +1252,7 @@ class RynnBotApp(AppLifecycle):
                     continue
                 logger.info(
                     "[RynnBot][WS][ACTION] packet_id=%s packet_ts_ms=%s packet_age_ms=%s "
-                    "action_id=%s name=%s shape=%s rate=%s",
+                    "action_id=%s name=%s shape=%s rate=%s data=%s",
                     getattr(getattr(packet, "common_part_attr", None), "id", None),
                     getattr(getattr(packet, "common_part_attr", None), "timestamp", None),
                     _packet_age_ms(packet),
@@ -1259,6 +1260,7 @@ class RynnBotApp(AppLifecycle):
                     action.name,
                     shape,
                     getattr(action, "action_rate", 0),
+                    action_payload,
                 )
                 action_name = self._action_name(str(getattr(action, "name", "") or ""))
                 if not action_name:
@@ -1542,7 +1544,16 @@ class RynnBotApp(AppLifecycle):
         }
         topic = f"/sys/{self._product_key}/{self._device_name_cfg}/dm/event/{event_name}/post"
         self._mqtt_send(topic, json.dumps(payload, ensure_ascii=False), qos=qos)
-        logger.info("[RynnBot] upload event posted: %s params=%s", event_name, payload["params"])
+        logger.info(
+            "[RynnBot][UPLOAD_EVENT_POSTED] event=%s params=%s",
+            event_name,
+            describe_payload(payload["params"]),
+        )
+        logger.debug(
+            "[RynnBot][UPLOAD_EVENT_PARAMS] event=%s params=%s",
+            event_name,
+            redact(payload["params"]),
+        )
 
     def _post_occupancy_error(self, *, error_code: int, error_msg: str = "", qos: int = 1) -> None:
         now_ms = int(time.time() * 1000)
@@ -1559,7 +1570,14 @@ class RynnBotApp(AppLifecycle):
             payload["params"]["error_msg"] = str(error_msg)
         topic = f"/sys/{self._product_key}/{self._device_name_cfg}/dm/event/occupancy_error/post"
         self._mqtt_send(topic, json.dumps(payload, ensure_ascii=False), qos=qos)
-        logger.info("[RynnBot] occupancy_error posted: params=%s", payload["params"])
+        logger.info(
+            "[RynnBot][OCCUPANCY_ERROR_POSTED] params=%s",
+            describe_payload(payload["params"]),
+        )
+        logger.debug(
+            "[RynnBot][OCCUPANCY_ERROR_PARAMS] params=%s",
+            redact(payload["params"]),
+        )
 
     def _clear_occupancy_after_upload_failure(self) -> None:
         with self._occupied_lock:
@@ -2018,6 +2036,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     config = merge_default_config(load_yaml(args.config))
     config = _bind_target_robot_config(config, args.server_config)
+    set_log_context(
+        app_id=str(
+            config.get("app_id")
+            or (config.get("app") or {}).get("app_id")
+            or ""
+        ) or None,
+        robot_id=str((config.get("target_robot") or {}).get("robot_id") or "") or None,
+        run_id=resolve_log_run_id(),
+        process="rynnbot_app",
+    )
     configure_logging(
         level=logging.INFO,
         sinks=["stderr", "file"],

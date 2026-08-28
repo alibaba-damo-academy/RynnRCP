@@ -30,7 +30,7 @@ from rynnrcp.interface.client import ClientInterface
 from rynnrcp.interface.codec import InterfaceError
 from rynnrcp.interface.protocol_client import RcpProtocolClient, ServerManifest, discover_manifests
 from rynnrcp.utils import safe_name
-from rynnrcp.utils.logging import configure_logging
+from rynnrcp.utils.logging import configure_logging, resolve_log_run_id, set_log_context
 from rynnrcp.utils.user_paths import collections_dir, log_file_from_config, local_root_from_config, resolve_robot_path, robot_root
 from rynnrcp_app_common import AppLifecycle
 from rynnrcp_app_common.resource_transfer import download_collection_entries, download_collection_resource
@@ -1653,9 +1653,9 @@ class TeleopApp(AppLifecycle):
 
     def _preview_resize_long_edge(self) -> int:
         try:
-            return max(0, int(self.config.get("image_max_long_edge", 320)))
+            return max(0, int(self.config.get("image_max_long_edge", 640)))
         except (TypeError, ValueError):
-            return 320
+            return 640
 
     def _set_playback_status(self, payload: dict[str, Any]) -> None:
         self.playback.status = payload
@@ -2243,6 +2243,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--config", help="Optional Teleop app YAML config path.")
     args = parser.parse_args(argv)
     config = _merge_default_config(_load_yaml(args.config) if args.config else {})
+    set_log_context(
+        app_id=str(
+            config.get("app_id")
+            or (config.get("app") or {}).get("app_id")
+            or ""
+        ) or None,
+        run_id=resolve_log_run_id(),
+        process="teleop_app",
+    )
     configure_logging(
         level=logging.INFO,
         sinks=["stderr", "file"],

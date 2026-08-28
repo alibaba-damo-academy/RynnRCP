@@ -1,0 +1,17 @@
+franka_fr3_dual manifest:
+  robot_name: Meta Quest 3 → Damiao 6DoF
+components:
+  robot:
+    target_model: dm6dof
+    target_urdf: package://rynnrcp_robot_meta_quest3/models/dm6dof.urdf
+    target_dof: 6
+    has_gripper: false
+    base_link: link0
+    tip_link: link6
+    controller_side: right
+    home_joint_positions: [0.0, -0.88, 0.83, 0.03, 0.06, 0.0]
+    workspace_delta_limits_m:
+      - [-0.25, 0.25]
+      - [-0.25, 0.25]
+      - [-0.25, 0.25]
+    translation_scale: 1.0

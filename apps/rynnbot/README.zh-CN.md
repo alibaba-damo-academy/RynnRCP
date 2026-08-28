@@ -5,6 +5,10 @@ RynnBot App 用于连接 RynnBot 云端平台。它负责云端协议和 RCP 协
 它不直接连接机器人硬件。机器人能力来自已经启动的 RCP Server；云端设备凭据、鉴权、
 MQTT 和 OSS 等平台配置来自 RynnBot App 配置文件。
 
+这个包还提供 `rynnrcp-model-debug`，用于连接 HTTP 模型服务、查看实时
+Observation，并循环执行模型返回的 Action。使用方法见
+[`MODEL_DEBUG.zh-CN.md`](MODEL_DEBUG.zh-CN.md)。
+
 ## 启动
 
 ```bash

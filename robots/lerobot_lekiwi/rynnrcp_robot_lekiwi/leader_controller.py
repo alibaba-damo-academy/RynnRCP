@@ -49,7 +49,6 @@ class KeyboardBaseController:
 
             listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release)
             listener.start()
-            listener.wait()
         except Exception as exc:
             raise RuntimeError(f"Could not start keyboard listener: {exc}") from exc
         self._listener = listener

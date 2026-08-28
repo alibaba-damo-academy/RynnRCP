@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import shutil
 import time
@@ -11,6 +12,9 @@ import zipfile
 from typing import Any, Mapping, Optional
 
 from rynnrcp.utils import safe_name
+
+
+logger = logging.getLogger(__name__)
 
 
 def download_collection_resource(
@@ -48,26 +52,33 @@ def download_collection_resource(
     staging_dir = os.path.join(staging_root, f"{safe_name(str(archive_resource['resource_id']))}_{int(time.time())}")
     zip_path = os.path.join(staging_dir, "resource.zip")
 
-    if os.path.isdir(final_dir):
-        shutil.rmtree(final_dir)
-    os.makedirs(staging_dir, exist_ok=True)
     try:
-        _read_resource_to_file(
+        if os.path.isdir(final_dir):
+            shutil.rmtree(final_dir)
+        os.makedirs(staging_dir, exist_ok=True)
+        try:
+            _read_resource_to_file(
+                client,
+                str(archive_resource["resource_id"]),
+                zip_path,
+                timeout_ms=timeout_ms,
+                chunk_size=chunk_size,
+            )
+            _extract_zip(zip_path, staging_dir)
+            episode_dir = _find_collection_dir(staging_dir, collection_id=collection_id, episode_id=episode_id)
+            if episode_dir is None:
+                raise RuntimeError("downloaded Resource does not contain collection_meta.json")
+            os.makedirs(os.path.dirname(final_dir), exist_ok=True)
+            shutil.move(episode_dir, final_dir)
+            return final_dir
+        finally:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+    finally:
+        _release_temporary_resource(
             client,
             str(archive_resource["resource_id"]),
-            zip_path,
             timeout_ms=timeout_ms,
-            chunk_size=chunk_size,
         )
-        _extract_zip(zip_path, staging_dir)
-        episode_dir = _find_collection_dir(staging_dir, collection_id=collection_id, episode_id=episode_id)
-        if episode_dir is None:
-            raise RuntimeError("downloaded Resource does not contain collection_meta.json")
-        os.makedirs(os.path.dirname(final_dir), exist_ok=True)
-        shutil.move(episode_dir, final_dir)
-        return final_dir
-    finally:
-        shutil.rmtree(staging_dir, ignore_errors=True)
 
 
 def download_collection_entries(
@@ -181,6 +192,19 @@ def _read_resource_to_file(
                 break
             if not data:
                 raise RuntimeError("read_resource returned an empty non-eof chunk")
+
+
+def _release_temporary_resource(client: Any, resource_id: str, *, timeout_ms: int) -> None:
+    try:
+        response = client.delete_resource(resource_id, timeout_ms=timeout_ms)
+        if not response.ok:
+            logger.warning(
+                "Failed to release temporary Resource %s: %s",
+                resource_id,
+                response.message or "delete_resource failed",
+            )
+    except Exception as exc:
+        logger.warning("Failed to release temporary Resource %s: %s", resource_id, exc)
 
 
 def _extract_zip(path: str, destination: str) -> None:

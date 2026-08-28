@@ -120,6 +120,7 @@ class _PosixSemaphoreNotifier(IpcNotifier):
             try:
                 self._sem_unlink(self._name_b)
             except Exception:
+                # Pre-create cleanup: the semaphore usually does not exist.
                 pass
             sem = self._sem_open(self._name_b, os.O_CREAT, ctypes.c_uint(0o600), ctypes.c_uint(0))
         else:
@@ -295,6 +296,7 @@ class _PosixSemaphoreNotifier(IpcNotifier):
         try:
             self._sem_unlink(self._name_b)
         except Exception:
+            # Best-effort cleanup: another process may have unlinked it first.
             pass
 
 

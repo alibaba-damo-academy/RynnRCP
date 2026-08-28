@@ -54,7 +54,7 @@ class FakeRuntime:
             },
         )
 
-    def get_observations(self, names: list[str]) -> dict[str, Any]:
+    def get_observations(self, names: list[str], sync: bool = False) -> dict[str, Any]:
         return ToolBus.make_result(
             True,
             result={

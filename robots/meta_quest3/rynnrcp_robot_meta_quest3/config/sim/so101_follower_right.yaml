@@ -1,0 +1,20 @@
+manifest:
+  robot_name: Meta Quest 3 → SO101 Follower
+components:
+  robot:
+    target_model: so101
+    display_name: SO101 Follower
+    target_urdf: package://rynnrcp_robot_meta_quest3/models/so101.urdf
+    target_dof: 5
+    has_gripper: true
+    home_includes_gripper: true
+    native_gripper_joint: gripper
+    base_link: base_link
+    tip_link: gripper_frame_link
+    controller_side: right
+    home_joint_positions: [-0.0, -1.62, 1.62, 0.80, 0.31, 0.0]
+    workspace_delta_limits_m:
+      - [-0.12, 0.12]
+      - [-0.12, 0.12]
+      - [-0.12, 0.12]
+    translation_scale: 0.5

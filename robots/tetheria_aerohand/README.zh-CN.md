@@ -35,6 +35,7 @@ rynnrcp-aero-hand-configure
 ```
 
 安装脚本会同时安装 RynnBot、MCP、Protocol Debug 和 Teleop App。
+安装脚本使用无界面的 OpenCV 安装 MediaPipe，摄像头采集和浏览器预览不依赖桌面 GUI 库。
 
 后续每个终端都先进入 Aero Hand 目录并激活虚拟环境：
 
@@ -102,6 +103,9 @@ rynnrcp-mcp-app --server-config rynnrcp_robot_aero_hand/config/aero_hand_dual_se
 ## 摄像手势遥操与数采
 
 先运行 `rynnrcp-aero-hand-configure`，在页面选择单手或双手，再扫描、预览并保存摄像头。这里的摄像头选择同时用于手势识别和 `observation.images.front`。单手模式自动跟随画面中的任意一只手；双手模式同时识别左右手，并固定按 `left 7 + right 7` 输出 14 维状态。
+
+支持的 NPU 平台（Rockchip、摩尔线程、Jetson）会在 setup 时自动检测并使用加速后端，其他平台使用 MediaPipe Lite。安装、后端确认和真机验收见
+[RKNN 加速部署与验证](RKNN_ACCELERATION.zh-CN.md)。
 
 ### 本地单手遥操与数采
 

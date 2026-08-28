@@ -14,7 +14,7 @@ manifest:
     policy_service: false
 
 integration:
-  config: package://rynnrcp_robot_sim/config/robot_integration_so101_bimanual.yaml
+  config: package://rynnrcp_robot_sim/config/robot_integration_so101_dual.yaml
 
 components:
   robot:

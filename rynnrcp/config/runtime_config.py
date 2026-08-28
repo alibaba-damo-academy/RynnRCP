@@ -125,11 +125,14 @@ def _runtime_manifest(
     manifest = deepcopy(dict(integration_manifest))
     if "embodiment_type" in manifest:
         manifest["embodiment_type"] = resolve_refs(manifest["embodiment_type"], server_config)
+    if "metadata" in manifest:
+        manifest["metadata"] = resolve_refs(manifest["metadata"], server_config)
     manifest.update(deepcopy(dict(server_manifest)))
     manifest["components"] = _select_components(
         integration_manifest,
         integration_config=integration_config,
         active_components=active_components,
+        server_config=server_config,
     )
     return manifest
 
@@ -190,6 +193,7 @@ def _select_components(
     *,
     integration_config: Mapping[str, Any],
     active_components: set[str],
+    server_config: Mapping[str, Any],
 ) -> list[Dict[str, Any]]:
     raw_components = integration_manifest.get("components")
     if raw_components is None:
@@ -204,7 +208,24 @@ def _select_components(
     missing = sorted(name for name in active_components if name not in by_name)
     if missing:
         raise ValueError(f"enabled interface references unknown component(s): {', '.join(missing)}")
-    return [dict(component) for component in raw_components if isinstance(component, Mapping) and component.get("name") in active_components]
+    selected: list[Dict[str, Any]] = []
+    for component in raw_components:
+        if (
+            not isinstance(component, Mapping)
+            or component.get("name") not in active_components
+        ):
+            continue
+        resolved = dict(resolve_refs(component, server_config))
+        dof = resolved.get("dof")
+        if dof is not None and (
+            not isinstance(dof, int) or isinstance(dof, bool) or dof <= 0
+        ):
+            raise ValueError(
+                f"components.{resolved.get('name', 'unknown')}.dof "
+                "must resolve to a positive integer"
+            )
+        selected.append(resolved)
+    return selected
 
 
 def _iter_component_definitions(

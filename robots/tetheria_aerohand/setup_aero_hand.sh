@@ -171,6 +171,24 @@ fi
 log "Upgrading installer tools..."
 pip_install --upgrade pip setuptools wheel
 
+log "Installing MediaPipe with headless OpenCV..."
+pip_install \
+  "absl-py" \
+  "attrs>=19.1.0" \
+  "flatbuffers>=2.0" \
+  "jax" \
+  "jaxlib" \
+  "matplotlib" \
+  "numpy<2" \
+  "opencv-python-headless>=4.9" \
+  "protobuf>=4.25.3,<5" \
+  "sentencepiece" \
+  "sounddevice>=0.4.4"
+# MediaPipe 0.10.18 is the latest release with a Linux ARM64 wheel. Its
+# metadata requires GUI-enabled opencv-contrib-python, so install the wheel
+# without dependencies after providing the headless runtime above.
+pip_install --no-deps "mediapipe==0.10.18"
+
 log "Installing RynnRCP as a local library and official apps..."
 pip_install \
   -e "$REPO_ROOT" \
@@ -192,6 +210,185 @@ import rynnrcp_app_teleop
 import rynnrcp_robot_aero_hand
 print("Imports OK")
 PY
+
+# --- NPU gesture backends (platform-detected) -------------------------------
+# Detects the NPU platform and builds the matching zero-copy C++ backend:
+#   Moore Threads E300/M1000 (libmtnnrt + mtc) -> src_mtnn/ (aero_hand_mtnn)
+#   Rockchip RK3566/RK3588   (rknn wheel)      -> src/      (aero_hand_rga)
+# Both replicate the MediaPipe hand cascade on-NPU. Skipped on non-aarch64
+# hosts; set AERO_HAND_SKIP_NPU=1 to opt out entirely.
+RKNN_WHEEL="$REPO_ROOT/rknn_toolkit_lite2-2.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+MTNN_WHEEL="${MTNN_WHEEL:-}"
+RKNN_RT_MIN="2.3.0"
+RKNN_RT_URL="https://gitee.com/alibaba-damo-academy/rknn-toolkit2/raw/v2.3.0/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so"
+RKNN_RT_PROJECT="$REPO_ROOT/models/rknn_runtime/librknnrt.so"
+
+# Print the "X.Y.Z" version embedded in a librknnrt.so (empty when unknown).
+rknnrt_version_of() {
+  strings "$1" 2>/dev/null | grep -oEm1 'librknnrt version: [0-9]+\.[0-9]+(\.[0-9]+)?' \
+    | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' || true
+}
+
+# version_ge A B -> success when A >= B (numeric, dot separated).
+version_ge() {
+  [[ "$1" == "$2" ]] && return 0
+  [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" == "$2" ]]
+}
+
+# The rknnlite Python backend dlopens librknnrt.so at runtime; container-v6
+# models need >= 2.3. Never touch the system copy: fetch into the repo-root
+# models/rknn_runtime/ (the C++ build and the Python glue prefer it there).
+ensure_rknn_runtime() {
+  local sys_ver
+  sys_ver="$(rknnrt_version_of /usr/lib/librknnrt.so)"
+  if [[ -n "$sys_ver" ]] && version_ge "$sys_ver" "$RKNN_RT_MIN"; then
+    log "System librknnrt.so is $sys_ver (>= $RKNN_RT_MIN): OK."
+    return 0
+  fi
+  if [[ -f "$RKNN_RT_PROJECT" ]]; then
+    log "System librknnrt.so is ${sys_ver:-missing} (< $RKNN_RT_MIN);" \
+        "using project runtime: $RKNN_RT_PROJECT"
+    return 0
+  fi
+  log "System librknnrt.so is ${sys_ver:-missing} (< $RKNN_RT_MIN)."
+  log "Fetching librknnrt.so v$RKNN_RT_MIN into $RKNN_RT_PROJECT ..."
+  mkdir -p "$(dirname "$RKNN_RT_PROJECT")"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fSL --retry 3 -o "$RKNN_RT_PROJECT.part" "$RKNN_RT_URL"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$RKNN_RT_PROJECT.part" "$RKNN_RT_URL"
+  else
+    log "WARNING: neither curl nor wget found; cannot fetch librknnrt.so."
+    return 1
+  fi || { rm -f "$RKNN_RT_PROJECT.part"; return 1; }
+  # Raw endpoints can answer HTTP 200 with an HTML error page; require ELF.
+  if ! head -c 16 "$RKNN_RT_PROJECT.part" | grep -q 'ELF'; then
+    log "WARNING: downloaded librknnrt.so is not an ELF binary; discarding."
+    rm -f "$RKNN_RT_PROJECT.part"
+    return 1
+  fi
+  mv "$RKNN_RT_PROJECT.part" "$RKNN_RT_PROJECT"
+  log "Project RKNN runtime ready: $RKNN_RT_PROJECT (system path untouched)."
+}
+
+# Platform detection: prefer the device-tree compatible string (definitive
+# hardware id), falling back to the NPU runtime library presence. Checking the
+# device-tree avoids false positives from wheel files bundled at repo root.
+board_compatible() {
+  tr '\0' '\n' < /proc/device-tree/compatible 2>/dev/null | tr 'A-Z' 'a-z'
+}
+is_moore_threads() {
+  board_compatible | grep -qE 'm1000|mthreads|moore' || [[ -f /usr/lib/libmtnnrt.so ]]
+}
+is_rockchip() {
+  board_compatible | grep -qE 'rockchip|rk3[0-9]{3}' || [[ -f /usr/lib/librknnrt.so ]]
+}
+is_jetson() {
+  [[ -f /etc/nv_tegra_release ]]
+}
+
+if [[ "${AERO_HAND_SKIP_NPU:-0}" == "1" ]]; then
+  log "Skipping NPU backend setup (AERO_HAND_SKIP_NPU=1)."
+elif [[ "$(uname -sm)" != "Linux aarch64" ]]; then
+  log "Non-aarch64 host: skipping NPU backend setup."
+elif is_moore_threads; then
+  # ----- Moore Threads E300 / M1000 (MTNN) -----
+  log "Detected Moore Threads NPU (libmtnnrt/mtc): building MTNN gesture backend..."
+  log "Fetching MTNN hand models from the Rynn model zoo..."
+  "$VENV_PYTHON" "$SCRIPT_DIR/scripts/fetch_aero_hand_models.py" --platform mtnn_e300 \
+    || log "WARNING: model download failed; the backend will retry at runtime."
+  PY_TAG="$("$VENV_PYTHON" -c 'import sys; print(f"cp{sys.version_info[0]}{sys.version_info[1]}")')"
+  pip_install "pybind11" "cmake"
+  if [[ -n "$MTNN_WHEEL" && -f "$MTNN_WHEEL" ]]; then
+    log "Installing Moore Threads MTNN python runtime (mtnn_api)..."
+    pip_install "$MTNN_WHEEL"
+  else
+    log "note: MTNN_WHEEL not set; the Python backend 'mediapipe_lite_mtnn' needs mtnn_api."
+    log "      The C++ backend 'mediapipe_lite_mtnn_zero' only needs libmtnnrt.so (present)."
+  fi
+  log "Building the MTNN zero-copy gesture backend..."
+  bash "$SCRIPT_DIR/src_mtnn/build.sh" "$VENV_PYTHON"
+  log "Verifying MTNN backend import..."
+  "$VENV_PYTHON" - <<'PY'
+import importlib
+
+from rynnrcp_robot_aero_hand.accelerators import aero_hand_mtnn  # noqa: F401
+from rynnrcp_robot_aero_hand.platform_detect import recommended_backend
+
+_, module = recommended_backend("mtnn_e300")
+importlib.import_module(module)
+print("MTNN backend module OK (libmtnnrt resolved)")
+PY
+elif is_rockchip; then
+  # ----- Rockchip RK3566 / RK3588 (RKNN) -----
+  log "Detected Rockchip NPU: building RGA + RKNN gesture backend..."
+  log "Fetching RKNN hand models from the Rynn model zoo..."
+  # No --platform flag: auto-detection picks rk3588 vs rk3566 here.
+  "$VENV_PYTHON" "$SCRIPT_DIR/scripts/fetch_aero_hand_models.py" \
+    || log "WARNING: model download failed; the backend will retry at runtime."
+  ensure_rknn_runtime \
+    || log "WARNING: librknnrt >= $RKNN_RT_MIN unavailable; the rknn backends will fail at runtime."
+  RKNN_PY_OK=0
+  if [[ -f "$RKNN_WHEEL" ]]; then
+    PY_TAG="$("$VENV_PYTHON" -c 'import sys; print(f"cp{sys.version_info[0]}{sys.version_info[1]}")')"
+    if [[ "$PY_TAG" != "cp310" ]]; then
+      log "warning: bundled rknn wheel targets cp310 but venv is $PY_TAG; trying pip index."
+    elif pip_install "$RKNN_WHEEL"; then
+      RKNN_PY_OK=1
+    fi
+  else
+    log "rknn-toolkit-lite2 wheel not found at repo root: $RKNN_WHEEL"
+  fi
+  if [[ "$RKNN_PY_OK" -eq 0 ]]; then
+    log "Installing rknn-toolkit-lite2 >= $RKNN_RT_MIN from the pip index..."
+    pip_install "rknn-toolkit-lite2>=$RKNN_RT_MIN" && RKNN_PY_OK=1 \
+      || log "WARNING: rknn-toolkit-lite2 >= $RKNN_RT_MIN install failed."
+  fi
+  if [[ "$RKNN_PY_OK" -eq 1 ]]; then
+    log "Installing build tools..."
+    pip_install "pybind11" "cmake"
+    log "Building the RGA + RKNN zero-copy gesture backend..."
+    bash "$SCRIPT_DIR/src/build.sh" "$VENV_PYTHON"
+    log "Verifying NPU backend import..."
+    "$VENV_PYTHON" - <<'PY'
+from rynnrcp_robot_aero_hand.accelerators import aero_hand_rga  # noqa: F401
+print("NPU backend module OK (bundled librknnrt resolved via $ORIGIN)")
+PY
+    if [[ -f "$RKNN_RT_PROJECT" ]]; then
+      log "note: 'mediapipe_lite_rknn' preloads the project runtime"
+      log "      $RKNN_RT_PROJECT; the system librknnrt.so is left untouched."
+    fi
+  else
+    log "Skipping the RGA + RKNN backend build (rknn-toolkit-lite2 unavailable)."
+  fi
+elif is_jetson; then
+  # ----- NVIDIA Jetson (ORIN NX etc.): TensorRT engines are device-local -----
+  log "Detected Jetson (TensorRT): prebuilding mediapipe_lite_jetson engines..."
+  log "Fetching Jetson models (ONNX + prebuilt ORIN NX engines) from the Rynn model zoo..."
+  "$VENV_PYTHON" "$SCRIPT_DIR/scripts/fetch_aero_hand_models.py" --platform jetson \
+    || log "WARNING: model download failed; the backend will retry at runtime."
+  JETSON_PY=""
+  for cand in "$VENV_PYTHON" python3; do
+    if "$cand" -c "import tensorrt, cv2" 2>/dev/null; then
+      JETSON_PY="$cand"
+      break
+    fi
+  done
+  if [[ -z "$JETSON_PY" ]]; then
+    log "note: no python with tensorrt+cv2 found; skipping engine prebuild."
+    log "      The backend builds engines lazily on first use, or falls back"
+    log "      to onnxruntime. To prebuild: python3 scripts/build_jetson_engines.py"
+  else
+    if ! "$JETSON_PY" "$SCRIPT_DIR/scripts/build_jetson_engines.py"; then
+      log "WARNING: TensorRT engine build failed; mediapipe_lite_jetson will fall"
+      log "         back to onnxruntime (install the Jetson onnxruntime-gpu wheel"
+      log "         for GPU acceleration)."
+    fi
+  fi
+else
+  log "No supported NPU platform detected (neither Moore Threads nor Rockchip)."
+  log "  Using the CPU MediaPipe baseline backend."
+fi
 
 log ""
 log "Aero Hand setup completed."

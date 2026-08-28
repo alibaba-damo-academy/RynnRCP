@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,10 @@ import time
 
 import numpy as np
 import yaml
+
+from rynnrcp.utils.redaction import describe_payload
+
+logger = logging.getLogger(__name__)
 
 JOINT_NUM = 21
 
@@ -48,14 +53,14 @@ class Policy:
         self._last_status_at = 0.0
         self._step_index = 0
         self._infer_index = 0
-        print(
-            "Bumi policy loaded "
-            f"model={model_path} "
-            f"inference_hz={self.frame_rate:.1f} "
-            f"decimation={self.decimation} "
-            f"obs_size={self.obs_size} "
-            f"stack_size={self.stack_size}",
-            flush=True,
+        logger.info(
+            "[BumiPolicy][LOADED] model=%s inference_hz=%.1f decimation=%d "
+            "obs_size=%d stack_size=%d",
+            model_path,
+            self.frame_rate,
+            self.decimation,
+            self.obs_size,
+            self.stack_size,
         )
 
     def reset(self, runtime_inputs: dict[str, Any]) -> None:
@@ -65,7 +70,10 @@ class Policy:
         self._last_status_at = 0.0
         self._step_index = 0
         self._infer_index = 0
-        print(f"Bumi policy reset runtime_inputs={runtime_inputs}", flush=True)
+        logger.info(
+            "[BumiPolicy][RESET] runtime_inputs=%s",
+            describe_payload(runtime_inputs),
+        )
 
     def step(self, obs: dict[str, Any]) -> dict[str, Any]:
         self._step_index += 1
@@ -120,7 +128,10 @@ class Policy:
         if np.max(np.abs(self.last_actions)) >= 1e-4 or now - self._last_warn_at < 2.0:
             return
         self._last_warn_at = now
-        print("warning: Bumi policy output is almost zero; check ONNX, cmd_vel, and observations", flush=True)
+        logger.warning(
+            "[BumiPolicy][OUTPUT_NEAR_ZERO] inspect the ONNX model, cmd_vel, "
+            "and observation inputs"
+        )
 
     def _print_status(self, obs: dict[str, Any], delta: np.ndarray) -> None:
         now = time.time()
@@ -128,13 +139,13 @@ class Policy:
             return
         self._last_status_at = now
         cmd = [round(float(x), 3) for x in _vector(obs.get("cmd_vel"), 3, [0.0, 0.0, 0.0])]
-        print(
-            "Bumi walk policy loop "
-            f"cmd_vel={cmd} "
-            f"inference_hz={self.frame_rate:.1f} "
-            f"max_action={float(np.max(np.abs(self.last_actions))):.3f} "
-            f"target_delta={float(np.max(np.abs(delta))):.3f}",
-            flush=True,
+        logger.debug(
+            "[BumiPolicy][LOOP] cmd_vel=%s inference_hz=%.1f "
+            "max_action=%.3f target_delta=%.3f",
+            cmd,
+            self.frame_rate,
+            float(np.max(np.abs(self.last_actions))),
+            float(np.max(np.abs(delta))),
         )
 
     def _print_infer_status(self, obs: dict[str, Any], policy_obs: np.ndarray, output: np.ndarray) -> None:
@@ -145,17 +156,17 @@ class Policy:
             q = _vector(joint.get("joint_positions"), JOINT_NUM, self.default_joint_pos)
             dq = _vector(joint.get("joint_velocities"), JOINT_NUM, np.zeros(JOINT_NUM, dtype=np.float32))
             out = np.array(output, dtype=np.float32).reshape(-1)
-            print(
-                "Bumi policy infer "
-                f"step={self._step_index} "
-                f"infer={self._infer_index} "
-                f"cmd_raw={cmd_raw} "
-                f"cmd_used={cmd_used} "
-                f"obs_abs_max={float(np.max(np.abs(policy_obs))):.3f} "
-                f"q_abs_max={float(np.max(np.abs(q))):.3f} "
-                f"dq_abs_max={float(np.max(np.abs(dq))):.3f} "
-                f"onnx_abs_max={float(np.max(np.abs(out))):.3f}",
-                flush=True,
+            logger.debug(
+                "[BumiPolicy][INFER] step=%d infer=%d cmd_raw=%s cmd_used=%s "
+                "obs_abs_max=%.3f q_abs_max=%.3f dq_abs_max=%.3f onnx_abs_max=%.3f",
+                self._step_index,
+                self._infer_index,
+                cmd_raw,
+                cmd_used,
+                float(np.max(np.abs(policy_obs))),
+                float(np.max(np.abs(q))),
+                float(np.max(np.abs(dq))),
+                float(np.max(np.abs(out))),
             )
 
 

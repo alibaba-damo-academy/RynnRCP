@@ -229,6 +229,53 @@ def test_callback_error_handling(caplog):
     print("[PASS] test_callback_error_handling")
 
 
+def test_repeated_callback_errors_are_rate_limited(caplog, monkeypatch):
+    import rynnrcp.runtime.scheduler as scheduler_module
+
+    monkeypatch.setattr(scheduler_module, "ERROR_LOG_INTERVAL_S", 0.03)
+    calls = [0]
+
+    def bad_callback():
+        calls[0] += 1
+        raise RuntimeError("repeat me")
+
+    s = Scheduler()
+    s.add_component(Component("noisy", period_ms=2, callback=bad_callback))
+    s.start()
+    time.sleep(0.075)
+    s.stop()
+
+    error_records = [
+        record for record in caplog.records
+        if "Component 'noisy'" in record.getMessage()
+    ]
+    assert calls[0] >= 10
+    assert 2 <= len(error_records) <= 4
+    assert "suppressed" in caplog.text
+
+
+def test_component_recovery_is_logged_once(caplog):
+    caplog.set_level("INFO")
+    calls = [0]
+
+    def recovering_callback():
+        calls[0] += 1
+        if calls[0] <= 3:
+            raise RuntimeError("not ready")
+
+    s = Scheduler()
+    s.add_component(Component("recovering", period_ms=3, callback=recovering_callback))
+    s.start()
+    time.sleep(0.04)
+    s.stop()
+
+    recovery_records = [
+        record for record in caplog.records
+        if "Component 'recovering' recovered" in record.getMessage()
+    ]
+    assert len(recovery_records) == 1
+
+
 def test_stop_returns_when_callback_is_blocked():
     s = Scheduler()
     release = threading.Event()

@@ -1,0 +1,103 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: franka_fr3
+  robot_name: Franka Research 3
+  capabilities:
+    observations: true
+    actions: true
+    health: true
+    resources: true
+    data_collection: true
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_franka_fr3/config/robot_integration.yaml
+server:
+  interface:
+    host: 0.0.0.0
+    port: 0
+    local_registry: true
+    mdns: false
+components:
+  robot:
+    enabled: true
+    robot_ip: 192.168.0.110
+    with_gripper: true
+    realtime_enforce: true
+    max_joint_velocity_rad_s: 0.25
+    max_joint_acceleration_rad_s2: 0.5
+    max_joint_jerk_rad_s3: 2.5
+    max_cartesian_velocity_m_s: 0.05
+    max_cartesian_rotation_rad_s: 0.25
+    target_timeout_s: 0.2
+    gripper_max_width_m: 0.08
+    gripper_speed_m_s: 0.05
+    gripper_command_deadband: 0.01
+    gripper_grasp_threshold: 0.1
+    gripper_grasp_force_n: 20.0
+    home_joint_positions:
+      - 0.0
+      - -0.785
+      - 0.0
+      - -2.356
+      - 0.0
+      - 1.571
+      - 0.785
+    joint_lower_limits:
+      - -2.7437
+      - -1.7837
+      - -2.9007
+      - -3.0421
+      - -2.8065
+      - 0.5445
+      - -3.0159
+    joint_upper_limits:
+      - 2.7437
+      - 1.7837
+      - 2.9007
+      - -0.1518
+      - 2.8065
+      - 4.5169
+      - 3.0159
+    collision_torque_thresholds:
+      - 20.0
+      - 20.0
+      - 18.0
+      - 18.0
+      - 16.0
+      - 14.0
+      - 12.0
+    collision_force_thresholds:
+      - 20.0
+      - 20.0
+      - 20.0
+      - 25.0
+      - 25.0
+      - 25.0
+  cam_arm:
+    enabled: false
+    serial: null
+    width: 1280
+    height: 720
+    fps: 30
+    encoding: jpg
+    warmup_frames: 60
+    jpeg_quality: 85
+  cam_main:
+    enabled: false
+    serial: null
+    width: 1280
+    height: 720
+    fps: 30
+    encoding: jpg
+    warmup_frames: 60
+    jpeg_quality: 85
+  cam_side:
+    enabled: false
+    serial: null
+    width: 1280
+    height: 720
+    fps: 30
+    encoding: jpg
+    warmup_frames: 60
+    jpeg_quality: 85

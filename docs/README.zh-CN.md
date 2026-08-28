@@ -18,6 +18,7 @@
 - `RCP使用场景及协议.md`：协议契约，定义对外对象、方法、参数和返回值。
 - `RCP 机器人构型接入指南.html`：给机器人接入者，说明先跑通硬件，再写 controller/source/config。这里讲接入流程，不当作字段字典使用。
 - `RCP配置文件说明.md`：配置字段字典，说明 server config、robot integration、component、source、codec 每个字段怎么写。
+- `RCP日志与排障.md`：日志目录、运行关联 ID、日志配置和 App 到设备链路排障步骤。
 - `RCP 策略服务接入指南.html`：给策略接入者，说明 policy 目录、`policy.yaml`、`policy.py` 和运行时输入/动作输出约定。
 - `RCP App 接入 Server 指南.html`：给 App 开发者，说明发现、连接、调用工具和 Resource 传输。
 - `RCP Teleop 遥操数采使用指南.html`：给 Teleop 使用者，说明页面流程和数据采集导出逻辑。

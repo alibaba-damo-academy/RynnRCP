@@ -21,6 +21,39 @@ authoritative.
 - License: Apache License 2.0
 - Notes: Source files include Apache-2.0 license headers.
 
+## RynnMotion Robot Mesh Assets
+
+- Path: `robots/meta_quest3/rynnrcp_robot_meta_quest3/models/assets/`
+- Source: RynnMotion robot models for UR5e, Piper, RM75, SO101, Rizon 4s,
+  ECO65, DM6DoF, and OpenArm.
+- Source revision: `87097dce2aae3caeba9a29f3e0fe97d41940de03`
+- License: Apache License 2.0, as declared by the RynnMotion repository.
+- Notes: The browser assets are low-detail, collision-style derivatives of the
+  listed RynnMotion meshes. UR5e OBJ files were converted to binary STL; the
+  other source meshes were converted to compact binary STL envelopes. These
+  changes reduce package size and are not intended for precision collision
+  checking.
+
+## Franka Description FR3 Assets
+
+- Paths:
+  - `robots/meta_quest3/rynnrcp_robot_meta_quest3/models/fr3.urdf`
+  - `robots/meta_quest3/rynnrcp_robot_meta_quest3/models/assets/franka_fr3/`
+- Source: Franka Robotics `franka_description`.
+- License: Apache License 2.0.
+- Notes: The included STL files are low-detail collision meshes used only for
+  browser visualization.
+
+## Three.js Browser Runtime
+
+- Paths:
+  - `robots/meta_quest3/rynnrcp_robot_meta_quest3/web/three.min.js`
+  - `robots/meta_quest3/rynnrcp_robot_meta_quest3/web/STLLoader.classic.js`
+- Copyright: 2010-2025 three.js authors.
+- License: MIT.
+- License text:
+  `robots/meta_quest3/rynnrcp_robot_meta_quest3/web/THREE_LICENSE.txt`.
+
 ## HiPNUC IMU Decoder
 
 - Paths:

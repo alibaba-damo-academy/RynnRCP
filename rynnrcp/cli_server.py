@@ -17,7 +17,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", required=True, help="Server YAML config path.")
     args = parser.parse_args(argv)
     log_session_id = new_log_session_id()
-    configure_server_logging(args.config, level=logging.INFO, session_id=log_session_id)
+    configure_server_logging(
+        args.config,
+        level=logging.INFO,
+        session_id=log_session_id,
+        process_name="server",
+    )
 
     server = RynnRCPServer(args.config, log_session_id=log_session_id)
     try:

@@ -35,8 +35,13 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import re
+import select
 import shutil
+import subprocess
+import threading
+import time
 from time import sleep
 from typing import Any, Tuple, Union
 
@@ -54,6 +59,11 @@ except ImportError:  # pragma: no cover
     _HAS_CV2 = False
 
 logger = logging.getLogger(__name__)
+
+_JPEG_SOI = b"\xff\xd8"
+_JPEG_EOI = b"\xff\xd9"
+_GSTREAMER_READ_TIMEOUT_S = 2.0
+_GSTREAMER_MAX_BUFFER_BYTES = 16 * 1024 * 1024
 
 
 # ------------------------------------------------------------------
@@ -118,6 +128,104 @@ def _macos_uniqueid_to_index(unique_id: str) -> int:
     raise KeyError(f"uniqueID not found: {uid}. Available: {available}")
 
 
+class _GStreamerJpegCapture:
+    """Read parsed native JPEG frames from ``gst-launch-1.0`` stdout."""
+
+    def __init__(self, device_path: str, width: int, height: int, fps: float) -> None:
+        self._buffer = bytearray()
+        self._pending_frame: bytes | None = None
+        self._stderr_tail: list[str] = []
+        self._process = subprocess.Popen(
+            _build_gstreamer_native_command(
+                device_path=device_path,
+                width=width,
+                height=height,
+                fps=fps,
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr,
+            name=f"gst-camera-{os.path.basename(device_path)}",
+            daemon=True,
+        )
+        self._stderr_thread.start()
+
+    def prime(self) -> bool:
+        ok, frame = self.read()
+        if ok:
+            self._pending_frame = frame
+        return ok
+
+    def isOpened(self) -> bool:
+        return self._process.poll() is None and self._process.stdout is not None
+
+    def read(self) -> tuple[bool, bytes | None]:
+        if self._pending_frame is not None:
+            frame = self._pending_frame
+            self._pending_frame = None
+            return True, frame
+
+        deadline = time.monotonic() + _GSTREAMER_READ_TIMEOUT_S
+        while True:
+            frame = _pop_complete_jpeg(self._buffer)
+            if frame is not None:
+                return True, frame
+
+            stdout = self._process.stdout
+            if stdout is None:
+                return False, None
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False, None
+            ready, _, _ = select.select([stdout.fileno()], [], [], remaining)
+            if not ready:
+                return False, None
+            chunk = os.read(stdout.fileno(), 64 * 1024)
+            if not chunk:
+                return False, None
+            self._buffer.extend(chunk)
+            if len(self._buffer) > _GSTREAMER_MAX_BUFFER_BYTES:
+                self._trim_oversized_buffer()
+
+    def release(self) -> None:
+        if self._process.poll() is None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait(timeout=1.0)
+        for stream in (self._process.stdout, self._process.stderr):
+            if stream is not None:
+                stream.close()
+
+    def error_detail(self) -> str:
+        return " | ".join(self._stderr_tail[-3:])
+
+    def _trim_oversized_buffer(self) -> None:
+        start = self._buffer.rfind(_JPEG_SOI)
+        if start >= 0:
+            del self._buffer[:start]
+        else:
+            self._buffer.clear()
+
+    def _drain_stderr(self) -> None:
+        stderr = self._process.stderr
+        if stderr is None:
+            return
+        for raw_line in iter(stderr.readline, b""):
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            self._stderr_tail.append(line)
+            if len(self._stderr_tail) > 20:
+                del self._stderr_tail[:-20]
+            logger.debug("GStreamer camera: %s", line)
+
+
 # ------------------------------------------------------------------
 # USBCamera
 # ------------------------------------------------------------------
@@ -143,6 +251,7 @@ class USBCamera(BaseCamera):
         rotate: int = 0,
         native_compressed: bool = False,
         capture_backend: str = "auto",
+        capture_fourcc: str = "MJPG",
     ) -> None:
         super().__init__(
             name=name,
@@ -160,6 +269,9 @@ class USBCamera(BaseCamera):
         self.capture_backend = str(capture_backend or "auto").strip().lower()
         if self.capture_backend not in {"auto", "opencv", "v4l2", "gstreamer"}:
             raise ValueError("capture_backend must be one of: auto, opencv, v4l2, gstreamer")
+        self.capture_fourcc = str(capture_fourcc).strip().upper()
+        if len(self.capture_fourcc) != 4:
+            raise ValueError("capture_fourcc must be a four-character code such as MJPG or YUYV")
         self._native_compressed_active = False
         self._native_compressed_warning_logged = False
         self._capture_backend_active = "none"
@@ -188,6 +300,18 @@ class USBCamera(BaseCamera):
         dev = _resolve_device_id(self.device_id, sysname)
         self._native_compressed_active = False
 
+        if self.capture_backend == "gstreamer":
+            if sysname != "Linux":
+                raise RuntimeError(
+                    "capture_backend='gstreamer' is only supported on Linux "
+                    f"(platform={sysname})"
+                )
+            if not _has_gstreamer():
+                raise RuntimeError(
+                    "capture_backend='gstreamer' requires gst-launch-1.0 and "
+                    "the GStreamer v4l2/jpeg plugins"
+                )
+
         cap = None
         if self._should_try_gstreamer(sysname):
             cap = self._try_open_gstreamer(dev)
@@ -206,9 +330,10 @@ class USBCamera(BaseCamera):
                 f"(resolved={dev}, platform={sysname}, backend={backend})"
             )
 
-        # Linux: Force MJPG to reduce USB bandwidth
+        # Linux: request the configured V4L2 pixel format. MJPG remains
+        # the default for compatibility; affected cameras can use YUYV.
         if sysname == "Linux" and self._capture_backend_active != "gstreamer":
-            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+            fourcc = cv2.VideoWriter_fourcc(*self.capture_fourcc)
             cap.set(cv2.CAP_PROP_FOURCC, fourcc)
 
         if self.width is not None and self._capture_backend_active != "gstreamer":
@@ -221,6 +346,7 @@ class USBCamera(BaseCamera):
         if (
             sysname == "Linux"
             and self.native_compressed
+            and self.capture_backend != "auto"
             and str(self.encoding).lower() in ("jpg", "jpeg")
             and int(self.rotate or 0) == 0
             and self._capture_backend_active != "gstreamer"
@@ -270,19 +396,24 @@ class USBCamera(BaseCamera):
             if self._failed_reads >= self._reopen_after_failed_reads:
                 self._reopen()
             return False, 0, 0, self.encoding, None
-        self._failed_reads = 0
 
         if self._native_compressed_active and str(self.encoding).lower() in ("jpg", "jpeg"):
             native_bytes = _extract_native_jpeg_bytes(frame)
             if native_bytes is not None:
+                self._failed_reads = 0
                 return True, int(self.width), int(self.height), self.encoding, native_bytes
+            self._failed_reads += 1
             if not self._native_compressed_warning_logged:
                 logger.warning(
-                    "%s: native compressed mode did not return JPEG bytes; falling back to OpenCV encode",
+                    "%s: native compressed mode returned an incomplete JPEG; dropping the frame",
                     self.name,
                 )
                 self._native_compressed_warning_logged = True
-            self._native_compressed_active = False
+            if self._failed_reads >= self._reopen_after_failed_reads:
+                self._reopen()
+            return False, 0, 0, self.encoding, None
+
+        self._failed_reads = 0
 
         # Rotation
         if self.rotate == 90:
@@ -326,48 +457,63 @@ class USBCamera(BaseCamera):
         return _has_gstreamer()
 
     def _try_open_gstreamer(self, dev: Union[int, str]) -> Any | None:
-        cap_gstreamer = getattr(cv2, "CAP_GSTREAMER", None)
-        if cap_gstreamer is None:
-            return None
-
         compressed = (
             self.native_compressed
             and str(self.encoding).lower() in ("jpg", "jpeg")
             and int(self.rotate or 0) == 0
         )
         device_path = _device_to_linux_video_path(dev)
-        pipelines = [
-            _build_gstreamer_pipeline(
-                device_path=device_path,
-                width=int(self.width),
-                height=int(self.height),
-                fps=float(self.frequency_hz),
-                compressed=compressed,
-            )
-        ]
+
         if compressed:
-            pipelines.append(
-                _build_gstreamer_pipeline(
+            try:
+                native_cap = _GStreamerJpegCapture(
                     device_path=device_path,
                     width=int(self.width),
                     height=int(self.height),
                     fps=float(self.frequency_hz),
-                    compressed=False,
                 )
+            except OSError as exc:
+                logger.warning(
+                    "USB camera %s could not launch GStreamer native JPEG: %s",
+                    self.name,
+                    exc,
+                )
+                native_cap = None
+            if native_cap is None:
+                return None
+            if native_cap.prime():
+                self._capture_backend_active = "gstreamer"
+                self._native_compressed_active = True
+                logger.info(
+                    "USB camera %s opened with GStreamer native JPEG passthrough",
+                    self.name,
+                )
+                return native_cap
+            detail = native_cap.error_detail()
+            native_cap.release()
+            logger.warning(
+                "USB camera %s could not start GStreamer native JPEG%s",
+                self.name,
+                f": {detail}" if detail else "",
             )
 
-        for index, pipeline in enumerate(pipelines):
-            cap = cv2.VideoCapture(pipeline, cap_gstreamer)
-            if cap.isOpened():
-                self._capture_backend_active = "gstreamer"
-                self._native_compressed_active = compressed and index == 0
-                logger.info(
-                    "USB camera %s opened with GStreamer%s",
-                    self.name,
-                    " native JPEG passthrough" if self._native_compressed_active else "",
-                )
-                return cap
-            cap.release()
+        cap_gstreamer = getattr(cv2, "CAP_GSTREAMER", None)
+        if cap_gstreamer is None:
+            return None
+        pipeline = _build_gstreamer_pipeline(
+            device_path=device_path,
+            width=int(self.width),
+            height=int(self.height),
+            fps=float(self.frequency_hz),
+            compressed=False,
+        )
+        cap = cv2.VideoCapture(pipeline, cap_gstreamer)
+        if cap.isOpened():
+            self._capture_backend_active = "gstreamer"
+            self._native_compressed_active = False
+            logger.info("USB camera %s opened with decoded GStreamer pipeline", self.name)
+            return cap
+        cap.release()
 
         return None
 
@@ -423,11 +569,54 @@ def _build_gstreamer_pipeline(
     caps = f"image/jpeg,width={width},height={height},framerate={fps_num}/1"
     sink = "appsink drop=true max-buffers=1 sync=false"
     if compressed:
-        return f"v4l2src device={device_path} ! {caps} ! {sink}"
+        return f"v4l2src device={device_path} ! {caps} ! jpegparse ! {sink}"
     return (
         f"v4l2src device={device_path} ! {caps} ! "
         f"jpegparse ! jpegdec ! videoconvert ! video/x-raw,format=BGR ! {sink}"
     )
+
+
+def _build_gstreamer_native_command(
+    *,
+    device_path: str,
+    width: int,
+    height: int,
+    fps: float,
+) -> list[str]:
+    fps_num = max(1, int(round(fps)))
+    return [
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={device_path}",
+        "!",
+        f"image/jpeg,width={width},height={height},framerate={fps_num}/1",
+        "!",
+        "jpegparse",
+        "!",
+        "fdsink",
+        "fd=1",
+        "sync=false",
+    ]
+
+
+def _pop_complete_jpeg(buffer: bytearray) -> bytes | None:
+    start = buffer.find(_JPEG_SOI)
+    if start < 0:
+        if buffer[-1:] == b"\xff":
+            del buffer[:-1]
+        else:
+            buffer.clear()
+        return None
+    if start:
+        del buffer[:start]
+    end = buffer.find(_JPEG_EOI, len(_JPEG_SOI))
+    if end < 0:
+        return None
+    end += len(_JPEG_EOI)
+    frame = bytes(buffer[:end])
+    del buffer[:end]
+    return frame
 
 
 def _extract_native_jpeg_bytes(frame: Any) -> bytes | None:
@@ -442,6 +631,5 @@ def _extract_native_jpeg_bytes(frame: Any) -> bytes | None:
             data = memoryview(frame).cast("B").tobytes()
     except (TypeError, ValueError):
         return None
-    if len(data) >= 4 and data[:2] == b"\xff\xd8":
-        return data
-    return None
+    buffer = bytearray(data)
+    return _pop_complete_jpeg(buffer)

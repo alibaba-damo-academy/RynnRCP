@@ -16,6 +16,8 @@ SOURCE_ROOTS = [
     PROJECT_ROOT / "robots" / "tetheria_aerohand",
     PROJECT_ROOT / "robots" / "lerobot_so101",
     PROJECT_ROOT / "robots" / "lerobot_lekiwi",
+    PROJECT_ROOT / "robots" / "franka_fr3",
+    PROJECT_ROOT / "robots" / "meta_quest3",
 ]
 
 for source_root in reversed(SOURCE_ROOTS):

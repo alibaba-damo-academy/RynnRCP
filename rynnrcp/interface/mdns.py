@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 from typing import Any, Mapping
@@ -41,11 +42,17 @@ class MdnsPublisher:
             "grpc_port": str(self.port),
             **{str(k): str(v) for k, v in self.metadata.items()},
         }
+        lan_ips = find_lan_ips()
+        # Sort by metric (ascending) so the lowest-metric IP is the primary address
+        sorted_ips = sorted(lan_ips.items(), key=lambda item: item[1])
+        addresses = [ip for ip, _ in sorted_ips] or ["127.0.0.1"]
+        # Encode IPs with metrics: ip1:metric1,ip2:metric2
+        properties["mdns_addresses"] = ",".join(f"{ip}:{metric}" for ip, metric in sorted_ips)
         self._zeroconf = Zeroconf()
         self._info = ServiceInfo(
             self.service_type,
             f"{safe_name(self.endpoint_id)}.{self.service_type}",
-            addresses=[socket.inet_aton(ip) for ip in find_lan_ips()] or [socket.inet_aton("127.0.0.1")],
+            addresses=[socket.inet_aton(ip) for ip in addresses],
             port=self.port,
             properties=properties,
             server=f"{safe_name(socket.gethostname()) or 'rynnrcp'}.local.",
@@ -108,6 +115,10 @@ class _MdnsListener:
         properties = {_decode(k): _decode(v) for k, v in dict(info.properties or {}).items()}
         addresses = [socket.inet_ntoa(address) for address in info.addresses]
         host = addresses[0] if addresses else info.server.rstrip(".")
+        # Keep mdns_addresses from publisher if present (contains metrics)
+        # Otherwise, fallback with default metric 999 to match publisher format
+        if "mdns_addresses" not in properties and addresses:
+            properties["mdns_addresses"] = ",".join(f"{ip}:999" for ip in addresses)
         with self._lock:
             self._endpoints[name] = Endpoint(
                 endpoint_id=properties.get("server_id") or name.split(".", 1)[0],
@@ -118,10 +129,22 @@ class _MdnsListener:
             )
 
 
-def find_lan_ips() -> list[str]:
-    """Return likely LAN IPv4 addresses for the current host."""
-    ips = {_probe_default_route_ip(), *_hostname_ips()}
-    return sorted(ip for ip in ips if ip and not ip.startswith("127."))
+def find_lan_ips() -> dict[str, int]:
+    """Return likely LAN IPv4 addresses with routing metrics (lower is better)."""
+    ips: dict[str, int] = {}
+    # All interface IPs with their actual route metrics
+    for ip, metric in _interface_ips_with_metrics():
+        if ip and not ip.startswith("127."):
+            ips[ip] = metric
+    # Fallback: if no interfaces found, use default route probe
+    if not ips:
+        default_ip = _probe_default_route_ip()
+        if default_ip and not default_ip.startswith("127."):
+            ips[default_ip] = 999
+        for ip in _hostname_ips():
+            if ip and not ip.startswith("127."):
+                ips.setdefault(ip, 999)
+    return ips
 
 
 def _probe_default_route_ip() -> str:
@@ -138,6 +161,48 @@ def _hostname_ips() -> list[str]:
         return [item[4][0] for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
     except OSError:
         return []
+
+
+def _interface_ips_with_metrics() -> list[tuple[str, int]]:
+    """Enumerate IPv4 addresses with routing metrics (Linux only, fallback to 999)."""
+    result: list[tuple[str, int]] = []
+    try:
+        import fcntl
+        import struct
+
+        # Read routing table to get metrics per interface
+        interface_metrics: dict[str, int] = {}
+        try:
+            with open("/proc/net/route", "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 8 and parts[0] != "Iface":
+                        iface = parts[0]
+                        try:
+                            metric = int(parts[6])
+                        except ValueError:
+                            metric = 999
+                        interface_metrics[iface] = min(interface_metrics.get(iface, 999), metric)
+        except (OSError, IOError):
+            pass
+
+        request_code = 0x8915 if sys.platform.startswith("linux") else 0xC0206921
+        for _index, name in socket.if_nameindex():
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                    packed = fcntl.ioctl(
+                        probe.fileno(),
+                        request_code,
+                        struct.pack("256s", name[:15].encode("utf-8")),
+                    )
+                    ip = socket.inet_ntoa(packed[20:24])
+                    metric = interface_metrics.get(name, 999)
+                    result.append((ip, metric))
+            except OSError:
+                continue
+    except (ImportError, AttributeError, ValueError):
+        return []
+    return result
 
 
 def _decode(value: Any) -> str:

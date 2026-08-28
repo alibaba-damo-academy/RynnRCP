@@ -12,6 +12,9 @@ _CV2_MODULES: tuple[Any, Any] | None = None
 def resize_jpeg_long_edge(data: bytes, max_long_edge: int) -> bytes:
     if max_long_edge <= 0:
         return data
+    width, height = _jpeg_size(data)
+    if width > 0 and height > 0 and max(width, height) <= max_long_edge:
+        return data
     try:
         cv2, np = _cv2_modules()
 

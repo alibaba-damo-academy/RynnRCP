@@ -25,7 +25,9 @@ from rynnrcp.protocol.methods import (
 from rynnrcp.protocol.observation_codecs import protocol_observation_value
 from rynnrcp.config.runner_config import RunnerInputSpec
 from rynnrcp.runtime.tool_bus import ToolBus
+from rynnrcp.utils.log_gate import LogGate
 from rynnrcp.utils.payload import CachedSharedRefParser
+from rynnrcp.utils.redaction import describe_payload
 from rynnrcp.utils import coerce_timestamp
 from rynnrcp.utils import safe_name
 from rynnrcp.utils.shared_data_store import SharedDataExpired
@@ -38,12 +40,28 @@ def _pack_safe(value: Any) -> Any:
         return {str(k): _pack_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_pack_safe(v) for v in value]
-    raise TypeError(f"collection value is not msgpack compatible: {type(value).__name__}")
+    raise TypeError(
+        f"collection value is not msgpack compatible: {type(value).__name__}"
+    )
 
 
 def _write_json(path: str, obj: Dict[str, Any]) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
+
+
+def _sample_value_diagnostics(value: Any) -> str:
+    positions = value.get("joint_positions") if isinstance(value, dict) else None
+    if not isinstance(positions, list):
+        return describe_payload(value)
+    try:
+        values = [float(item) for item in positions]
+    except (TypeError, ValueError):
+        return f"dim={len(positions)} values={describe_payload(positions)}"
+    nonzero = sum(item != 0.0 for item in values)
+    minimum = min(values) if values else 0.0
+    maximum = max(values) if values else 0.0
+    return f"dim={len(values)} nonzero={nonzero} min={minimum:.4f} max={maximum:.4f}"
 
 
 SampleFn = Callable[[list[str], Optional[Dict[str, float]]], Dict[str, Dict[str, Any]]]
@@ -106,7 +124,9 @@ class _CollectionSession:
         with self._lock:
             if self.is_running:
                 raise RuntimeError("collection already running")
-            output_dir = os.path.join(self._root_dir, safe_name(collection), safe_name(episode))
+            output_dir = os.path.join(
+                self._root_dir, safe_name(collection), safe_name(episode)
+            )
             if os.path.exists(output_dir):
                 shutil.rmtree(output_dir)
             collection_metadata = dict(metadata)
@@ -140,8 +160,22 @@ class _CollectionSession:
             self._stop_reason = None
             self._last_error = None
             self._stop_event.clear()
-            self._thread = threading.Thread(target=self._loop, name=f"collection-{collection}-{episode}", daemon=True)
+            self._thread = threading.Thread(
+                target=self._loop,
+                name=f"collection-{collection}-{episode}",
+                daemon=True,
+            )
             self._thread.start()
+            logger.info(
+                "[CollectionService][START] collection=%s episode=%s fps=%.2f "
+                "max_duration_s=%s names=%s output_dir=%s",
+                collection,
+                episode,
+                target_fps,
+                duration,
+                self._names,
+                output_dir,
+            )
             return self.status()
 
     def stop(self) -> Dict[str, Any]:
@@ -172,7 +206,9 @@ class _CollectionSession:
                 "names": list(self._names),
                 "items": list(self._items),
                 "counts": dict(self._counts),
-                "stream_stats": {name: dict(stats) for name, stats in self._stream_stats.items()},
+                "stream_stats": {
+                    name: dict(stats) for name, stats in self._stream_stats.items()
+                },
                 "duration_s": self._duration_s_unlocked(),
                 "started_at_unix": self._started_at or None,
                 "stopped_at_unix": self._stopped_at,
@@ -188,24 +224,48 @@ class _CollectionSession:
         last_ts: Dict[str, float] = {}
         start_monotonic = time.monotonic()
         next_t = start_monotonic
+        last_progress_log = start_monotonic
         stop_reason = "manual"
         try:
             while not self._stop_event.is_set():
-                if self._max_duration_s is not None and time.monotonic() - start_monotonic >= self._max_duration_s:
+                if (
+                    self._max_duration_s is not None
+                    and time.monotonic() - start_monotonic >= self._max_duration_s
+                ):
                     stop_reason = "max_duration"
                     break
                 samples = self._sample_fn(self._names, last_ts)
                 for name, sample in samples.items():
                     if not isinstance(sample, dict):
                         raise ValueError(f"collection sample '{name}' must be a dict")
-                    ts = coerce_timestamp(sample.get("timestamp"), context=f"collection sample '{name}'")
+                    ts = coerce_timestamp(
+                        sample.get("timestamp"), context=f"collection sample '{name}'"
+                    )
                     if "value" not in sample:
                         raise ValueError(f"collection sample '{name}' missing value")
                     if last_ts.get(name) == ts:
                         continue
                     self._write_sample(name, ts, sample["value"])
                     last_ts[name] = ts
-                    self._record_sample_written(name, ts)
+                    self._record_sample_written(name, ts, sample["value"])
+                now = time.monotonic()
+                if now - last_progress_log >= 5.0:
+                    with self._lock:
+                        counts = dict(self._counts)
+                        stream_fps = {
+                            name: round(float(stats.get("fps") or 0.0), 2)
+                            for name, stats in self._stream_stats.items()
+                        }
+                    logger.info(
+                        "[CollectionService][PROGRESS] collection=%s episode=%s "
+                        "duration_s=%.1f counts=%s stream_fps=%s",
+                        self._collection_id,
+                        self._episode_id,
+                        now - start_monotonic,
+                        counts,
+                        stream_fps,
+                    )
+                    last_progress_log = now
                 next_t += interval
                 coarse = next_t - time.monotonic() - 0.001
                 if coarse > 0:
@@ -218,7 +278,13 @@ class _CollectionSession:
                     next_t = time.monotonic()
         except Exception as exc:
             stop_reason = "error"
-            logger.exception("Collection stopped by error: %s", exc)
+            logger.exception(
+                "[CollectionService][LOOP_ERROR] collection=%s episode=%s error=%s; "
+                "inspect the failing stream and storage path",
+                self._collection_id,
+                self._episode_id,
+                exc,
+            )
             with self._lock:
                 self._last_error = str(exc)
         finally:
@@ -229,11 +295,28 @@ class _CollectionSession:
                 self._stop_reason = stop_reason
                 if self._thread is threading.current_thread():
                     self._thread = None
+                counts = dict(self._counts)
+                stream_fps = {
+                    name: round(float(stats.get("fps") or 0.0), 2)
+                    for name, stats in self._stream_stats.items()
+                }
+            logger.info(
+                "[CollectionService][STOP] collection=%s episode=%s reason=%s "
+                "duration_s=%.1f counts=%s stream_fps=%s",
+                self._collection_id,
+                self._episode_id,
+                stop_reason,
+                time.monotonic() - start_monotonic,
+                counts,
+                stream_fps,
+            )
 
     def _write_sample(self, name: str, timestamp: float, value: Any) -> None:
         stream = self._stream(name)
         stream["file"].write(
-            msgpack.packb({"timestamp": timestamp, "value": _pack_safe(value)}, use_bin_type=True)
+            msgpack.packb(
+                {"timestamp": timestamp, "value": _pack_safe(value)}, use_bin_type=True
+            )
         )
         stream["count"] += 1
         stream["pending"] += 1
@@ -273,7 +356,7 @@ class _CollectionSession:
                 pass
         self._streams.clear()
 
-    def _record_sample_written(self, name: str, timestamp: float) -> None:
+    def _record_sample_written(self, name: str, timestamp: float, value: Any) -> None:
         with self._lock:
             self._counts[name] = self._counts.get(name, 0) + 1
             stats = self._stream_stats.setdefault(
@@ -286,12 +369,30 @@ class _CollectionSession:
                 first_ts = float(timestamp)
             last_ts = float(timestamp)
             elapsed = max(0.0, last_ts - float(first_ts))
-            stats.update({
-                "count": count,
-                "first_ts": float(first_ts),
-                "last_ts": last_ts,
-                "fps": ((count - 1) / elapsed) if count > 1 and elapsed > 0 else 0.0,
-            })
+            stats.update(
+                {
+                    "count": count,
+                    "first_ts": float(first_ts),
+                    "last_ts": last_ts,
+                    "fps": ((count - 1) / elapsed)
+                    if count > 1 and elapsed > 0
+                    else 0.0,
+                }
+            )
+            if count == 1:
+                logger.info(
+                    "[CollectionService][FIRST_SAMPLE] collection=%s episode=%s "
+                    "name=%s timestamp=%.6f",
+                    self._collection_id,
+                    self._episode_id,
+                    name,
+                    timestamp,
+                )
+                logger.info(
+                    "[CollectionService][FIRST_VALUE] name=%s %s",
+                    name,
+                    _sample_value_diagnostics(value),
+                )
 
     def _duration_s_unlocked(self) -> float:
         if not self._started_at:
@@ -315,7 +416,9 @@ class CollectionService(BaseService):
     ) -> None:
         super().__init__(bus, "collection_service")
         self._inputs = list(inputs)
-        self._input_by_name = {_collection_object_name(spec): spec for spec in self._inputs}
+        self._input_by_name = {
+            _collection_object_name(spec): spec for spec in self._inputs
+        }
         self._item_by_name = {
             name: _collection_item_descriptor(spec)
             for name, spec in self._input_by_name.items()
@@ -326,6 +429,7 @@ class CollectionService(BaseService):
             self.subscribe_channel(spec.channel, spec.msg_size, spec.channel_transport)
         self._payload_parser = CachedSharedRefParser()
         self._session = _CollectionSession(self._sample, root_dir=self._root_dir)
+        self._sample_error_logs: Dict[str, LogGate] = {}
 
     def bind(self) -> None:
         self._register_tool(
@@ -369,16 +473,22 @@ class CollectionService(BaseService):
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         if not names:
-            return ToolBus.make_result(False, result={}, message="names must be a non-empty list")
+            return ToolBus.make_result(
+                False, result={}, message="names must be a non-empty list"
+            )
         requested_names = [str(name) for name in names]
-        duplicate_names = sorted({name for name in requested_names if requested_names.count(name) > 1})
+        duplicate_names = sorted(
+            {name for name in requested_names if requested_names.count(name) > 1}
+        )
         if duplicate_names:
             return ToolBus.make_result(
                 False,
                 result={"duplicate_names": duplicate_names},
                 message=f"Duplicate collection name(s): {', '.join(duplicate_names)}",
             )
-        unknown_names = sorted(name for name in requested_names if name not in self._input_by_name)
+        unknown_names = sorted(
+            name for name in requested_names if name not in self._input_by_name
+        )
         if unknown_names:
             return ToolBus.make_result(
                 False,
@@ -389,28 +499,42 @@ class CollectionService(BaseService):
                 message=f"Unknown collection name(s): {', '.join(unknown_names)}",
             )
         if not str(collection_id or "").strip():
-            return ToolBus.make_result(False, result={}, message="collection_id is required")
+            return ToolBus.make_result(
+                False, result={}, message="collection_id is required"
+            )
         if not str(episode_id or "").strip():
-            return ToolBus.make_result(False, result={}, message="episode_id is required")
+            return ToolBus.make_result(
+                False, result={}, message="episode_id is required"
+            )
         if not str(task_prompt or "").strip():
-            return ToolBus.make_result(False, result={}, message="task_prompt is required")
+            return ToolBus.make_result(
+                False, result={}, message="task_prompt is required"
+            )
         if not str(task_description or "").strip():
-            return ToolBus.make_result(False, result={}, message="task_description is required")
+            return ToolBus.make_result(
+                False, result={}, message="task_description is required"
+            )
         try:
-            requested_items = [dict(self._item_by_name[name]) for name in requested_names]
+            requested_items = [
+                dict(self._item_by_name[name]) for name in requested_names
+            ]
             collection_metadata = dict(metadata or {})
-            collection_metadata.update({
-                "task_prompt": str(task_prompt),
-                "task_description": str(task_description),
-                "items": requested_items,
-            })
+            collection_metadata.update(
+                {
+                    "task_prompt": str(task_prompt),
+                    "task_description": str(task_description),
+                    "items": requested_items,
+                }
+            )
             status = self._session.start(
                 collection_id=str(collection_id),
                 episode_id=str(episode_id),
                 names=requested_names,
                 items=requested_items,
                 fps=float(frame_rate) if frame_rate is not None else 30.0,
-                max_duration_s=DEFAULT_MAX_COLLECTION_DURATION_S if max_duration is None else max_duration,
+                max_duration_s=DEFAULT_MAX_COLLECTION_DURATION_S
+                if max_duration is None
+                else max_duration,
                 metadata=collection_metadata,
             )
             collection_resource = self._collection_resource(status, mode="live")
@@ -428,11 +552,25 @@ class CollectionService(BaseService):
                 message="OK",
             )
         except Exception as exc:
-            return ToolBus.make_result(False, result=self.get_collection_status()["result"], message=str(exc))
+            logger.exception(
+                "[CollectionService][START_FAILED] collection=%s episode=%s names=%s error=%s; "
+                "verify collection identifiers, streams, and output permissions",
+                collection_id,
+                episode_id,
+                requested_names,
+                exc,
+            )
+            return ToolBus.make_result(
+                False, result=self.get_collection_status()["result"], message=str(exc)
+            )
 
     def stop_collection(self) -> Dict[str, Any]:
         status = self._session.stop()
-        collection_resource = self._collection_resource(status, mode="snapshot") if status.get("output_dir") else None
+        collection_resource = (
+            self._collection_resource(status, mode="snapshot")
+            if status.get("output_dir")
+            else None
+        )
         return ToolBus.make_result(
             True,
             result={
@@ -456,7 +594,9 @@ class CollectionService(BaseService):
                 {
                     "collection_id": str(status["collection_id"]),
                     "episode_id": str(status["episode_id"]),
-                    "collection_resource": self._collection_resource(status, mode="live" if status.get("running") else "snapshot"),
+                    "collection_resource": self._collection_resource(
+                        status, mode="live" if status.get("running") else "snapshot"
+                    ),
                     "names": list(status.get("names") or []),
                     "counts": dict(status.get("counts") or {}),
                     "stream_stats": dict(status.get("stream_stats") or {}),
@@ -470,7 +610,9 @@ class CollectionService(BaseService):
     def delete_collection(self, resource_id: str) -> Dict[str, Any]:
         rid = str(resource_id or "").strip()
         if not rid:
-            return ToolBus.make_result(False, result={"deleted": False}, message="resource_id is required")
+            return ToolBus.make_result(
+                False, result={"deleted": False}, message="resource_id is required"
+            )
         status = self._session.status()
         if status.get("running") and status.get("output_dir"):
             running_resource = self._collection_resource(status, mode="live")
@@ -483,10 +625,23 @@ class CollectionService(BaseService):
         try:
             record = self._resources.resolve(rid)
             if record.metadata.get("kind") != "collection":
-                return ToolBus.make_result(False, result={"deleted": False}, message="resource is not a collection")
+                return ToolBus.make_result(
+                    False,
+                    result={"deleted": False},
+                    message="resource is not a collection",
+                )
             deleted = self._resources.delete(rid)
         except Exception as exc:
-            return ToolBus.make_result(False, result={"deleted": False}, message=str(exc))
+            logger.warning(
+                "[CollectionService][DELETE_FAILED] resource_id=%s error=%s; "
+                "verify the resource exists and is writable",
+                rid,
+                exc,
+                exc_info=True,
+            )
+            return ToolBus.make_result(
+                False, result={"deleted": False}, message=str(exc)
+            )
         return ToolBus.make_result(True, result={"deleted": deleted}, message="OK")
 
     def unbind(self) -> None:
@@ -513,12 +668,32 @@ class CollectionService(BaseService):
             try:
                 value = self._payload_parser.parse(spec, payload)
                 value = _collection_value(spec, value)
-            except (SharedDataExpired, KeyError, TypeError, ValueError):
+            except (SharedDataExpired, KeyError, TypeError, ValueError) as exc:
+                gate = self._sample_error_logs.setdefault(
+                    name,
+                    LogGate(
+                        logger,
+                        f"CollectionService/SAMPLE_SKIPPED/{name}",
+                        interval_s=5.0,
+                        level=logging.WARNING,
+                    ),
+                )
+                gate.failure(
+                    "name=%s channel=%s error=%s; inspect the publisher and shared-data lifetime",
+                    name,
+                    spec.channel,
+                    exc,
+                )
                 continue
+            gate = self._sample_error_logs.pop(name, None)
+            if gate is not None:
+                gate.success()
             samples[name] = {"timestamp": float(ts), "value": value}
         return samples
 
-    def _collection_resource(self, status: Dict[str, Any], *, mode: str) -> Dict[str, Any]:
+    def _collection_resource(
+        self, status: Dict[str, Any], *, mode: str
+    ) -> Dict[str, Any]:
         output_dir = str(status.get("output_dir") or "")
         if not output_dir:
             return {}
@@ -530,7 +705,9 @@ class CollectionService(BaseService):
             output_dir,
             resource_type="directory",
             domain="data",
-            name=f"{collection_id}/{episode_id}" if collection_id and episode_id else os.path.basename(output_dir),
+            name=f"{collection_id}/{episode_id}"
+            if collection_id and episode_id
+            else os.path.basename(output_dir),
             format="directory",
             mode=mode,
             metadata={
@@ -554,9 +731,13 @@ def _collection_item_descriptor(spec: RunnerInputSpec) -> Dict[str, Any]:
     protocol_name = _collection_object_name(spec)
     parts = protocol_name.split(".")
     category = "action" if info.get("rcp_action_name") else "observation"
-    component_name = str(info.get("component_name") or (parts[1] if len(parts) >= 3 else ""))
+    component_name = str(
+        info.get("component_name") or (parts[1] if len(parts) >= 3 else "")
+    )
     short_name = parts[2] if len(parts) >= 3 else protocol_name
-    item_type = str(info.get("rcp_action_type") or info.get("rcp_observation_type") or short_name)
+    item_type = str(
+        info.get("rcp_action_type") or info.get("rcp_observation_type") or short_name
+    )
     descriptor: Dict[str, Any] = {
         "protocol_name": protocol_name,
         "category": category,
@@ -577,7 +758,9 @@ def _collection_value(spec: RunnerInputSpec, value: Any) -> Any:
     info = spec.info if isinstance(spec.info, dict) else {}
     action_type = info.get("rcp_action_type")
     if action_type:
-        return protocol_action_value(str(action_type), value, str(info.get("rcp_action_name") or ""))
+        return protocol_action_value(
+            str(action_type), value, str(info.get("rcp_action_name") or "")
+        )
     if info.get("rcp_observation_type"):
         return protocol_observation_value(str(info["rcp_observation_type"]), value)
     return value

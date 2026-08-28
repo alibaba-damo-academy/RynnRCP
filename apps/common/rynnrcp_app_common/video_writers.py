@@ -258,7 +258,21 @@ def _encode_bgr_frames_pyav_h264(
 def _pyav_h264_codec_chain(preferred: Optional[str] = None) -> tuple[str, ...]:
     requested = (preferred or "").strip()
     if requested:
-        return (requested,)
+        # 将首选编码器放在链的首位，后面跟随系统默认的编码器链作为降级选项
+        system = platform.system()
+        if system == "Windows":
+            default_chain = ("h264_mf", "h264_nvenc", "libx264")
+        elif system == "Darwin":
+            default_chain = ("h264_videotoolbox", "libx264")
+        elif system == "Linux":
+            default_chain = ("h264_nvenc", "h264_vaapi", "libx264")
+        else:
+            default_chain = ("libx264",)
+        # 避免重复，将首选编码器放在第一位
+        if requested in default_chain:
+            return (requested,) + tuple(c for c in default_chain if c != requested)
+        else:
+            return (requested,) + default_chain
     system = platform.system()
     if system == "Windows":
         return ("h264_mf", "h264_nvenc", "libx264")

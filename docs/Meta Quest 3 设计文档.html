@@ -1,0 +1,2018 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Meta Quest 3 设计文档</title>
+  <style>
+    :root {
+      --bg: #f3f6fa;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --ink: #172230;
+      --muted: #5e6b7b;
+      --line: #d9e2ec;
+      --brand: #0c8067;
+      --brand-soft: #e7f7f2;
+      --blue: #1769aa;
+      --blue-soft: #eaf4ff;
+      --amber: #a96610;
+      --amber-soft: #fff6df;
+      --red: #a83a3a;
+      --red-soft: #fff0f0;
+      --code: #101820;
+      --shadow: 0 12px 32px rgba(36, 55, 76, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+    }
+
+    a { color: var(--blue); }
+    a:hover { color: #0d4e84; }
+
+    .page {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px 20px;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(12px);
+      overflow: auto;
+    }
+
+    .nav-title {
+      margin-bottom: 20px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+
+    .nav-tag {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    nav a {
+      display: block;
+      margin: 3px 0;
+      padding: 8px 10px;
+      border-radius: 7px;
+      color: #415064;
+      font-size: 14px;
+      line-height: 1.4;
+      text-decoration: none;
+    }
+
+    nav a:hover {
+      background: #edf3f7;
+      color: var(--ink);
+    }
+
+    nav button,
+    .copy-button {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: #344054;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    nav button {
+      width: 100%;
+      margin-top: 18px;
+      padding: 9px 12px;
+    }
+
+    main {
+      width: 100%;
+      max-width: 1120px;
+      padding: 44px 42px 84px;
+    }
+
+    header {
+      position: relative;
+      overflow: hidden;
+      padding: 34px;
+      border: 1px solid #cadad5;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 88% 15%, rgba(27, 182, 143, 0.18), transparent 31%),
+        linear-gradient(135deg, #fbfefd, #eef8f5);
+      box-shadow: var(--shadow);
+    }
+
+    header::after {
+      content: "";
+      position: absolute;
+      right: -58px;
+      bottom: -58px;
+      width: 180px;
+      height: 180px;
+      border: 28px solid rgba(12, 128, 103, 0.08);
+      border-radius: 50%;
+    }
+
+    h1 {
+      position: relative;
+      z-index: 1;
+      margin: 0;
+      max-width: 820px;
+      font-size: clamp(29px, 4vw, 42px);
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .lead {
+      position: relative;
+      z-index: 1;
+      max-width: 820px;
+      margin: 14px 0 0;
+      color: #435365;
+      font-size: 17px;
+      line-height: 1.75;
+    }
+
+    .meta-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 22px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      border: 1px solid #cfe1db;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.78);
+      color: #3e4e5c;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    section {
+      scroll-margin-top: 22px;
+      margin-top: 42px;
+    }
+
+    h2 {
+      margin: 0 0 15px;
+      font-size: 25px;
+      line-height: 1.35;
+    }
+
+    h3 {
+      margin: 26px 0 10px;
+      font-size: 18px;
+      line-height: 1.45;
+    }
+
+    p, li {
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    li + li { margin-top: 5px; }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #e8eef3;
+      color: #263544;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      margin: 0;
+      overflow: auto;
+      padding: 18px;
+      border-radius: 10px;
+      background: var(--code);
+      color: #e7eef5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.62;
+      white-space: pre;
+    }
+
+    .code-block {
+      position: relative;
+      margin: 13px 0;
+    }
+
+    .copy-button {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      padding: 5px 9px;
+      border-color: #3b4652;
+      background: #1d2935;
+      color: #dbe7f0;
+      font-size: 12px;
+    }
+
+    .copy-button:hover { background: #2b3a49; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: 0 6px 18px rgba(34, 53, 74, 0.045);
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .status {
+      display: inline-block;
+      margin-bottom: 9px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .status.done { background: var(--brand-soft); color: var(--brand); }
+    .status.todo { background: var(--amber-soft); color: var(--amber); }
+    .status.ref { background: var(--blue-soft); color: var(--blue); }
+
+    .callout {
+      margin: 16px 0;
+      padding: 15px 17px;
+      border-left: 4px solid var(--brand);
+      border-radius: 9px;
+      background: var(--brand-soft);
+      color: #2e5148;
+      line-height: 1.7;
+    }
+
+    .callout.warn {
+      border-left-color: var(--amber);
+      background: var(--amber-soft);
+      color: #614a22;
+    }
+
+    .callout.risk {
+      border-left-color: var(--red);
+      background: var(--red-soft);
+      color: #6e3434;
+    }
+
+    .coord-figure {
+      margin: 18px 0 24px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #fbfdfd, #f5f8fb);
+      box-shadow: 0 8px 24px rgba(34, 53, 74, 0.055);
+    }
+
+    .coord-figure svg {
+      display: block;
+      width: 100%;
+      min-width: 820px;
+      height: auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+    }
+
+    .coord-scroll { overflow-x: auto; }
+
+    .coord-figure figcaption {
+      margin-top: 13px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .coord-panel { fill: #fff; stroke: #cedae3; stroke-width: 1.4; }
+    .coord-panel-accent { fill: #eef9f5; stroke: #a7d7ca; stroke-width: 1.4; }
+    .coord-title { fill: #263746; font-size: 17px; font-weight: 760; }
+    .coord-text { fill: #526273; font-size: 13px; }
+    .coord-small { fill: #657587; font-size: 11px; }
+    .coord-formula { fill: #263746; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    .coord-line { stroke: #8393a3; stroke-width: 1.7; fill: none; }
+    .coord-arrow { stroke: #607385; stroke-width: 2; fill: none; marker-end: url(#coord-arrowhead); }
+    .axis-x { stroke: #df4e4e; fill: #c53c3c; }
+    .axis-y { stroke: #24a06d; fill: #14845a; }
+    .axis-z { stroke: #2777c5; fill: #1c64a9; }
+    .axis-line { stroke-width: 3.2; }
+    .axis-x.axis-line { marker-end: url(#axis-x-arrowhead); }
+    .axis-y.axis-line { marker-end: url(#axis-y-arrowhead); }
+    .axis-z.axis-line { marker-end: url(#axis-z-arrowhead); }
+    .coord-badge { fill: #e9f3fa; stroke: #bad2e4; stroke-width: 1; }
+    .coord-badge-text { fill: #315a78; font-size: 12px; font-weight: 700; }
+    .joint-stage { stroke-width: 1.4; }
+    .joint-stage-input { fill: #f4f7fa; stroke: #cbd7e1; }
+    .joint-stage-pose { fill: #eef9f5; stroke: #9fd2c3; }
+    .joint-stage-ik { fill: #eef5ff; stroke: #a8c7e4; }
+    .joint-stage-state { fill: #fff7e5; stroke: #e3c37c; }
+    .joint-stage-output { fill: #f2effb; stroke: #c5b9e3; }
+    .joint-stage-title { fill: #263746; font-size: 15px; font-weight: 780; }
+    .joint-stage-text { fill: #526273; font-size: 11.5px; }
+    .joint-stage-code { fill: #304354; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.8px; }
+    .joint-arrow { stroke: #657789; stroke-width: 2; fill: none; marker-end: url(#joint-arrowhead); }
+    .joint-bypass { stroke: #b1761c; stroke-width: 2; stroke-dasharray: 7 5; fill: none; marker-end: url(#joint-bypass-arrowhead); }
+    .joint-branch-label { fill: #986516; font-size: 11px; font-weight: 700; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(90px, 1fr));
+      gap: 24px;
+      align-items: stretch;
+      margin: 18px 0;
+    }
+
+    .flow-step {
+      position: relative;
+      display: flex;
+      min-height: 94px;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      border: 1px solid #cfdbe4;
+      border-radius: 11px;
+      background: var(--panel);
+      color: #405064;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .flow-step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      top: 50%;
+      right: -20px;
+      color: #7f8c99;
+      font-size: 18px;
+      transform: translateY(-50%);
+    }
+
+    .flow-step.accent {
+      border-color: #a9d8cb;
+      background: var(--brand-soft);
+      color: #24614f;
+    }
+
+    .flow.five { grid-template-columns: repeat(5, minmax(120px, 1fr)); }
+    .flow.six { grid-template-columns: repeat(6, minmax(100px, 1fr)); }
+
+    table {
+      width: 100%;
+      margin: 13px 0;
+      border: 1px solid var(--line);
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 10px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 11px 13px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf3f7;
+      color: #344054;
+      font-weight: 760;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .file-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .file-row {
+      display: grid;
+      grid-template-columns: minmax(250px, 1.1fr) minmax(260px, 1fr);
+      gap: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+    }
+
+    .file-row a {
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .file-row span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .checklist li {
+      position: relative;
+      margin: 0;
+      padding: 11px 14px 11px 42px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+    }
+
+    .checklist li::before {
+      content: "□";
+      position: absolute;
+      left: 15px;
+      top: 9px;
+      color: var(--brand);
+      font-size: 21px;
+      line-height: 1;
+    }
+
+    .phase {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      gap: 16px;
+      margin: 13px 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--panel);
+    }
+
+    .phase-number {
+      display: flex;
+      width: 58px;
+      height: 58px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 13px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 22px;
+      font-weight: 850;
+    }
+
+    .phase h3 { margin: 1px 0 5px; }
+    .phase p { margin: 0; }
+
+    .steps {
+      display: grid;
+      gap: 11px;
+      margin: 14px 0;
+      padding: 0;
+      counter-reset: handoff-step;
+      list-style: none;
+    }
+
+    .steps > li {
+      position: relative;
+      margin: 0;
+      padding: 15px 16px 15px 62px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--panel);
+      counter-increment: handoff-step;
+    }
+
+    .steps > li::before {
+      content: counter(handoff-step);
+      position: absolute;
+      left: 16px;
+      top: 15px;
+      display: flex;
+      width: 30px;
+      height: 30px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .steps strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #2d3d4d;
+    }
+
+    .steps p { margin: 0; }
+
+    .step-io {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 9px;
+    }
+
+    .step-io span {
+      padding: 8px 10px;
+      border-radius: 7px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .worked-example {
+      margin: 17px 0;
+      padding: 18px;
+      border: 1px solid #bcd8e9;
+      border-radius: 12px;
+      background: var(--blue-soft);
+    }
+
+    .worked-example h4 {
+      margin: 0 0 10px;
+      color: #2d526d;
+      font-size: 16px;
+    }
+
+    .worked-example p { margin: 6px 0; }
+
+    .substeps {
+      margin: 10px 0 0;
+      padding-left: 22px;
+    }
+
+    .substeps li { margin: 4px 0; }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1120px) {
+      .flow { grid-template-columns: repeat(4, minmax(110px, 1fr)); }
+      .flow-step:nth-child(4)::after { display: none; }
+      .flow.five, .flow.six { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+      .flow.five .flow-step:nth-child(3)::after,
+      .flow.six .flow-step:nth-child(3)::after { display: none; }
+    }
+
+    @media (max-width: 860px) {
+      .page { display: block; }
+      nav { display: none; }
+      main { padding: 24px 16px 52px; }
+      header { padding: 26px 22px; }
+      .grid, .grid.two { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; gap: 10px; }
+      .flow.five, .flow.six { grid-template-columns: 1fr; }
+      .flow-step { min-height: auto; }
+      .flow-step:not(:last-child)::after { display: none; }
+      .file-row { grid-template-columns: 1fr; gap: 6px; }
+      .step-io { grid-template-columns: 1fr; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .page { display: block; max-width: none; }
+      nav, .copy-button { display: none; }
+      main { max-width: none; padding: 0; }
+      header, .card, .phase, .file-row, table { box-shadow: none; }
+      section { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <nav aria-label="交接说明目录">
+    <div class="nav-title">
+      Meta Quest 3<br>设计文档
+      <div class="nav-tag">设计文档</div>
+    </div>
+    <a href="#overview">1. 交接结论</a>
+    <a href="#status">2. 当前能力</a>
+    <a href="#architecture">3. 整体链路</a>
+    <a href="#position">4. 位姿和关节角</a>
+    <a href="#simulation-api">5. 本地仿真接口</a>
+    <a href="#rcp-api">6. 真机 RCP 接口</a>
+    <a href="#keyboard">7. 键盘方案</a>
+    <a href="#gamepad">8. 手柄方案</a>
+    <a href="#design">9. 推荐代码设计</a>
+    <a href="#delivery">10. 实施阶段</a>
+    <a href="#acceptance">11. 验收清单</a>
+    <a href="#code-map">12. 代码导航</a>
+    <button type="button" onclick="window.print()">打印 / 导出 PDF</button>
+  </nav>
+
+  <main>
+    <header>
+      <h1>Meta Quest 3 设计文档</h1>
+      <p class="lead">
+        面向接入开发者说明当前 Quest 双臂 Web 仿真的数据链路、末端位姿与关节角接口，
+        以及扩展键盘和普通游戏手柄控制的推荐实现。接手后先完成本地仿真闭环，再复用 RCP
+        的关节位置 Action 接入真实 FR3。
+      </p>
+      <div class="meta-row">
+        <span class="pill">目标平台：双 Franka FR3</span>
+        <span class="pill">控制频率：60 Hz</span>
+        <span class="pill">末端坐标：XYZ + RPY / 四元数</span>
+        <span class="pill">输出：7 关节 + 夹爪 / 每臂</span>
+      </div>
+    </header>
+
+    <section id="overview">
+      <h2>1. 交接结论</h2>
+      <div class="callout">
+        当前后端已经完成工作空间限制、末端目标限速、URDF IK、关节限速和仿真状态输出。
+        键盘与手柄只需生成末端目标，并复用现有 <code>POST /api/target</code>。
+        本地调试需要直接回放关节角时，使用 <code>POST /api/joints</code>。
+      </div>
+
+      <div class="grid">
+        <article class="card">
+          <span class="status done">当前可用</span>
+          <h3>末端位姿控制</h3>
+          <p>页面滑块已经通过绝对末端位姿驱动 IK，键盘和手柄可以复用同一目标变量和发送函数。</p>
+        </article>
+        <article class="card">
+          <span class="status done">当前可用</span>
+          <h3>关节角输出</h3>
+          <p><code>/api/state</code> 返回仿真关节角；RCP 主臂服务以 <code>joint_state</code> 发布关节目标。</p>
+        </article>
+        <article class="card">
+          <span class="status todo">建议新增</span>
+          <h3>输入适配与停机语义</h3>
+          <p>增加键盘、Gamepad API、使能键、输入源仲裁，以及释放使能键时立即保持当前位置的接口。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>2. 当前能力边界</h2>
+      <table>
+        <thead>
+          <tr><th>能力</th><th>状态</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Quest UDP 输入</td>
+            <td><span class="status done">已实现</span></td>
+            <td>读取左右手柄绝对位姿、Grip、Trigger 和标定按钮。</td>
+          </tr>
+          <tr>
+            <td>Web 末端滑块</td>
+            <td><span class="status done">已实现</span></td>
+            <td>左右臂分别发送基坐标系下的绝对末端位姿和夹爪目标。</td>
+          </tr>
+          <tr>
+            <td>IK 与运动平滑</td>
+            <td><span class="status done">已实现</span></td>
+            <td>60 Hz 更新，包含工作空间裁剪、笛卡尔限速、IK、关节速度和加速度限制。</td>
+          </tr>
+          <tr>
+            <td>键盘控制</td>
+            <td><span class="status todo">待实现</span></td>
+            <td>建议在浏览器侧将按键转换为末端速度，再积分成绝对目标。</td>
+          </tr>
+          <tr>
+            <td>游戏手柄控制</td>
+            <td><span class="status todo">待实现</span></td>
+            <td>建议使用浏览器 <code>navigator.getGamepads()</code>，无需安装本机驱动服务。</td>
+          </tr>
+          <tr>
+            <td>释放使能键立即保持</td>
+            <td><span class="status todo">待实现</span></td>
+            <td>增加 <code>/api/hold</code>，调用已有 <code>hold_current()</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 整体控制链路</h2>
+      <div class="flow" aria-label="控制链路图">
+        <div class="flow-step">Quest<br>滑块<br>键盘<br>游戏手柄</div>
+        <div class="flow-step accent">末端目标<br>XYZ + 姿态<br>夹爪</div>
+        <div class="flow-step">工作空间<br>目标限速</div>
+        <div class="flow-step">URDF IK</div>
+        <div class="flow-step">关节限速<br>关节角</div>
+        <div class="flow-step">Web 仿真<br>RCP joint_state</div>
+        <div class="flow-step">Teleop<br>FR3 Action</div>
+      </div>
+      <p>
+        输入设备负责表达“想让末端往哪里运动”；运动学后端负责把目标转成合法、连续的关节角；
+        RCP 负责把主臂的关节目标转发到执行端。键盘和手柄接入后，应继续沿用这条分工。
+      </p>
+    </section>
+
+    <section id="position">
+      <h2>4. 当前位姿和关节角如何获得</h2>
+
+      <figure class="coord-figure">
+        <div class="coord-scroll">
+          <svg viewBox="0 0 1100 515" role="img" aria-labelledby="coord-title coord-desc">
+            <title id="coord-title">Quest 坐标到 RCP 和 FR3 末端目标的转换</title>
+            <desc id="coord-desc">
+              图中展示 Quest 手柄相对标定位姿先通过位置和旋转基矩阵转换到 RCP 坐标，
+              再叠加到 Grip 按下时记录的机械臂目标锚点，经过工作空间限制、平滑和 IK 得到关节角。
+            </desc>
+            <defs>
+              <marker id="coord-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#607385"></path>
+              </marker>
+              <marker id="axis-x-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#df4e4e"></path>
+              </marker>
+              <marker id="axis-y-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#24a06d"></path>
+              </marker>
+              <marker id="axis-z-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#2777c5"></path>
+              </marker>
+            </defs>
+
+            <rect class="coord-panel" x="16" y="18" width="265" height="310" rx="15"></rect>
+            <text class="coord-title" x="36" y="49">① Quest 手柄相对标定坐标</text>
+            <text class="coord-text" x="36" y="76">X+A：记录标定位姿</text>
+            <text class="coord-formula" x="36" y="101">ΔpQ = pnow − pcal</text>
+            <text class="coord-formula" x="36" y="123">ΔRQ = Rnow · Rcalᵀ</text>
+
+            <circle cx="148" cy="224" r="5" fill="#34495a"></circle>
+            <line class="axis-x axis-line" x1="148" y1="224" x2="234" y2="224"></line>
+            <text class="coord-text axis-x" x="238" y="229">+XQ</text>
+            <line class="axis-y axis-line" x1="148" y1="224" x2="148" y2="145"></line>
+            <text class="coord-text axis-y" x="137" y="139">+YQ</text>
+            <line class="axis-z axis-line" x1="148" y1="224" x2="91" y2="282"></line>
+            <text class="coord-text axis-z" x="55" y="301">+ZQ</text>
+            <text class="coord-small" x="36" y="317">此处表示发送端原始轴；转换以配置矩阵为准。</text>
+
+            <path class="coord-arrow" d="M289 173 L333 173"></path>
+
+            <rect class="coord-panel" x="341" y="18" width="414" height="310" rx="15"></rect>
+            <text class="coord-title" x="362" y="49">② 基矩阵转换</text>
+            <text class="coord-text" x="362" y="77">平移：ΔpR = Bp · ΔpQ</text>
+            <text class="coord-formula" x="362" y="104">Bp = [ 0  0 −1 ]</text>
+            <text class="coord-formula" x="397" y="126">[ 1  0  0 ]</text>
+            <text class="coord-formula" x="397" y="148">[ 0  1  0 ]</text>
+
+            <rect class="coord-badge" x="535" y="91" width="194" height="69" rx="10"></rect>
+            <text class="coord-badge-text" x="550" y="113">实际位置映射</text>
+            <text class="coord-formula" x="550" y="134">XR = −ZQ</text>
+            <text class="coord-formula" x="632" y="134">YR = XQ</text>
+            <text class="coord-formula" x="550" y="153">ZR = YQ</text>
+
+            <line class="coord-line" x1="362" y1="174" x2="731" y2="174"></line>
+            <text class="coord-text" x="362" y="200">旋转：先做相对旋转，再切换旋转坐标基</text>
+            <text class="coord-formula" x="362" y="225">ΔRR = BR · ΔRQ · BRᵀ</text>
+            <text class="coord-formula" x="362" y="250">BR = [ 0  0  1;  −1  0  0;  0  1  0 ]</text>
+            <text class="coord-formula" x="362" y="276">qR.xyz ← qR.xyz × (−1, −1, +1)</text>
+            <text class="coord-small" x="362" y="306">四元数符号连续性：若 qnow · qprev &lt; 0，则整体取反。</text>
+
+            <path class="coord-arrow" d="M763 173 L807 173"></path>
+
+            <rect class="coord-panel-accent" x="815" y="18" width="269" height="326" rx="15"></rect>
+            <text class="coord-title" x="836" y="49">③ RCP / FR3 基坐标目标</text>
+            <text class="coord-text" x="836" y="76">统一语义：X 前、Y 左、Z 上</text>
+
+            <circle cx="946" cy="216" r="5" fill="#286452"></circle>
+            <line class="axis-x axis-line" x1="946" y1="216" x2="1021" y2="165"></line>
+            <text class="coord-text axis-x" x="1027" y="164">+XR 前</text>
+            <line class="axis-y axis-line" x1="946" y1="216" x2="856" y2="216"></line>
+            <text class="coord-text axis-y" x="824" y="221">+YR 左</text>
+            <line class="axis-z axis-line" x1="946" y1="216" x2="946" y2="137"></line>
+            <text class="coord-text axis-z" x="935" y="129">+ZR 上</text>
+
+            <text class="coord-small" x="836" y="262">Grip 首次按下：保存 pR,start / RR,start 和 anchor</text>
+            <text class="coord-formula" x="836" y="281">ΔpG = pR,now − pR,start</text>
+            <text class="coord-formula" x="836" y="299">ΔRG = RR,now · RR,startᵀ</text>
+            <text class="coord-formula" x="836" y="317">ptarget = panchor + scale · ΔpG</text>
+            <text class="coord-formula" x="836" y="334">Rtarget = ΔRG · Ranchor</text>
+
+            <path class="coord-arrow" d="M949 352 L949 371 L550 371 L550 386"></path>
+            <rect class="coord-panel" x="156" y="390" width="788" height="103" rx="14"></rect>
+            <text class="coord-title" x="179" y="421">④ 目标进入机械臂运动学链路</text>
+            <rect class="coord-badge" x="179" y="441" width="142" height="31" rx="8"></rect>
+            <text class="coord-badge-text" x="198" y="461">工作空间裁剪</text>
+            <path class="coord-arrow" d="M329 456 L363 456"></path>
+            <rect class="coord-badge" x="371" y="441" width="118" height="31" rx="8"></rect>
+            <text class="coord-badge-text" x="391" y="461">末端目标限速</text>
+            <path class="coord-arrow" d="M497 456 L531 456"></path>
+            <rect class="coord-badge" x="539" y="441" width="92" height="31" rx="8"></rect>
+            <text class="coord-badge-text" x="568" y="461">URDF IK</text>
+            <path class="coord-arrow" d="M639 456 L673 456"></path>
+            <rect class="coord-badge" x="681" y="441" width="116" height="31" rx="8"></rect>
+            <text class="coord-badge-text" x="701" y="461">关节目标限速</text>
+            <path class="coord-arrow" d="M805 456 L839 456"></path>
+            <rect class="coord-badge" x="847" y="441" width="75" height="31" rx="8"></rect>
+            <text class="coord-badge-text" x="866" y="461">q / dq</text>
+          </svg>
+        </div>
+        <figcaption>
+          图以当前代码和配置矩阵为准。系统先以 X+A 建立“手柄标定参考”，再在每次 Grip
+          按下时建立“离合起点和机械臂目标锚点”；因此重新按住 Grip 时，松开期间的手柄位移不会叠加。
+          平移映射为 <code>XR = −ZQ</code>、<code>YR = XQ</code>、<code>ZR = YQ</code>。
+        </figcaption>
+      </figure>
+
+      <h3>完整数据链：从 Quest 原始数据到 <code>joint_state</code></h3>
+      <figure class="coord-figure">
+        <div class="coord-scroll">
+          <svg viewBox="0 0 1180 715" role="img" aria-labelledby="joint-chain-title joint-chain-desc">
+            <title id="joint-chain-title">从 Quest 原始坐标到 RCP joint_state 的完整转换链</title>
+            <desc id="joint-chain-desc">
+              Quest 位姿经过标定、坐标变换、Grip 离合、末端目标裁剪、末端限速、URDF IK 和关节平滑，
+              生成仿真关节状态；单臂控制器添加夹爪，双臂控制器拼接左右关节，最后发布为 RCP observation.robot.joint_state。
+              本地 API state 由当前关节角正运动学计算实际末端位姿，joints 接口则是绕过笛卡尔链路的关节直通旁路。
+            </desc>
+            <defs>
+              <marker id="joint-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#657789"></path>
+              </marker>
+              <marker id="joint-bypass-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#b1761c"></path>
+              </marker>
+            </defs>
+
+            <rect class="joint-stage joint-stage-input" x="20" y="24" width="245" height="116" rx="14"></rect>
+            <text class="joint-stage-title" x="38" y="50">① Quest UDP 原始输入</text>
+            <text class="joint-stage-code" x="38" y="76">pQ / RQ / Grip / Trigger</text>
+            <text class="joint-stage-text" x="38" y="101">左右手柄各自带时间戳</text>
+            <text class="joint-stage-code" x="38" y="123">controller.py::_process_payload</text>
+
+            <path class="joint-arrow" d="M265 82 L301 82"></path>
+            <rect class="joint-stage joint-stage-input" x="310" y="24" width="245" height="116" rx="14"></rect>
+            <text class="joint-stage-title" x="328" y="50">② 标定与坐标基变换</text>
+            <text class="joint-stage-code" x="328" y="76">pR = Bp · (pQ − pQ,cal)</text>
+            <text class="joint-stage-code" x="328" y="98">RR = BR · ΔRQ · BRᵀ</text>
+            <text class="joint-stage-text" x="328" y="121">输出：RCP 坐标中的 pR / RR</text>
+
+            <path class="joint-arrow" d="M555 82 L591 82"></path>
+            <rect class="joint-stage joint-stage-pose" x="600" y="24" width="245" height="116" rx="14"></rect>
+            <text class="joint-stage-title" x="618" y="50">③ Grip 离合参考</text>
+            <text class="joint-stage-code" x="618" y="76">ΔpG = pR,now − pR,start</text>
+            <text class="joint-stage-code" x="618" y="98">ΔRG = RR,now · RR,startᵀ</text>
+            <text class="joint-stage-text" x="618" y="121">叠加到按下 Grip 时的机械臂锚点</text>
+
+            <path class="joint-arrow" d="M845 82 L881 82"></path>
+            <rect class="joint-stage joint-stage-pose" x="890" y="24" width="270" height="116" rx="14"></rect>
+            <text class="joint-stage-title" x="908" y="50">④ FR3 绝对末端目标</text>
+            <text class="joint-stage-code" x="908" y="76">target_pose = {position, quaternion}</text>
+            <text class="joint-stage-code" x="908" y="99">set_target_absolute()</text>
+            <text class="joint-stage-text" x="908" y="121">尚未求出关节角</text>
+
+            <path class="joint-arrow" d="M1025 140 L1025 194"></path>
+            <rect class="joint-stage joint-stage-pose" x="890" y="203" width="270" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="908" y="229">⑤ 工作空间裁剪</text>
+            <text class="joint-stage-code" x="908" y="255">_desired_position</text>
+            <text class="joint-stage-code" x="908" y="277">_desired_rotation</text>
+            <text class="joint-stage-text" x="908" y="302">目标限制在 Home 相对工作空间内</text>
+
+            <path class="joint-arrow" d="M890 266 L854 266"></path>
+            <rect class="joint-stage joint-stage-pose" x="600" y="203" width="245" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="618" y="229">⑥ 60 Hz 末端目标限速</text>
+            <text class="joint-stage-code" x="618" y="255">_move_vector_toward()</text>
+            <text class="joint-stage-code" x="618" y="277">_move_rotation_toward()</text>
+            <text class="joint-stage-text" x="618" y="302">输出：tracking_pose</text>
+
+            <path class="joint-arrow" d="M600 266 L564 266"></path>
+            <rect class="joint-stage joint-stage-ik" x="310" y="203" width="245" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="328" y="229">⑦ URDF 逆运动学</text>
+            <text class="joint-stage-code" x="328" y="255">chain.solve_ik(tracking_pose, q)</text>
+            <text class="joint-stage-code" x="328" y="277">IkResult.joint_positions</text>
+            <text class="joint-stage-text" x="328" y="302">以上一帧 q 为求解种子</text>
+
+            <path class="joint-arrow" d="M310 266 L274 266"></path>
+            <rect class="joint-stage joint-stage-state" x="20" y="203" width="245" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="38" y="229">⑧ 关节平滑与限位</text>
+            <text class="joint-stage-code" x="38" y="255">_smooth_joint_target()</text>
+            <text class="joint-stage-code" x="38" y="277">chain.clamp(q)</text>
+            <text class="joint-stage-text" x="38" y="302">更新内部 _joint_positions / velocities</text>
+
+            <path class="joint-arrow" d="M142 329 L142 383"></path>
+            <rect class="joint-stage joint-stage-state" x="20" y="392" width="245" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="38" y="418">⑨ 仿真 joint_state</text>
+            <text class="joint-stage-code" x="38" y="444">simulation.joint_state()</text>
+            <text class="joint-stage-code" x="38" y="466">joint_positions: q</text>
+            <text class="joint-stage-code" x="38" y="488">joint_velocities: dq</text>
+
+            <path class="joint-arrow" d="M265 455 L301 455"></path>
+            <rect class="joint-stage joint-stage-output" x="310" y="392" width="245" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="328" y="418">⑩ 单臂 Leader 输出</text>
+            <text class="joint-stage-code" x="328" y="444">get_joint_positions()</text>
+            <text class="joint-stage-code" x="328" y="466">[q1 … q7, gripper?]</text>
+            <text class="joint-stage-text" x="328" y="490">夹爪按配置追加，不在 IK q 内</text>
+
+            <path class="joint-arrow" d="M555 455 L591 455"></path>
+            <rect class="joint-stage joint-stage-output" x="600" y="392" width="245" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="618" y="418">⑪ 双臂顺序拼接</text>
+            <text class="joint-stage-code" x="618" y="444">[left q, left grip,</text>
+            <text class="joint-stage-code" x="618" y="466"> right q, right grip]</text>
+            <text class="joint-stage-text" x="618" y="490">双 FR3 + 双夹爪：16 维</text>
+
+            <path class="joint-arrow" d="M845 455 L881 455"></path>
+            <rect class="joint-stage joint-stage-output" x="890" y="392" width="270" height="126" rx="14"></rect>
+            <text class="joint-stage-title" x="908" y="418">⑫ RCP 对外状态</text>
+            <text class="joint-stage-code" x="908" y="444">observation.robot.joint_state</text>
+            <text class="joint-stage-code" x="908" y="466">ProtocolInputAdapter · 60 Hz</text>
+            <text class="joint-stage-text" x="908" y="490">Teleop → action.robot.joint_position</text>
+
+            <path class="joint-arrow" d="M142 518 L142 559"></path>
+            <rect class="joint-stage joint-stage-ik" x="20" y="568" width="300" height="118" rx="14"></rect>
+            <text class="joint-stage-title" x="38" y="594">状态观察分支：GET /api/state</text>
+            <text class="joint-stage-code" x="38" y="620">joint_positions / target_pose</text>
+            <text class="joint-stage-code" x="38" y="642">tracking_pose / ee_pose = FK(q)</text>
+            <text class="joint-stage-text" x="38" y="666">ee_pose 是当前 q 的实际末端位姿</text>
+
+            <rect class="joint-stage joint-stage-state" x="355" y="568" width="340" height="118" rx="14"></rect>
+            <text class="joint-stage-title" x="373" y="594">关节直通调试：POST /api/joints</text>
+            <text class="joint-stage-code" x="373" y="620">set_joint_positions(q)</text>
+            <text class="joint-stage-text" x="373" y="644">裁剪关节限位并令 dq = 0</text>
+            <text class="joint-stage-text" x="373" y="666">不经过 target_pose、末端限速和 IK</text>
+            <path class="joint-bypass" d="M525 568 L525 548 L142 548 L142 527"></path>
+            <text class="joint-branch-label" x="536" y="545">调试旁路</text>
+
+            <path class="joint-arrow" d="M1025 518 L1025 559"></path>
+            <rect class="joint-stage joint-stage-output" x="890" y="568" width="270" height="118" rx="14"></rect>
+            <text class="joint-stage-title" x="908" y="594">下游执行</text>
+            <text class="joint-stage-code" x="908" y="620">Teleop / target controller</text>
+            <text class="joint-stage-code" x="908" y="642">action.robot.joint_position</text>
+            <text class="joint-stage-text" x="908" y="666">本地仿真可停在第⑨步观察</text>
+          </svg>
+        </div>
+        <figcaption>
+          主链一直到 RCP 的 <code>observation.robot.joint_state</code>：
+          <code>target_pose</code> 是笛卡尔目标，<code>tracking_pose</code> 是限速后的 IK 输入，
+          <code>joint_state</code> 是 IK 和关节平滑后的 <code>q / dq</code>；
+          <code>ee_pose</code> 则由当前 <code>q</code> 正运动学反算，用来表示模型实际到达的位置。
+        </figcaption>
+      </figure>
+
+      <h3>4.1 坐标转换的 10 个执行步骤</h3>
+      <ol class="steps">
+        <li>
+          <strong>接收左右手柄原始数据</strong>
+          <p>
+            UDP 接收线程读取 <code>leftController</code> 和 <code>rightController</code>。
+            每侧包含三维位置、xyzw 四元数、时间戳、Grip、Trigger 和标定按钮状态。
+          </p>
+          <div class="step-io">
+            <span><b>输入：</b><code>position{x,y,z}</code>、<code>rotation{x,y,z,w}</code></span>
+            <span><b>输出：</b>Quest 原始位姿 <code>pQ</code>、<code>RQ</code></span>
+          </div>
+        </li>
+        <li>
+          <strong>检查数据来源和新鲜度</strong>
+          <p>
+            只接受配置的 <code>source_ip</code>；带时间戳的数据保持单调递增。最近数据超过
+            <code>stale_timeout_s</code> 后暂停输出，避免继续使用旧手柄姿态。
+          </p>
+          <div class="step-io">
+            <span><b>检查：</b>发送端 IP、时间戳、最近收包时间</span>
+            <span><b>失败行为：</b>停止生成新的关节目标</span>
+          </div>
+        </li>
+        <li>
+          <strong>按 X+A 建立标定参考</strong>
+          <p>
+            双臂模式要求左右标定按钮同时按下。上升沿触发时，分别保存当前原始位姿
+            <code>pQ,cal</code> 和 <code>RQ,cal</code>，并把标定后的手柄相对位姿置零。
+          </p>
+          <div class="step-io">
+            <span><b>保存：</b>左右手柄各自的标定位置和标定旋转</span>
+            <span><b>结果：</b>中立手柄姿态对应零平移、单位旋转</span>
+          </div>
+        </li>
+        <li>
+          <strong>计算相对标定位置</strong>
+          <p>每次收到新包，先减去标定位置：</p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>ΔpQ = pQ,now - pQ,cal</pre>
+          </div>
+        </li>
+        <li>
+          <strong>把位置增量转换到 RCP 坐标</strong>
+          <p>使用当前 <code>coordinate_basis</code> 左乘位置增量：</p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>pR = Bp × ΔpQ
+
+Bp = [[0, 0, -1],
+      [1, 0,  0],
+      [0, 1,  0]]
+
+XR = -ZQ
+YR =  XQ
+ZR =  YQ</pre>
+          </div>
+          <p>转换后的语义固定为 X 向前、Y 向左、Z 向上。</p>
+        </li>
+        <li>
+          <strong>计算并转换相对旋转</strong>
+          <p>
+            先求当前手柄相对标定姿态的旋转，再用 <code>rotation_basis</code> 完成坐标基变换，
+            最后应用旋转分量符号配置。
+          </p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>ΔRQ = RQ,now × transpose(RQ,cal)
+RR  = BR × ΔRQ × transpose(BR)
+qR.xyz = qR.xyz × [-1, -1, +1]
+
+BR = [[ 0, 0, 1],
+      [-1, 0, 0],
+      [ 0, 1, 0]]</pre>
+          </div>
+          <p>
+            为保持四元数连续，如果新旧四元数点积小于零，代码会把新四元数整体取反。
+            这不会改变物理旋转，只会避免数值表达跳号。
+          </p>
+        </li>
+        <li>
+          <strong>Grip 按下时建立离合参考</strong>
+          <p>
+            每次 Grip 从松开变为按下时，系统记录当前 RCP 手柄相对位姿
+            <code>pR,start / RR,start</code>，同时记录机械臂当前目标
+            <code>panchor / Ranchor</code>。这是第二层参考点。
+          </p>
+          <div class="step-io">
+            <span><b>标定参考：</b>决定手柄轴和中立姿态</span>
+            <span><b>Grip 参考：</b>决定本次拖动从机械臂哪里开始</span>
+          </div>
+        </li>
+        <li>
+          <strong>计算 Grip 按下期间的位姿增量</strong>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>ΔpG = pR,now - pR,start
+ΔRG = RR,now × transpose(RR,start)</pre>
+          </div>
+          <p>
+            松开 Grip 时冻结当前目标并清除离合参考；下一次按下会重新建立参考，因此松开期间的手柄移动不会进入机械臂目标。
+          </p>
+        </li>
+        <li>
+          <strong>叠加到 FR3 绝对末端目标</strong>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>ptarget = panchor + translation_scale × ΔpG
+Rtarget = ΔRG × Ranchor</pre>
+          </div>
+          <p>
+            <code>ptarget / Rtarget</code> 是 FR3 基坐标系下的绝对末端目标，也是键盘、手柄和滑块最终应该生成的数据。
+          </p>
+        </li>
+        <li>
+          <strong>限制目标、求解 IK 并输出关节角</strong>
+          <p>仿真线程以 60 Hz 依次处理：</p>
+          <ol class="substeps">
+            <li>按 <code>workspace_delta_limits_m</code> 裁剪绝对位置。</li>
+            <li>按最大平移和旋转速度，把 tracking pose 向 target pose 推进一步。</li>
+            <li>以上一帧关节角为种子执行 URDF IK。</li>
+            <li>IK 收敛后，按关节速度和加速度限制平滑到新的关节解。</li>
+            <li>IK 未收敛时保留最后合法关节角，并在状态中报告误差。</li>
+            <li>通过 <code>/api/state</code> 或 RCP <code>joint_state</code> 输出关节角。</li>
+          </ol>
+        </li>
+      </ol>
+
+      <h3>4.2 一次完整的平移数值示例</h3>
+      <div class="worked-example">
+        <h4>目标：从 Quest 原始坐标计算 FR3 绝对末端位置</h4>
+        <p><b>1. 标定时 Quest 位置：</b><code>pQ,cal = [0.10, 1.20, -0.30]</code></p>
+        <p><b>2. 当前 Quest 位置：</b><code>pQ,now = [0.13, 1.24, -0.38]</code></p>
+        <p><b>3. 相对标定位置：</b><code>ΔpQ = [0.03, 0.04, -0.08]</code></p>
+        <p><b>4. 映射到 RCP：</b><code>pR,now = [0.08, 0.03, 0.04]</code></p>
+        <p><b>5. 本次 Grip 按下起点：</b><code>pR,start = [0.02, 0.01, 0.00]</code></p>
+        <p><b>6. Grip 内增量：</b><code>ΔpG = [0.06, 0.02, 0.04]</code></p>
+        <p><b>7. 机械臂锚点：</b><code>panchor = [0.30, 0.20, 0.35]</code></p>
+        <p><b>8. translation_scale = 1.0 时：</b><code>ptarget = [0.36, 0.22, 0.39]</code></p>
+      </div>
+      <p>
+        后端随后按 Home 相对工作空间裁剪这个目标，再执行平滑和 IK。调试方向时先让单个 Quest
+        原始轴只变化一个小量，观察 <code>target_pose.position</code> 中哪个 RCP 轴发生变化。
+      </p>
+
+      <h3>4.3 <code>/api/state</code> 中的三个机械臂位姿</h3>
+      <table>
+        <thead>
+          <tr><th>字段</th><th>含义</th><th>交接时的用途</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>ee_pose</code></td>
+            <td>当前仿真关节角经过 FK 得到的末端位姿。</td>
+            <td>确认模型实际到达的位置。</td>
+          </tr>
+          <tr>
+            <td><code>tracking_pose</code></td>
+            <td>经过末端速度限制后，当前 IK 正在跟踪的中间位姿。</td>
+            <td>排查输入目标变化过快时的跟踪过程。</td>
+          </tr>
+          <tr>
+            <td><code>target_pose</code></td>
+            <td>滑块、Quest、键盘或手柄最终要求的绝对目标。</td>
+            <td>检查输入适配器是否生成了正确目标。</td>
+          </tr>
+          <tr>
+            <td><code>joint_positions</code></td>
+            <td>当前平滑后的关节角。</td>
+            <td>Three.js 显示、日志检查和下游关节角接入。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.4 从末端目标到 <code>joint_state</code> 的 9 个执行步骤</h3>
+      <ol class="steps">
+        <li>
+          <strong>写入绝对末端目标</strong>
+          <p>
+            Quest 桥接器、键盘、手柄和网页滑块最终都调用
+            <code>UrdfJointSimulation.set_target_absolute(position, quaternion)</code>。
+            这里写入的是 FR3 基坐标系下的目标位姿，还不是关节角。
+          </p>
+        </li>
+        <li>
+          <strong>裁剪目标并保存 <code>target_pose</code></strong>
+          <p>
+            后端先按 Home 相对工作空间限制位置，再保存为
+            <code>_desired_position / _desired_rotation</code>；快照中的
+            <code>target_pose</code> 就来自这两个期望值。
+          </p>
+        </li>
+        <li>
+          <strong>60 Hz 调用 <code>advance()</code></strong>
+          <p>
+            <code>SimulationRunner</code> 每帧调用一次仿真推进。键盘和游戏手柄只需要持续更新目标，
+            不应该各自实现 IK 或关节限速。
+          </p>
+        </li>
+        <li>
+          <strong>把末端目标限速为 <code>tracking_pose</code></strong>
+          <p>
+            <code>_move_vector_toward()</code> 限制平移速度，
+            <code>_move_rotation_toward()</code> 限制旋转速度。得到的中间位姿是当前帧真正送给 IK 的目标。
+          </p>
+        </li>
+        <li>
+          <strong>以上一帧关节角为种子执行 URDF IK</strong>
+          <p>
+            <code>chain.solve_ik(next_position, next_rotation, current_joints)</code>
+            返回 <code>IkResult.joint_positions</code>、收敛状态、位置误差和旋转误差。
+          </p>
+        </li>
+        <li>
+          <strong>平滑并限制关节解</strong>
+          <p>
+            IK 收敛后，<code>_smooth_joint_target()</code> 按关节速度和加速度约束逐步逼近关节解，
+            再由 <code>chain.clamp()</code> 执行关节限位。IK 不收敛时保留最后一组合法关节角，避免跳变。
+          </p>
+        </li>
+        <li>
+          <strong>生成仿真内部 <code>q / dq</code></strong>
+          <p>
+            <code>simulation.joint_state()</code> 返回平滑后的
+            <code>joint_positions</code> 和 <code>joint_velocities</code>。夹爪值在这一层独立维护，不属于机械臂 IK 解。
+          </p>
+        </li>
+        <li>
+          <strong>添加夹爪并拼接左右臂</strong>
+          <p>
+            单臂 <code>get_joint_positions()</code> 按配置在机械臂关节后追加夹爪；
+            双臂控制器再按“左臂关节、左夹爪、右臂关节、右夹爪”顺序拼接。双 FR3 含双夹爪时共 16 维。
+          </p>
+        </li>
+        <li>
+          <strong>发布 RCP <code>joint_state</code></strong>
+          <p>
+            <code>dual_joint_leader_integration.yaml</code> 通过
+            <code>ProtocolInputAdapter</code> 以 60 Hz 暴露
+            <code>observation.robot.joint_state</code>；Teleop 再把它转发为执行端的
+            <code>action.robot.joint_position</code>。
+          </p>
+        </li>
+      </ol>
+
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>simulation.joint_state()
+{
+  "joint_positions": [q1, ..., q7],
+  "joint_velocities": [dq1, ..., dq7]
+}
+
+单臂 Leader observation
+{"joint_positions": [q1, ..., q7, gripper]}
+
+双 FR3 Leader observation
+{"joint_positions": [left_q1, ..., left_q7, left_gripper,
+                     right_q1, ..., right_q7, right_gripper]}</pre>
+      </div>
+
+      <div class="callout important">
+        <strong>最容易混淆的三个量：</strong>
+        <code>target_pose</code> 是输入设备要求的位置，<code>tracking_pose</code> 是本帧 IK 的限速目标，
+        <code>ee_pose</code> 是当前关节角 <code>q</code> 经过 FK 得到的实际位置。
+        RCP 对外发布的主臂状态是 <code>observation.robot.joint_state</code>，不是 <code>ee_pose</code>。
+        <code>POST /api/joints</code> 仅用于关节级本地调试，它会绕过末端目标、末端限速和 IK。
+      </div>
+    </section>
+
+    <section id="simulation-api">
+      <h2>5. 本地仿真接口</h2>
+      <p>默认地址为 <code>http://127.0.0.1:8765</code>。以下命令可直接验证后端。</p>
+
+      <h3>5.1 启动双臂仿真</h3>
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>cd robots/meta_quest3
+source venv/bin/activate
+
+rynnrcp-meta-quest3-sim \
+  --config rynnrcp_robot_meta_quest3/config/sim/franka_fr3_dual.yaml</pre>
+      </div>
+
+      <h3>5.2 读取状态</h3>
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>curl http://127.0.0.1:8765/api/state</pre>
+      </div>
+
+      <h3>5.3 发送末端目标：键盘和手柄使用此接口</h3>
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>curl -X POST http://127.0.0.1:8765/api/target \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "side": "left",
+    "ee_pose": {
+      "position": [0.30, 0.20, 0.35],
+      "orientation_rpy": [-3.14, 0.0, 0.0]
+    },
+    "gripper": 0.5
+  }'</pre>
+      </div>
+      <p>
+        后端会进行工作空间裁剪、目标限速、IK 和关节平滑。前端无需自行计算关节角。
+      </p>
+
+      <h3>5.4 直接发送关节角：用于回放和数据格式调试</h3>
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>curl -X POST http://127.0.0.1:8765/api/joints \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "joint_positions": [
+      0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 1.0,
+      0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 1.0
+    ]
+  }'</pre>
+      </div>
+      <div class="callout warn">
+        双 FR3 的数组顺序固定为：左 7 个关节、左夹爪、右 7 个关节、右夹爪。
+        <code>/api/joints</code> 会直接更新仿真关节状态，适合本地回放；连续末端控制使用
+        <code>/api/target</code> 以保留 IK 和平滑链路。
+      </div>
+
+      <h3>5.5 本地闭环验证步骤</h3>
+      <ol class="steps">
+        <li>
+          <strong>启动时先关闭 Quest 输入</strong>
+          <p>
+            启动命令暂时不带 <code>--quest</code>，让页面只有滑块和 HTTP API 一个控制源，便于确认基础链路。
+          </p>
+        </li>
+        <li>
+          <strong>确认 Home 和模型状态</strong>
+          <p>
+            打开页面后确认左右臂均显示 IK 已收敛、位置误差接近零、关节数量为每臂 7 个并带夹爪。
+          </p>
+        </li>
+        <li>
+          <strong>记录状态基线</strong>
+          <p>
+            请求 <code>/api/state</code>，保存左右臂的 <code>target_pose</code>、<code>tracking_pose</code>、
+            <code>ee_pose</code> 和顶层 <code>joint_positions</code>。后续每次测试都与这份基线比较。
+          </p>
+        </li>
+        <li>
+          <strong>单轴发送一个小目标</strong>
+          <p>
+            只修改左臂 X，例如在当前绝对 X 上增加 0.01 m，Y、Z 和姿态保持原值。
+            先观察 <code>target_pose</code> 变化，再观察 <code>tracking_pose</code> 和 <code>ee_pose</code> 逐步跟上。
+          </p>
+        </li>
+        <li>
+          <strong>依次验证六个自由度</strong>
+          <p>
+            分别测试 +X、+Y、+Z、+RX、+RY、+RZ，每次只改变一个轴。记录页面模型运动方向、IK 状态和误差。
+          </p>
+        </li>
+        <li>
+          <strong>验证工作空间限制</strong>
+          <p>
+            发送略超出配置范围的目标，确认后端把位置限制在 Home 加
+            <code>workspace_delta_limits_m</code> 的边界，状态持续有效且关节角没有突变。
+          </p>
+        </li>
+        <li>
+          <strong>验证关节角回放接口</strong>
+          <p>
+            先发送示例 16 维 Home 数据，再故意发送 15 维数组。正确行为分别是返回新状态，以及返回 HTTP 400 和明确的维度错误。
+          </p>
+        </li>
+        <li>
+          <strong>回到 Home 并开始输入设备开发</strong>
+          <p>
+            调用 <code>POST /api/home</code>，确认双臂平滑回到 Home。此时基础后端闭环通过，可以开始接键盘和游戏手柄。
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="rcp-api">
+      <h2>6. 真机 RCP 关节接口</h2>
+      <p>
+        单台 FR3 对外 Action 为 <code>action.robot.joint_position</code>。值固定为 8 维：
+        前 7 维是弧度制关节目标，最后一维是范围为 0–1 的归一化夹爪开口。
+      </p>
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>positions = [
+    q1, q2, q3, q4, q5, q6, q7,
+    gripper_position,
+]
+
+response = client.run_action_chunk(
+    "action.robot.joint_position",
+    [{"joint_positions": positions}],
+    frame_rate=60,
+)</pre>
+      </div>
+
+      <h3>后端调用路径</h3>
+      <div class="flow six">
+        <div class="flow-step accent">run_action_chunk</div>
+        <div class="flow-step">ActionService</div>
+        <div class="flow-step">ModuleConnector</div>
+        <div class="flow-step">set_control_positions</div>
+        <div class="flow-step">set_joint_target</div>
+        <div class="flow-step">Ruckig<br>1 kHz</div>
+      </div>
+
+      <div class="callout risk">
+        真机联调前清空工作空间并保持急停可用。先在 Web 仿真确认坐标方向、关节顺序、限位和
+        Grip/使能键行为，再连接 FR3。目标流中断后，FR3 native 控制循环会按超时逻辑平滑停止并保持。
+      </div>
+
+      <h3>6.1 从本地仿真接到单台 FR3 的步骤</h3>
+      <ol class="steps">
+        <li>
+          <strong>完成本地仿真验收</strong>
+          <p>
+            先通过第 5 节全部检查，确认末端方向、IK、工作空间、关节顺序、使能释放和 Home 行为。
+            保存一组已验证的 Home 关节角和小范围末端测试目标。
+          </p>
+        </li>
+        <li>
+          <strong>在连接 FR3 的 Ubuntu 主机准备环境</strong>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>cd robots/franka_fr3
+bash setup_franka_fr3.sh
+source venv/bin/activate</pre>
+          </div>
+        </li>
+        <li>
+          <strong>启动执行端 FR3 Server</strong>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>rynnrcp-server \
+  --config rynnrcp_robot_franka_fr3/config/franka_fr3_server.yaml</pre>
+          </div>
+          <p>
+            记录终端打印的真实 gRPC 地址，并确认 Manifest 中存在
+            <code>observation.robot.joint_state</code> 和 <code>action.robot.joint_position</code>。
+          </p>
+        </li>
+        <li>
+          <strong>只读检查真实机械臂状态</strong>
+          <p>
+            读取 8 维 <code>joint_state</code>，确认前 7 维关节角处于配置限位内，第 8 维夹爪在 0–1。
+            <code>FrankaController.get_ee_pose()</code> 已能读取实测末端位姿；当前 Integration
+            未把它声明为公开 Observation，需要时新增 <code>ee_pose</code> 描述后再通过 RCP 读取。
+          </p>
+        </li>
+        <li>
+          <strong>启动键盘/手柄主臂 Server</strong>
+          <p>
+            主臂侧继续使用 URDF IK，把末端目标转换成 8 维关节 Observation。
+            初次真机联调使用单右臂配置和较低速度，确认稳定后再处理双臂执行端拆分。
+          </p>
+        </li>
+        <li>
+          <strong>在 Teleop 中配置唯一控制流</strong>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>source: observation.robot.joint_state
+target: action.robot.joint_position
+rate:   60 Hz</pre>
+          </div>
+          <p>先保持运动使能释放，观察主臂和执行端状态均在线、维度均为 8。</p>
+        </li>
+        <li>
+          <strong>低速执行单轴动作</strong>
+          <p>
+            按住使能键执行约 5 mm 的 +X 位移并释放。确认 FR3 移动方向、实测关节变化、目标超时保持和急停均符合预期，
+            再依次验证其他轴和夹爪。
+          </p>
+        </li>
+        <li>
+          <strong>确认双臂执行架构</strong>
+          <p>
+            当前双臂主臂输出是 16 维合并向量，单台 FR3 执行端只接受 8 维。
+            双真机接入需要明确采用“两台 FR3 Server 分别接收 8 维”还是新增一个双臂执行 Server 负责拆分，
+            再配置对应的 Teleop 控制流。
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="keyboard">
+      <h2>7. 键盘控制方案</h2>
+      <p>
+        键盘输入表达末端速度。页面维护当前按键集合，每个动画帧根据 <code>dt</code> 积分成新的
+        <code>targets[side]</code>，最后调用现有 <code>scheduleTarget(side)</code>。
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>按键</th><th>功能</th><th>建议行为</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>1</code> / <code>2</code></td><td>选择左臂 / 右臂</td><td>界面突出显示当前控制侧。</td></tr>
+          <tr><td><code>Space</code></td><td>运动使能键</td><td>按住才更新目标，松开时调用保持。</td></tr>
+          <tr><td><code>W/S</code></td><td>X 前 / 后</td><td>默认平移速度 0.05 m/s。</td></tr>
+          <tr><td><code>A/D</code></td><td>Y 左 / 右</td><td>方向遵循 RCP 坐标系。</td></tr>
+          <tr><td><code>R/F</code></td><td>Z 上 / 下</td><td>目标仍受工作空间配置限制。</td></tr>
+          <tr><td><code>↑/↓</code></td><td>绕 X 旋转</td><td>默认角速度 0.3 rad/s。</td></tr>
+          <tr><td><code>←/→</code></td><td>绕 Y 旋转</td><td>按页面当前末端姿态连续积分。</td></tr>
+          <tr><td><code>Q/E</code></td><td>绕 Z 旋转</td><td>用于末端 Roll/Yaw 微调。</td></tr>
+          <tr><td><code>[</code> / <code>]</code></td><td>夹爪闭合 / 打开</td><td>限制在 0–1。</td></tr>
+          <tr><td><code>H</code></td><td>回到 Home</td><td>调用现有 <code>/api/home</code>。</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        使用 <code>keydown</code>/<code>keyup</code> 维护按键状态，以动画帧时间积分目标。
+        浏览器的按键重复频率只用于文本输入，不适合作为运动控制频率。
+      </div>
+
+      <h3>7.1 键盘前端实现步骤</h3>
+      <ol class="steps">
+        <li>
+          <strong>增加输入状态</strong>
+          <p>
+            在 <code>dual.html</code> 的 <code>targets</code> 附近增加当前控制侧、按键集合、使能状态、速度配置和上一帧时间。
+          </p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>const keyboard = {
+  activeSide: "left",
+  pressed: new Set(),
+  enabled: false,
+  linearSpeed: 0.05,
+  angularSpeed: 0.30,
+  gripperSpeed: 0.50,
+  lastFrameAt: performance.now(),
+};</pre>
+          </div>
+        </li>
+        <li>
+          <strong>监听物理按键码</strong>
+          <p>
+            使用 <code>event.code</code>，这样键盘布局变化时 WASD 的物理位置仍保持一致。
+            对 Space、方向键等浏览器快捷键调用 <code>preventDefault()</code>。
+          </p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>window.addEventListener("keydown", event =&gt; {
+  if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]
+      .includes(event.code)) event.preventDefault();
+
+  if (event.code === "Digit1") keyboard.activeSide = "left";
+  if (event.code === "Digit2") keyboard.activeSide = "right";
+  if (event.code === "Space") keyboard.enabled = true;
+  keyboard.pressed.add(event.code);
+});</pre>
+          </div>
+        </li>
+        <li>
+          <strong>以每帧时间积分末端速度</strong>
+          <p>
+            每个动画帧把按键转换成轴向值，乘以速度和 <code>dt</code>，更新当前侧的绝对目标。
+            将 <code>dt</code> 限制在 0–0.05 s，可避免页面卡顿恢复时一次跳太远。
+          </p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>function keyAxis(positive, negative) {
+  return Number(keyboard.pressed.has(positive))
+       - Number(keyboard.pressed.has(negative));
+}
+
+function updateKeyboard(now) {
+  const dt = Math.min(0.05, Math.max(0, (now - keyboard.lastFrameAt) / 1000));
+  keyboard.lastFrameAt = now;
+
+  if (keyboard.enabled) {
+    const side = keyboard.activeSide;
+    const target = targets[side];
+
+    target.position[0] += keyAxis("KeyW", "KeyS") * keyboard.linearSpeed * dt;
+    target.position[1] += keyAxis("KeyA", "KeyD") * keyboard.linearSpeed * dt;
+    target.position[2] += keyAxis("KeyR", "KeyF") * keyboard.linearSpeed * dt;
+
+    target.orientation_rpy[0] += keyAxis("ArrowUp", "ArrowDown") * keyboard.angularSpeed * dt;
+    target.orientation_rpy[1] += keyAxis("ArrowLeft", "ArrowRight") * keyboard.angularSpeed * dt;
+    target.orientation_rpy[2] += keyAxis("KeyQ", "KeyE") * keyboard.angularSpeed * dt;
+
+    target.gripper += keyAxis("BracketRight", "BracketLeft")
+      * keyboard.gripperSpeed * dt;
+    target.gripper = Math.max(0, Math.min(1, target.gripper));
+
+    syncTargetControls(side);
+    scheduleTarget(side);
+  }
+  requestAnimationFrame(updateKeyboard);
+}</pre>
+          </div>
+        </li>
+        <li>
+          <strong>释放 Space 时立即保持</strong>
+          <p>
+            <code>keyup</code> 删除按键状态。Space 释放时只发送一次 <code>/api/hold</code>，避免机械臂继续追踪释放前尚未到达的目标。
+          </p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>window.addEventListener("keyup", async event =&gt; {
+  keyboard.pressed.delete(event.code);
+  if (event.code !== "Space" || !keyboard.enabled) return;
+
+  keyboard.enabled = false;
+  await post("/api/hold", {
+    side: keyboard.activeSide,
+    source: "keyboard",
+  });
+});</pre>
+          </div>
+        </li>
+        <li>
+          <strong>处理页面失焦</strong>
+          <p>
+            浏览器切换标签页时可能收不到对应的 <code>keyup</code>。监听 <code>blur</code> 和
+            <code>visibilitychange</code>，清空按键并进入保持状态。
+          </p>
+        </li>
+        <li>
+          <strong>同步滑块和输入状态提示</strong>
+          <p>
+            每次程序化修改 <code>targets</code> 后，更新 XYZ、RPY 和夹爪滑块显示；页面顶部显示
+            “键盘 · 左臂 · 已使能”或“键盘 · 等待 Space”，让交接人能判断输入是否生效。
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="gamepad">
+      <h2>8. 游戏手柄控制方案</h2>
+      <p>
+        浏览器通过 <code>navigator.getGamepads()</code> 读取标准手柄。每个动画帧读取轴值，经过死区和
+        曲线处理后转换成末端速度。一个手柄可切换左右臂；两个手柄可分别绑定左右臂。
+      </p>
+
+      <div class="grid two">
+        <article class="card">
+          <span class="status ref">建议映射</span>
+          <h3>平移与旋转</h3>
+          <p>左摇杆控制 X/Y，LT/RT 控制 Z；右摇杆控制 Pitch/Yaw，LB/RB 控制 Roll。</p>
+        </article>
+        <article class="card">
+          <span class="status ref">建议映射</span>
+          <h3>离合与夹爪</h3>
+          <p>A 按住使能；X/B 控制夹爪；D-pad 左右选择机械臂；Start 回 Home。</p>
+        </article>
+      </div>
+
+      <h3>摇杆处理参数</h3>
+      <table>
+        <thead>
+          <tr><th>参数</th><th>建议初值</th><th>用途</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>轴死区</td><td><code>0.12</code></td><td>消除摇杆中心漂移。</td></tr>
+          <tr><td>响应曲线</td><td><code>sign(x) × |x|³</code></td><td>保留中心微调能力，同时覆盖较大速度。</td></tr>
+          <tr><td>最大平移速度</td><td><code>0.05 m/s</code></td><td>先完成低速仿真验收，再按需求提高。</td></tr>
+          <tr><td>最大旋转速度</td><td><code>0.30 rad/s</code></td><td>控制末端姿态变化速度。</td></tr>
+          <tr><td>输入超时</td><td><code>200 ms</code></td><td>页面失焦或手柄断开时进入保持状态。</td></tr>
+        </tbody>
+      </table>
+
+      <h3>8.1 游戏手柄前端实现步骤</h3>
+      <ol class="steps">
+        <li>
+          <strong>发现并显示手柄</strong>
+          <p>
+            监听 <code>gamepadconnected</code> 和 <code>gamepaddisconnected</code>，保存设备索引和
+            <code>gamepad.id</code>。页面显示已连接设备以及绑定的机械臂侧别。
+          </p>
+        </li>
+        <li>
+          <strong>标准化摇杆死区</strong>
+          <p>死区内输出零；死区外重新映射到 0–1，再使用三次曲线：</p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>function shapedAxis(value, deadzone = 0.12) {
+  const magnitude = Math.abs(value);
+  if (magnitude &lt;= deadzone) return 0;
+  const normalized = (magnitude - deadzone) / (1 - deadzone);
+  return Math.sign(value) * normalized ** 3;
+}</pre>
+          </div>
+        </li>
+        <li>
+          <strong>读取标准轴和按钮</strong>
+          <p>
+            每帧重新调用 <code>navigator.getGamepads()</code>。标准映射中，轴 0/1 通常是左摇杆，
+            轴 2/3 是右摇杆，按钮 6/7 是 LT/RT，按钮 4/5 是 LB/RB，按钮 0 是 A。
+          </p>
+        </li>
+        <li>
+          <strong>转换成统一末端速度命令</strong>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>command.linear = [
+  -shapedAxis(gamepad.axes[1]),             // X：左摇杆前后
+  -shapedAxis(gamepad.axes[0]),             // Y：左摇杆左右
+  gamepad.buttons[7].value - gamepad.buttons[6].value, // Z：RT - LT
+];
+
+command.angular = [
+  Number(gamepad.buttons[5].pressed) - Number(gamepad.buttons[4].pressed),
+  -shapedAxis(gamepad.axes[3]),
+  -shapedAxis(gamepad.axes[2]),
+];
+
+command.enabled = gamepad.buttons[0].pressed;</pre>
+          </div>
+        </li>
+        <li>
+          <strong>复用键盘的 TargetIntegrator</strong>
+          <p>
+            键盘和手柄都输出 <code>linear[3]</code>、<code>angular[3]</code>、夹爪速度和
+            <code>enabled</code>。同一个积分器更新 <code>targets[side]</code>，避免维护两套运动逻辑。
+          </p>
+        </li>
+        <li>
+          <strong>处理断开和超时</strong>
+          <p>
+            当前活动手柄消失、页面失焦或连续 200 ms 未读到有效状态时，发送一次
+            <code>/api/hold</code> 并释放该侧控制权。
+          </p>
+        </li>
+        <li>
+          <strong>完成实机手柄映射校准</strong>
+          <p>
+            不同品牌可能交换按钮编号或轴方向。页面增加“输入监视”区域，显示原始 axes/buttons，
+            逐项确认摇杆、扳机、肩键和 A/B/X/Start 后再保存映射。
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="design">
+      <h2>9. 推荐代码设计</h2>
+
+      <h3>9.1 本地仿真 MVP</h3>
+      <div class="flow five">
+        <div class="flow-step">KeyboardInput<br>GamepadInput</div>
+        <div class="flow-step">统一速度命令</div>
+        <div class="flow-step accent">TargetIntegrator</div>
+        <div class="flow-step">现有 targets<br>scheduleTarget</div>
+        <div class="flow-step">POST /api/target</div>
+      </div>
+      <p>
+        第一阶段只修改双臂页面和少量 Web API。继续使用当前 HTTP 请求合并机制：同一侧最多一个请求在途，
+        新输入只保留最新目标。实际延迟不足时再评估 WebSocket。
+      </p>
+
+      <h3>9.2 输入源仲裁</h3>
+      <p>建议增加每侧唯一的活动输入源：</p>
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>active_source[left]  = "quest" | "slider" | "keyboard" | "gamepad" | null
+active_source[right] = "quest" | "slider" | "keyboard" | "gamepad" | null</pre>
+      </div>
+      <ul>
+        <li>使能键按下时获得该侧控制权。</li>
+        <li>使能键释放、页面失焦、手柄断开或输入超时时释放控制权。</li>
+        <li>滑块开始拖动时切换为 <code>slider</code>，停止拖动后保持目标。</li>
+        <li>界面显示当前输入源，便于排查“目标被另一个输入覆盖”。</li>
+      </ul>
+
+      <h3>9.3 建议新增保持接口</h3>
+      <div class="code-block">
+        <button class="copy-button" type="button">复制</button>
+        <pre>POST /api/hold
+{
+  "side": "left",
+  "source": "keyboard"
+}</pre>
+      </div>
+      <p>
+        后端调用对应机械臂的 <code>hold_current()</code>，把当前关节状态通过 FK 转成新的目标，清空未完成目标和速度。
+        这样“释放使能键”的语义是立即保持当前位置。
+      </p>
+
+      <h3>9.3.1 <code>/api/hold</code> 的后端修改顺序</h3>
+      <ol class="steps">
+        <li>
+          <strong>为双臂仿真增加公开保持方法</strong>
+          <p>在 <code>DualArmSimulation</code> 中把侧别检查和单臂保持封装成公开方法：</p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>def hold_current(self, side: str, *, source: str = "manual") -&gt; None:
+    self._arm(side).hold_current(source=source)</pre>
+          </div>
+        </li>
+        <li>
+          <strong>在 HTTP Handler 中注册路由</strong>
+          <p>在 <code>do_POST()</code> 中与 <code>/api/home</code>、<code>/api/target</code> 同级处理：</p>
+          <div class="code-block">
+            <button class="copy-button" type="button">复制</button>
+            <pre>elif self.path == "/api/hold":
+    source = str(payload.get("source") or "manual")
+    if isinstance(self.simulation, DualArmSimulation):
+        self.simulation.hold_current(str(payload.get("side") or ""), source=source)
+    else:
+        self.simulation.hold_current(source=source)</pre>
+          </div>
+        </li>
+        <li>
+          <strong>返回保持后的完整状态</strong>
+          <p>
+            继续复用 Handler 末尾的 <code>self.simulation.snapshot()</code> 响应。前端收到响应后，用新的
+            <code>ee_pose</code> 同步 <code>targets</code> 和滑块，避免下一次使能从旧目标开始。
+          </p>
+        </li>
+        <li>
+          <strong>增加接口测试</strong>
+          <p>
+            覆盖单臂、双臂左右侧、非法侧别、正在追踪时保持、已经静止时重复保持，以及响应中的
+            <code>source</code>、速度和目标位姿。
+          </p>
+        </li>
+      </ol>
+
+      <h3>9.4 后续真机复用</h3>
+      <p>
+        真机版本将 Quest 专属输入逻辑抽象为统一输入源，IK、URDF 仿真和 RCP 输出继续复用：
+      </p>
+      <div class="flow five">
+        <div class="flow-step">QuestInput<br>KeyboardInput<br>GamepadInput</div>
+        <div class="flow-step accent">Cartesian<br>Leader Controller</div>
+        <div class="flow-step">URDF IK<br>平滑</div>
+        <div class="flow-step">observation.robot<br>joint_state</div>
+        <div class="flow-step">Teleop → FR3<br>joint_position</div>
+      </div>
+    </section>
+
+    <section id="delivery">
+      <h2>10. 推荐实施阶段</h2>
+
+      <article class="phase">
+        <div class="phase-number">1</div>
+        <div>
+          <h3>键盘本地仿真闭环</h3>
+          <ol class="substeps">
+            <li>在 <code>dual.html</code> 增加输入状态和当前侧别显示。</li>
+            <li>实现 <code>keydown</code>/<code>keyup</code>、页面失焦清理和 Space 使能。</li>
+            <li>实现统一速度命令与 60 Hz TargetIntegrator。</li>
+            <li>复用 <code>scheduleTarget()</code>，同步 XYZ、RPY 和夹爪滑块。</li>
+            <li>逐轴验证位置和旋转方向。</li>
+          </ol>
+          <p><b>完成标准：</b>连续操作 10 分钟无漂移、无失焦后持续运动、无目标跳变。</p>
+        </div>
+      </article>
+
+      <article class="phase">
+        <div class="phase-number">2</div>
+        <div>
+          <h3>Gamepad API 与输入状态显示</h3>
+          <ol class="substeps">
+            <li>实现连接、断开和原始 axes/buttons 监视。</li>
+            <li>实现死区、三次响应曲线和速度缩放。</li>
+            <li>把手柄转换为与键盘相同的统一速度命令。</li>
+            <li>支持一个手柄切换左右臂，以及两个手柄分别绑定左右臂。</li>
+            <li>验证断开、休眠和页面切换后的保持行为。</li>
+          </ol>
+          <p><b>完成标准：</b>摇杆居中无漂移，设备断开 200 ms 内进入保持。</p>
+        </div>
+      </article>
+
+      <article class="phase">
+        <div class="phase-number">3</div>
+        <div>
+          <h3>保持接口和输入源仲裁</h3>
+          <ol class="substeps">
+            <li>实现单臂和双臂 <code>/api/hold</code>。</li>
+            <li>增加每侧 <code>active_source</code> 和获取/释放控制权规则。</li>
+            <li>处理 Quest、滑块、键盘和手柄之间的切换。</li>
+            <li>界面显示当前输入源、使能状态、最后输入时间和保持原因。</li>
+            <li>补齐接口、输入状态机和回归测试。</li>
+          </ol>
+          <p><b>完成标准：</b>任意输入源切换时末端目标连续，未激活输入无法覆盖活动目标。</p>
+        </div>
+      </article>
+
+      <article class="phase">
+        <div class="phase-number">4</div>
+        <div>
+          <h3>RCP 主臂与真机联调</h3>
+          <ol class="substeps">
+            <li>把输入设备从 Web 页面状态抽象为通用 Cartesian Command。</li>
+            <li>让主臂 Controller 复用 URDF IK，发布 8 维 <code>joint_state</code>。</li>
+            <li>在 Teleop 中绑定 FR3 的 <code>joint_position</code>。</li>
+            <li>完成低速单轴、夹爪、Home、超时和急停测试。</li>
+            <li>确定双真机的两 Server 或双臂拆分 Server 方案。</li>
+          </ol>
+          <p><b>完成标准：</b>目标流中断后 FR3 平滑停止，恢复控制时以当前状态重新建立参考。</p>
+        </div>
+      </article>
+    </section>
+
+    <section id="acceptance">
+      <h2>11. 验收清单</h2>
+      <ul class="checklist">
+        <li>仿真启动后，<code>GET /api/state</code> 持续返回左右臂 16 维控制数据。</li>
+        <li>键盘选择左右臂准确，未选中的一侧保持最后状态。</li>
+        <li>按住使能键才运动；释放、页面失焦和输入超时都会保持当前位置。</li>
+        <li>W/S、A/D、R/F 分别符合 X 前、Y 左、Z 上的 RCP 坐标约定。</li>
+        <li>姿态控制连续，通过 ±π 附近时不会发生明显跳变。</li>
+        <li>游戏手柄中心静止时目标不漂移，轻推可微调，满量程可达到配置速度。</li>
+        <li>目标超过工作空间时被稳定限制，页面显示 IK 状态和误差。</li>
+        <li>IK 不收敛时保持最后合法关节目标，不输出突变关节角。</li>
+        <li>夹爪始终限制在 0–1，左右臂维度和顺序保持固定。</li>
+        <li>Quest、滑块、键盘和手柄切换时，界面显示当前输入源且目标无跳变。</li>
+        <li>关节回放接口可接受 16 维数据，维度错误时返回可定位的错误信息。</li>
+        <li>连接真机前已完成低速仿真、Home、限位、超时停止和急停检查。</li>
+      </ul>
+    </section>
+
+    <section id="code-map">
+      <h2>12. 代码导航</h2>
+      <div class="file-list">
+        <div class="file-row">
+          <a href="../robots/meta_quest3/rynnrcp_robot_meta_quest3/web/dual.html">robots/meta_quest3/rynnrcp_robot_meta_quest3/web/dual.html</a>
+          <span>双臂页面、末端滑块、<code>targets</code>、请求合并和状态刷新。键盘与手柄 MVP 的主要修改点。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/meta_quest3/rynnrcp_robot_meta_quest3/web/sim_shared.js">robots/meta_quest3/rynnrcp_robot_meta_quest3/web/sim_shared.js</a>
+          <span>共享的 Three.js 页面工具和 <code>postJson()</code>。通用输入工具也可放在这里。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/meta_quest3/rynnrcp_robot_meta_quest3/web_sim.py">robots/meta_quest3/rynnrcp_robot_meta_quest3/web_sim.py</a>
+          <span>Web API、仿真状态、工作空间限制、目标限速、IK、关节平滑和 Quest Bridge。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/meta_quest3/rynnrcp_robot_meta_quest3/controller.py">robots/meta_quest3/rynnrcp_robot_meta_quest3/controller.py</a>
+          <span>Quest UDP 接收、标定、坐标映射、Grip/Trigger 和数据新鲜度检查。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/meta_quest3/rynnrcp_robot_meta_quest3/joint_leader.py">robots/meta_quest3/rynnrcp_robot_meta_quest3/joint_leader.py</a>
+          <span>将 Quest 和 URDF IK 组合为 RCP 主臂，发布单臂 8 维或双臂 16 维关节数据。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/meta_quest3/rynnrcp_robot_meta_quest3/config/dual_joint_leader_integration.yaml">robots/meta_quest3/rynnrcp_robot_meta_quest3/config/dual_joint_leader_integration.yaml</a>
+          <span>双臂主臂 <code>observation.robot.joint_state</code> 的 60 Hz RCP 声明。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/meta_quest3/rynnrcp_robot_meta_quest3/config/sim/franka_fr3_dual.yaml">robots/meta_quest3/rynnrcp_robot_meta_quest3/config/sim/franka_fr3_dual.yaml</a>
+          <span>双 FR3 URDF、Home、工作空间、夹爪和 Quest 网络配置。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/franka_fr3/rynnrcp_robot_franka_fr3/config/robot_integration.yaml">robots/franka_fr3/rynnrcp_robot_franka_fr3/config/robot_integration.yaml</a>
+          <span>真实 FR3 的 <code>action.robot.joint_position</code> 和 <code>observation.robot.joint_state</code> 声明。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/franka_fr3/rynnrcp_robot_franka_fr3/controller.py">robots/franka_fr3/rynnrcp_robot_franka_fr3/controller.py</a>
+          <span>8 维关节与夹爪解析、真机状态读取、目标校验和 native 调用。</span>
+        </div>
+        <div class="file-row">
+          <a href="../robots/franka_fr3/native/franka_native.cpp">robots/franka_fr3/native/franka_native.cpp</a>
+          <span>libfranka 控制、Ruckig 平滑、目标超时和 1 kHz native 控制循环。</span>
+        </div>
+        <div class="file-row">
+          <a href="../rynnrcp/interface/protocol_client.py">rynnrcp/interface/protocol_client.py</a>
+          <span>接入方调用 <code>run_action_chunk()</code> 的 Python 客户端入口。</span>
+        </div>
+        <div class="file-row">
+          <a href="../apps/teleop/rynnrcp_app_teleop/teleop_app.py">apps/teleop/rynnrcp_app_teleop/teleop_app.py</a>
+          <span>从主臂 Observation 读取关节值，并转成执行端 Action 的转发循环。</span>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      本页是可离线打开的单文件交接说明。推荐交接顺序：先演示 <code>/api/target</code> 和
+      <code>/api/state</code> 的本地闭环，再讲解键盘/手柄输入适配，最后说明 RCP 真机转发链路和验收边界。
+    </footer>
+  </main>
+</div>
+
+<script>
+  document.querySelectorAll(".copy-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const pre = button.parentElement.querySelector("pre");
+      if (!pre) return;
+      const original = button.textContent;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(pre.innerText);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = pre.innerText;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
+        button.textContent = "已复制";
+      } catch (_error) {
+        button.textContent = "请手动复制";
+      }
+      window.setTimeout(() => { button.textContent = original; }, 1200);
+    });
+  });
+</script>
+</body>
+</html>

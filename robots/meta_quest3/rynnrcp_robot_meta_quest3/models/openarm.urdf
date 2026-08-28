@@ -1,0 +1,69 @@
+<?xml version="1.0"?>
+<!-- Kinematic URDF derived from RynnMotion openarm_pinocchio.xml. -->
+<robot name="openarm">
+  <link name="base">
+    <visual><geometry><mesh filename="assets/openarm/link0.stl" scale="0.001 -0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="link1">
+    <visual><origin xyz="0 0 -0.0625" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/link1.stl" scale="0.001 -0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="link2">
+    <visual><origin xyz="0.0301 0 -0.1225" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/link2.stl" scale="0.001 -0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="link3">
+    <visual><origin xyz="0 0 -0.18875" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/link3.stl" scale="0.001 -0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="link4">
+    <visual><origin xyz="0 -0.0315 -0.3425" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/link4.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="link5">
+    <visual><origin xyz="0 0 -0.438" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/link5.stl" scale="0.001 -0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="link6">
+    <visual><origin xyz="-0.0375 0 -0.5585" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/link6.stl" scale="0.001 -0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="link7">
+    <visual><origin xyz="0 0 -0.5585" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/link7.stl" scale="0.001 -0.001 0.001"/></geometry></visual>
+    <visual><origin xyz="0 0 -0.5584" rpy="0 0 0"/><geometry><mesh filename="assets/openarm/hand.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+  </link>
+  <link name="EE"/>
+  <joint name="joint1" type="revolute">
+    <parent link="base"/><child link="link1"/>
+    <origin xyz="0 0 0.0625" rpy="0 0 0"/><axis xyz="0 0 1"/>
+    <limit lower="-3.49066" upper="1.39626" effort="40" velocity="2"/>
+  </joint>
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="-0.0301 0 0.06" rpy="0 0 0"/><axis xyz="-1 0 0"/>
+    <limit lower="-1.74533" upper="1.74533" effort="40" velocity="2"/>
+  </joint>
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/><child link="link3"/>
+    <origin xyz="0.0301 0 0.06625" rpy="0 0 0"/><axis xyz="0 0 1"/>
+    <limit lower="-1.5708" upper="1.5708" effort="27" velocity="2"/>
+  </joint>
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/><child link="link4"/>
+    <origin xyz="0 0.0315 0.15375" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="0" upper="2.44346" effort="27" velocity="2"/>
+  </joint>
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/><child link="link5"/>
+    <origin xyz="0 -0.0315 0.0955" rpy="0 0 0"/><axis xyz="0 0 1"/>
+    <limit lower="-1.5708" upper="1.5708" effort="7" velocity="2"/>
+  </joint>
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/><child link="link6"/>
+    <origin xyz="0.0375 0 0.1205" rpy="0 0 0"/><axis xyz="1 0 0"/>
+    <limit lower="-0.785398" upper="0.785398" effort="7" velocity="2"/>
+  </joint>
+  <joint name="joint7" type="revolute">
+    <parent link="link6"/><child link="link7"/>
+    <origin xyz="-0.0375 0 0" rpy="0 0 0"/><axis xyz="0 -1 0"/>
+    <limit lower="-1.5708" upper="1.5708" effort="7" velocity="2"/>
+  </joint>
+  <joint name="ee_fixed" type="fixed">
+    <parent link="link7"/><child link="EE"/>
+    <origin xyz="0 0 0.19" rpy="0 0 0"/>
+  </joint>
+</robot>

@@ -20,6 +20,7 @@ IPC 和进程相关测试会创建 POSIX shared memory 和 semaphore，建议在
 | --- | --- |
 | `adapters/test_protocol_adapters.py` | 当前协议 input/image/action adapter 行为。 |
 | `config/test_core_config.py` | 源配置加载器和校验覆盖。 |
+| `config/test_franka_configure_web.py` | Franka FR3 连接、单关节测试和 Home 保存。 |
 | `config/test_lekiwi_configure_web.py` | LeKiwi Web 配置保存和本机身份 ID。 |
 | `config/test_runtime_config.py` | Runtime 直接从 server、core、integration 配置初始化。 |
 | `config/test_so101_configure_web.py` | SO101 Web 配置保存和本机身份 ID。 |

@@ -32,6 +32,7 @@ JOINT_LIMITS_DEG = (
 )
 DUAL_HAND_ORDER = ("left", "right")
 _CONTROL_LOOP_HZ = 60.0
+_FEEDBACK_READ_HZ = 10.0
 _MAX_JOINT_VELOCITY_RAD_S = 5.0
 _TARGET_SMOOTHING = 0.18
 _TARGET_TOLERANCE_RAD = 1e-3
@@ -77,6 +78,7 @@ class AeroHandController(BaseRobotController):
         self._worker_stop = threading.Event()
         self._worker_thread: threading.Thread | None = None
         self._latest_positions: List[float] | None = None
+        self._measured_positions: List[float] | None = None
         self._last_commanded_positions: List[float] | None = None
         self._target_positions: List[float] | None = None
         self._last_worker_error: dict[str, Any] | None = None
@@ -121,14 +123,10 @@ class AeroHandController(BaseRobotController):
 
     def get_joint_positions(self) -> Dict[str, List[float]]:
         with self._lock:
-            if self._is_connected():
-                try:
-                    return {"joint_positions": self._read_joint_positions_locked()}
-                except Exception as exc:
-                    self.logger.warning("Aero Hand state read failed: %s", exc)
-            if self._latest_positions is None:
+            positions = self._measured_positions or self._latest_positions
+            if positions is None:
                 raise RuntimeError("AeroHandController has no cached joint state yet")
-            return {"joint_positions": list(self._latest_positions)}
+            return {"joint_positions": list(positions)}
 
     def set_joint_positions(self, value: Dict[str, Any]) -> Dict[str, List[float]]:
         if not isinstance(value, Mapping):
@@ -210,12 +208,18 @@ class AeroHandController(BaseRobotController):
 
     def _worker_loop(self) -> None:
         period_s = 1.0 / _CONTROL_LOOP_HZ
+        feedback_period_s = 1.0 / _FEEDBACK_READ_HZ
         next_tick = time.monotonic()
+        next_feedback_at = next_tick + feedback_period_s
         last_error_log = 0.0
         while not self._worker_stop.is_set():
             try:
                 next_tick += period_s
                 self._send_interpolated_target(period_s)
+                now = time.monotonic()
+                if now >= next_feedback_at:
+                    self._refresh_feedback()
+                    next_feedback_at = now + feedback_period_s
                 self._last_worker_error = None
                 sleep_s = max(0.0, next_tick - time.monotonic())
                 if self._worker_stop.wait(sleep_s):
@@ -262,8 +266,29 @@ class AeroHandController(BaseRobotController):
         positions: List[float] = []
         for hand_side in self._active_hands():
             positions.extend(self._read_hand_positions(self._hands[hand_side]))
+        self._measured_positions = list(positions)
         self._latest_positions = positions
         return list(positions)
+
+    def _refresh_feedback(self) -> None:
+        """Refresh measured state without delaying command writes on a retry loop."""
+
+        with self._lock:
+            if not self._is_connected():
+                return
+            positions: List[float] = []
+            for hand_side in self._active_hands():
+                hand = self._hands[hand_side]
+                positions_deg = hand.get_joint_positions_compact()
+                if positions_deg is None:
+                    return
+                if len(positions_deg) != len(JOINT_NAMES):
+                    raise ValueError(
+                        f"Aero Hand expects {len(JOINT_NAMES)} joints, got {len(positions_deg)}"
+                    )
+                positions.extend(math.radians(float(value)) for value in positions_deg)
+            self._measured_positions = list(positions)
+            self._latest_positions = list(positions)
 
     def _read_hand_positions(self, hand: Any) -> List[float]:
         positions_deg = None

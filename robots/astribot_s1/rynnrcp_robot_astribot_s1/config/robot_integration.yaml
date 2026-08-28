@@ -1,0 +1,257 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: humanoid
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    sdk: astribot_sdk
+    control_level: high
+    joint_order:
+      - astribot_torso[0:4]
+      - astribot_arm_left[0:7]
+      - astribot_gripper_left[0]
+      - astribot_arm_right[0:7]
+      - astribot_gripper_right[0]
+      - astribot_head[0:2]
+    gripper_position_range: [0.0, 1.0]
+    gripper_feedback_units: normalized_0_1
+
+components:
+  - name: robot
+    type: humanoid
+    parent_component: null
+    dof: 22
+    frame: chassis
+    description: Astribot S1 upper body, grippers, head, and mobile chassis
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_astribot_s1.controller.AstribotS1Controller
+        init: &robot_init
+          robot_id: ${manifest.robot_id}
+          sdk_root: ${components.robot.sdk_root}
+          frequency_hz: ${components.robot.frequency_hz}
+          high_control_rights: ${components.robot.high_control_rights}
+          node_name: ${components.robot.node_name}
+          control_way: ${components.robot.control_way}
+          use_wbc: ${components.robot.use_wbc}
+          activate_cameras: ${components.robot.activate_cameras}
+          base_command_dt_s: ${components.robot.base_command_dt_s}
+          max_base_x_m_s: ${components.robot.max_base_x_m_s}
+          max_base_y_m_s: ${components.robot.max_base_y_m_s}
+          max_base_yaw_rad_s: ${components.robot.max_base_yaw_rad_s}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Current 22-DoF upper-body position and velocity in SDK part order; gripper slots 11 and 19 are normalized to [0, 1]
+        frame_rate: 100
+        source: &robot_source
+          connector: module
+          module_name: rynnrcp_robot_astribot_s1.controller.AstribotS1Controller
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: get_joint_positions
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: chassis_state
+        type: robot_state
+        description: Current chassis x, y, yaw position and velocity
+        frame_rate: 50
+        source:
+          <<: *robot_source
+          method_name: get_chassis_state
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: left_gripper_state
+        type: robot_state
+        description: Normalized left-gripper feedback with raw SDK values included for diagnostics
+        frame_rate: 20
+        source:
+          <<: *robot_source
+          method_name: get_left_gripper_state
+        codec:
+          adapter: ProtocolInputAdapter
+      - name: right_gripper_state
+        type: robot_state
+        description: Normalized right-gripper feedback with raw SDK values included for diagnostics
+        frame_rate: 20
+        source:
+          <<: *robot_source
+          method_name: get_right_gripper_state
+        codec:
+          adapter: ProtocolInputAdapter
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: Stream 22 upper-body targets; torso, arms, and head use radians, while gripper slots 11 and 19 are normalized to [0, 1]
+        frame_rate: 100
+        consume_mode: latest
+        input_schema:
+          type: object
+          fields:
+            joint_positions:
+              type: array
+              items: float
+              shape: [22]
+        source: &robot_action
+          <<: *robot_source
+          method_name: set_joint_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: joint_velocity
+        type: joint_velocity
+        description: Stream 22 upper-body velocity targets; gripper slots 11 and 19 use normalized range per second
+        frame_rate: 100
+        consume_mode: latest
+        input_schema:
+          type: object
+          fields:
+            joint_velocities:
+              type: array
+              items: float
+              shape: [22]
+        source:
+          <<: *robot_action
+          method_name: set_joint_velocities
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: base_velocity
+        type: base_velocity
+        description: Stream local chassis x, y, and yaw velocity at the configured command interval
+        frame_rate: 50
+        consume_mode: latest
+        source:
+          <<: *robot_action
+          method_name: set_base_velocity
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: left_gripper
+        type: gripper
+        description: Set left gripper position in [0, 1] and optional maximum force in newtons
+        frame_rate: 20
+        consume_mode: latest
+        source:
+          <<: *robot_action
+          method_name: set_left_gripper
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: right_gripper
+        type: gripper
+        description: Set right gripper position in [0, 1] and optional maximum force in newtons
+        frame_rate: 20
+        consume_mode: latest
+        source:
+          <<: *robot_action
+          method_name: set_right_gripper
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: home
+        type: prearranged
+        description: Run the Astribot SDK collision-checked home motion
+        frame_rate: 1
+        source:
+          <<: *robot_action
+          method_name: home
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: stop
+        type: prearranged
+        description: Stop the current robot motion through the Astribot SDK
+        frame_rate: 1
+        source:
+          <<: *robot_action
+          method_name: stop
+        codec:
+          adapter: ProtocolActionOutputAdapter
+      - name: restart
+        type: prearranged
+        description: Resume robot commands after an SDK stop
+        frame_rate: 1
+        source:
+          <<: *robot_action
+          method_name: restart
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+  - name: head_camera
+    type: camera
+    parent_component: robot
+    frame: head_camera
+    description: Astribot S1 head RGB camera
+    enabled: ${components.head_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Head RGB compressed image
+        width: 1280
+        height: 720
+        encoding: jpeg
+        source: &camera_source
+          connector: ros2
+          topic: /astribot_camera/head_rgbd/color_compress/compressed
+          msg_type: sensor_msgs.msg.CompressedImage
+          payload_mode: ros2_standard
+          qos:
+            reliability: best_effort
+            history: keep_last
+            depth: 2
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: left_wrist_camera
+    type: camera
+    parent_component: robot
+    frame: left_wrist_camera
+    description: Astribot S1 left wrist RGB camera
+    enabled: ${components.left_wrist_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Left wrist RGB compressed image
+        width: 640
+        height: 360
+        encoding: jpeg
+        source:
+          <<: *camera_source
+          topic: /astribot_camera/left_wrist_rgbd/color_compress/compressed
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: right_wrist_camera
+    type: camera
+    parent_component: robot
+    frame: right_wrist_camera
+    description: Astribot S1 right wrist RGB camera
+    enabled: ${components.right_wrist_camera.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Right wrist RGB compressed image
+        width: 640
+        height: 360
+        encoding: jpeg
+        source:
+          <<: *camera_source
+          topic: /astribot_camera/right_wrist_rgbd/color_compress/compressed
+        codec:
+          adapter: ProtocolImageInputAdapter

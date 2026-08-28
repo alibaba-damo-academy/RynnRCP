@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping
 
 from rynnrcp.protocol.action_codecs import action_input_schema
@@ -12,6 +13,7 @@ from rynnrcp.utils import safe_name
 VALID_CONNECTORS = {"module", "port", "lcm", "ros2"}
 VALID_RUNNER_MODES = {"thread", "process"}
 VALID_CONFIG_TRANSPORTS = {"memory", "shm"}
+CONFIG_REF_PATTERN = re.compile(r"\$\{[^}]+\}")
 ROS2_STANDARD_OBSERVATIONS = {
     ("sensor_msgs.msg.JointState", "joint_state"): "Ros2StandardInputAdapter",
     ("sensor_msgs.msg.Image", "image"): "ProtocolImageInputAdapter",
@@ -582,7 +584,14 @@ def _validate_components(components: Any, context: str = "manifest.components") 
             if not isinstance(component["parent_component"], str):
                 raise ConfigValidationError(f"{item_context}.parent_component must be a string or null")
         if "dof" in component and component["dof"] is not None:
-            if not isinstance(component["dof"], (int, float)) or isinstance(component["dof"], bool):
+            dof = component["dof"]
+            if (
+                (not isinstance(dof, (int, float)) or isinstance(dof, bool))
+                and not (
+                    isinstance(dof, str)
+                    and CONFIG_REF_PATTERN.fullmatch(dof)
+                )
+            ):
                 raise ConfigValidationError(f"{item_context}.dof must be a number")
         _optional_str(component, "frame", item_context)
         _optional_str(component, "description", item_context)

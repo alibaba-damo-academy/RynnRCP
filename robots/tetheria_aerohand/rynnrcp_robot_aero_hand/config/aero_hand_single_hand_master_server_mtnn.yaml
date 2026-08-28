@@ -1,0 +1,38 @@
+config_type: rynnrcp_server_config
+version: 1
+manifest:
+  robot_id: aero_hand_single_hand_master
+  robot_name: Aero Hand Single-Hand Vision Leader (MTNN)
+  capabilities:
+    observations: true
+    actions: false
+    health: true
+    resources: false
+    data_collection: false
+    policy_service: false
+integration:
+  config: package://rynnrcp_robot_aero_hand/config/camera_master_integration.yaml
+components:
+  robot:
+    enabled: true
+    mode: single
+    embodiment_type: single_dexterous_hand
+    dof: 7
+    side: auto
+    camera_index: 0
+    fps: 30.0
+    inference_fps: 15.0
+    inference_backend: mediapipe_lite_mtnn_zero
+    inference_backend_module: rynnrcp_robot_aero_hand.accelerators.mtnn_zero
+    inference_threads: 1
+    swap_handedness: true
+    camera_width: 640
+    camera_height: 480
+    inference_width: 640
+    frame_server_port: 28412
+    min_hand_area: 0.005
+    ema_alpha: 0.7
+    min_cutoff: 5.0
+    beta: 1.3
+    d_cutoff: 1.4
+    visual: none

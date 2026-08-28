@@ -35,6 +35,8 @@ rynnrcp-aero-hand-configure
 ```
 
 The setup script installs RynnBot, MCP, Protocol Debug, and Teleop.
+It installs MediaPipe with headless OpenCV, so camera and browser previews work
+without desktop GUI libraries.
 
 In every later terminal, enter the Aero Hand directory and activate the environment first:
 

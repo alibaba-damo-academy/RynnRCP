@@ -23,7 +23,7 @@ from fastmcp import FastMCP, Context
 
 from rynnrcp.interface.client import ClientInterface
 from rynnrcp.interface.protocol_client import RcpProtocolClient, ServerManifest, resolve_server_manifest
-from rynnrcp.utils.logging import configure_logging
+from rynnrcp.utils.logging import configure_logging, resolve_log_run_id, set_log_context
 from rynnrcp.utils.user_paths import log_file_from_config
 from rynnrcp_app_common import AppLifecycle
 
@@ -306,6 +306,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     config = _merge_default_config(_load_yaml(args.config) if args.config else {})
     config = _bind_target_robot_config(config, args.server_config)
+    set_log_context(
+        app_id=str(
+            config.get("app_id")
+            or (config.get("app") or {}).get("app_id")
+            or ""
+        ) or None,
+        robot_id=str((config.get("target_robot") or {}).get("robot_id") or "") or None,
+        run_id=resolve_log_run_id(),
+        process="mcp_app",
+    )
     configure_logging(
         level=logging.INFO,
         sinks=["stderr", "file"],

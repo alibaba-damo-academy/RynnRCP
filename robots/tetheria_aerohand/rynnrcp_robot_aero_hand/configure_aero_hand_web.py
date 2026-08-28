@@ -653,14 +653,22 @@ function renderCameraTeleopStatus(status) {
   };
   let message = labels[status.state] || status.state;
   if (status.frames_sent) message += "，已发送 " + status.frames_sent + " 帧";
+  if (status.performance && status.performance.capture_fps) {
+    const perf = status.performance;
+    message += "，采集 " + perf.capture_fps.toFixed(1) + " FPS";
+    message += "，识别 " + perf.inference_fps.toFixed(1) + " FPS";
+    message += "，推理 " + perf.inference_mean_ms.toFixed(1) + " ms";
+  }
   if (status.error) message += "：" + status.error;
   setStatus("camera-teleop-status", message, status.state === "error" ? "bad" : (cameraTeleopActive ? "warn" : "good"));
   $("camera-teleop-start").disabled = cameraTeleopActive;
   $("camera-teleop-stop").disabled = !cameraTeleopActive;
   setDebugBusy(debugBusy);
-  if (cameraTeleopActive || status.frames_sent) {
+  if (status.preview_enabled && (cameraTeleopActive || status.frames_sent)) {
     $("camera-teleop-preview").style.display = "block";
     refreshCameraTeleopPreview();
+  } else {
+    $("camera-teleop-preview").style.display = "none";
   }
 }
 function refreshCameraTeleopPreview() {
@@ -712,9 +720,10 @@ loadConfig().then(updatePortFields).then(updateDetectTarget).then(updateSetupCop
 class CameraTeleopJob:
     """Run camera gesture control against the currently configured Aero Hand."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, preview_enabled: bool = False) -> None:
         self._lock = threading.RLock()
         self._stop = threading.Event()
+        self._preview_enabled = bool(preview_enabled)
         self._thread: threading.Thread | None = None
         self._state = "idle"
         self._error: str | None = None
@@ -764,13 +773,21 @@ class CameraTeleopJob:
     def status(self) -> dict[str, Any]:
         with self._lock:
             active = self._thread is not None and self._thread.is_alive()
-            return {
+            vision = self._vision
+            status = {
                 "active": active,
                 "state": self._state,
                 "error": self._error,
                 "frames_sent": self._frames_sent,
                 "profile": self._profile,
+                "preview_enabled": self._preview_enabled,
             }
+        if vision is not None:
+            try:
+                status["performance"] = vision.get_performance()
+            except Exception:
+                LOGGER.debug("Could not read camera gesture performance", exc_info=True)
+        return status
 
     def preview_jpeg(self) -> bytes:
         with self._lock:
@@ -808,10 +825,12 @@ class CameraTeleopJob:
                         continue
                     raise
                 controller.set_joint_positions({"joint_positions": positions})
-                try:
-                    preview = vision.get_preview_jpeg()
-                except RuntimeError:
-                    preview = None
+                preview = None
+                if self._preview_enabled:
+                    try:
+                        preview = vision.get_preview_jpeg()
+                    except RuntimeError:
+                        pass
                 with self._lock:
                     if preview is not None:
                         self._last_preview = preview
@@ -825,8 +844,9 @@ class CameraTeleopJob:
         finally:
             if vision is not None:
                 try:
-                    with self._lock:
-                        self._last_preview = vision.get_preview_jpeg()
+                    if self._preview_enabled:
+                        with self._lock:
+                            self._last_preview = vision.get_preview_jpeg()
                 except Exception:
                     pass
                 try:
@@ -844,7 +864,7 @@ class CameraTeleopJob:
                     self._state = "stopped"
 
 
-_CAMERA_TELEOP_JOB = CameraTeleopJob()
+_CAMERA_TELEOP_JOB = CameraTeleopJob(preview_enabled=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -945,10 +965,15 @@ class Handler(BaseHTTPRequestHandler):
                         "side",
                         "camera_index",
                         "fps",
-                        "hand_landmarker_model",
+                        "inference_fps",
+                        "inference_backend",
+                        "inference_backend_module",
+                        "inference_threads",
+                        "prefer_platform_acceleration",
                         "swap_handedness",
                         "camera_width",
                         "camera_height",
+                        "inference_width",
                         "min_hand_area",
                         "ema_alpha",
                         "min_cutoff",
@@ -1132,16 +1157,24 @@ def _new_camera_teleop_vision(profile: str, payload: dict[str, Any]) -> Any:
         side="auto" if profile == "single" else "right",
         camera_index=camera_index,
         fps=float(robot.get("fps", 30.0)),
-        hand_landmarker_model=robot.get("hand_landmarker_model") or None,
+        inference_fps=float(robot.get("inference_fps", 15.0)),
+        inference_backend=str(robot.get("inference_backend") or "mediapipe_lite"),
+        inference_backend_module=robot.get("inference_backend_module") or None,
+        inference_threads=int(robot.get("inference_threads", 1)),
+        prefer_platform_acceleration=bool(
+            robot.get("prefer_platform_acceleration", False)
+        ),
         swap_handedness=bool(robot.get("swap_handedness", True)),
-        camera_width=robot.get("camera_width"),
-        camera_height=robot.get("camera_height"),
+        camera_width=robot.get("camera_width", 640),
+        camera_height=robot.get("camera_height", 480),
+        inference_width=int(robot.get("inference_width", 320)),
         min_hand_area=float(robot.get("min_hand_area", 0.005)),
         ema_alpha=float(robot.get("ema_alpha", 0.7)),
         min_cutoff=float(robot.get("min_cutoff", 5.0)),
         beta=float(robot.get("beta", 1.3)),
         d_cutoff=float(robot.get("d_cutoff", 1.4)),
         visual=str(robot.get("visual") or "none"),
+        render_preview=True,
     )
 
 

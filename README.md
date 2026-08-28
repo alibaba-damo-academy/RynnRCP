@@ -57,6 +57,7 @@ and use the setup script it provides.
 | Use Atom01 | [robots/roboparty_atom01/README.md](robots/roboparty_atom01/README.md) |
 | Use Booster T1 | [robots/booster_t1/README.zh-CN.md](robots/booster_t1/README.zh-CN.md) |
 | Use Noetix Bumi | [robots/noetix_bumi/README.zh-CN.md](robots/noetix_bumi/README.zh-CN.md) |
+| Use Franka Research 3 | [robots/franka_fr3/README.md](robots/franka_fr3/README.md) |
 | Use an Isaac Sim robot | [robots/sim_robot/README.zh-CN.md](robots/sim_robot/README.zh-CN.md) |
 | Use Teleop / MCP / RynnBot | [apps/README.zh-CN.md](apps/README.zh-CN.md), then the app README |
 | Inspect one Server protocol | [apps/protocol_debug/README.zh-CN.md](apps/protocol_debug/README.zh-CN.md) |
@@ -65,6 +66,7 @@ and use the setup script it provides.
 | Add local policies | [docs/RCP 策略服务接入指南.html](docs/RCP%20策略服务接入指南.html) |
 | Check protocol objects and methods | [docs/RCP使用场景及协议.md](docs/RCP使用场景及协议.md) |
 | Check config fields | [docs/RCP配置文件说明.md](docs/RCP配置文件说明.md) |
+| Trace logs and troubleshoot a run | [docs/RCP日志与排障.md](docs/RCP日志与排障.md) |
 | Benchmark live-device latency and resource load | [tests/benchmarks/live_device/README.zh-CN.md](tests/benchmarks/live_device/README.zh-CN.md) |
 | Choose a document | [docs/README.zh-CN.md](docs/README.zh-CN.md) |
 

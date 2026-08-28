@@ -1,0 +1,96 @@
+<?xml version="1.0"?>
+<!--
+  Web-simulation URDF derived from the RynnMotion UR5e MJCF body tree.
+  The joint frames and STL local frames intentionally come from the same model.
+-->
+<robot name="ur5e">
+  <link name="base_link">
+    <visual><geometry><mesh filename="assets/ur5e/base_0.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/base_1.stl"/></geometry></visual>
+  </link>
+
+  <link name="shoulder_link">
+    <visual><geometry><mesh filename="assets/ur5e/shoulder_0.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/shoulder_1.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/shoulder_2.stl"/></geometry></visual>
+  </link>
+  <joint name="shoulder_pan_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="shoulder_link"/>
+    <origin xyz="0 0 0.163" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28319" upper="6.28319" effort="150" velocity="3.14159"/>
+  </joint>
+
+  <link name="upper_arm_link">
+    <visual><geometry><mesh filename="assets/ur5e/upperarm_0.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/upperarm_1.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/upperarm_2.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/upperarm_3.stl"/></geometry></visual>
+  </link>
+  <joint name="shoulder_lift_joint" type="revolute">
+    <parent link="shoulder_link"/>
+    <child link="upper_arm_link"/>
+    <origin xyz="0 0.138 0" rpy="0 1.5707963267948966 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.28319" upper="6.28319" effort="150" velocity="3.14159"/>
+  </joint>
+
+  <link name="forearm_link">
+    <visual><geometry><mesh filename="assets/ur5e/forearm_0.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/forearm_1.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/forearm_2.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/forearm_3.stl"/></geometry></visual>
+  </link>
+  <joint name="elbow_joint" type="revolute">
+    <parent link="upper_arm_link"/>
+    <child link="forearm_link"/>
+    <origin xyz="0 -0.131 0.425" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="150" velocity="3.14159"/>
+  </joint>
+
+  <link name="wrist_1_link">
+    <visual><geometry><mesh filename="assets/ur5e/wrist1_0.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/wrist1_1.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/wrist1_2.stl"/></geometry></visual>
+  </link>
+  <joint name="wrist_1_joint" type="revolute">
+    <parent link="forearm_link"/>
+    <child link="wrist_1_link"/>
+    <origin xyz="0 0 0.392" rpy="0 1.5707963267948966 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.28319" upper="6.28319" effort="28" velocity="3.14159"/>
+  </joint>
+
+  <link name="wrist_2_link">
+    <visual><geometry><mesh filename="assets/ur5e/wrist2_0.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/wrist2_1.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="assets/ur5e/wrist2_2.stl"/></geometry></visual>
+  </link>
+  <joint name="wrist_2_joint" type="revolute">
+    <parent link="wrist_1_link"/>
+    <child link="wrist_2_link"/>
+    <origin xyz="0 0.127 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28319" upper="6.28319" effort="28" velocity="3.14159"/>
+  </joint>
+
+  <link name="wrist_3_link">
+    <visual><geometry><mesh filename="assets/ur5e/wrist3.stl"/></geometry></visual>
+  </link>
+  <joint name="wrist_3_joint" type="revolute">
+    <parent link="wrist_2_link"/>
+    <child link="wrist_3_link"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.28319" upper="6.28319" effort="28" velocity="3.14159"/>
+  </joint>
+
+  <link name="tool0"/>
+  <joint name="wrist_3-tool0" type="fixed">
+    <parent link="wrist_3_link"/>
+    <child link="tool0"/>
+    <origin xyz="0 0.25 0" rpy="1.5707963267948966 0 -1.5707963267948966"/>
+  </joint>
+</robot>

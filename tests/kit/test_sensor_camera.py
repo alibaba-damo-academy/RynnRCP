@@ -5,7 +5,7 @@ Tests for USBCamera sensor adapter.
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, call, patch
 
 # ---------------------------------------------------------------------------
 # Ensure rynnrcp package root is importable
@@ -64,7 +64,7 @@ class TestUSBCameraInit(unittest.TestCase):
         cam = USBCamera(
             name="front", device_id=0, width=1280, height=720,
             encoding="rgb8", fps=60.0, brand="Logitech", rotate=90,
-            capture_backend="opencv",
+            capture_backend="opencv", capture_fourcc="yuyv",
         )
         self.assertEqual(cam.name, "front")
         self.assertEqual(cam.device_id, 0)
@@ -75,6 +75,7 @@ class TestUSBCameraInit(unittest.TestCase):
         self.assertEqual(cam.brand, "Logitech")
         self.assertEqual(cam.rotate, 90)
         self.assertEqual(cam.capture_backend, "opencv")
+        self.assertEqual(cam.capture_fourcc, "YUYV")
         self.assertEqual(cam.state, SensorState.IDLE)
 
     def test_default_params(self):
@@ -86,6 +87,13 @@ class TestUSBCameraInit(unittest.TestCase):
         self.assertAlmostEqual(cam.frequency_hz, 30.0)
         self.assertEqual(cam.brand, "Unknown")
         self.assertEqual(cam.rotate, 0)
+        self.assertEqual(cam.capture_fourcc, "MJPG")
+
+    def test_capture_fourcc_requires_four_characters(self):
+        from rynnkit.cameras.usb_camera import USBCamera
+
+        with self.assertRaisesRegex(ValueError, "four-character code"):
+            USBCamera(name="cam0", device_id=0, capture_fourcc="YUY")
 
     def test_is_base_camera_subclass(self):
         from rynnkit.cameras.usb_camera import USBCamera
@@ -122,38 +130,25 @@ class TestUSBCameraNoCV2(unittest.TestCase):
 class TestBackendSelection(unittest.TestCase):
     """_pick_cv_backend() platform branches."""
 
+    def _assert_backend(self, sysname: str, attribute: str) -> None:
+        from rynnkit.cameras import usb_camera as mod
+        mock_cv2 = _make_mock_cv2()
+        with patch.object(mod, "cv2", mock_cv2), \
+                patch.object(mod, "_stdlib_platform") as mp:
+            mp.system.return_value = sysname
+            self.assertEqual(mod._pick_cv_backend(), getattr(mock_cv2, attribute))
+
     def test_linux_backend(self):
-        from rynnkit.cameras.usb_camera import _pick_cv_backend
-        with patch("rynnkit.cameras.usb_camera._stdlib_platform") as mp:
-            mp.system.return_value = "Linux"
-            self.assertEqual(_pick_cv_backend(), _get_cv2().CAP_V4L2)
+        self._assert_backend("Linux", "CAP_V4L2")
 
     def test_darwin_backend(self):
-        from rynnkit.cameras.usb_camera import _pick_cv_backend
-        with patch("rynnkit.cameras.usb_camera._stdlib_platform") as mp:
-            mp.system.return_value = "Darwin"
-            self.assertEqual(_pick_cv_backend(), _get_cv2().CAP_AVFOUNDATION)
+        self._assert_backend("Darwin", "CAP_AVFOUNDATION")
 
     def test_windows_backend(self):
-        from rynnkit.cameras.usb_camera import _pick_cv_backend
-        with patch("rynnkit.cameras.usb_camera._stdlib_platform") as mp:
-            mp.system.return_value = "Windows"
-            self.assertEqual(_pick_cv_backend(), _get_cv2().CAP_DSHOW)
+        self._assert_backend("Windows", "CAP_DSHOW")
 
     def test_other_backend(self):
-        from rynnkit.cameras.usb_camera import _pick_cv_backend
-        with patch("rynnkit.cameras.usb_camera._stdlib_platform") as mp:
-            mp.system.return_value = "FreeBSD"
-            self.assertEqual(_pick_cv_backend(), _get_cv2().CAP_ANY)
-
-
-def _get_cv2():
-    """Import the actual or mocked cv2."""
-    try:
-        import cv2
-        return cv2
-    except ImportError:
-        return _make_mock_cv2()
+        self._assert_backend("FreeBSD", "CAP_ANY")
 
 
 class TestMacOSUniqueID(unittest.TestCase):
@@ -364,30 +359,54 @@ class TestUSBCameraWithMockCV2(unittest.TestCase):
         self.mock_cap.set.assert_any_call(self.mock_cv2.CAP_PROP_CONVERT_RGB, 0)
         cam.stop()
 
+    def test_linux_opencv_uses_configured_capture_fourcc(self):
+        mod = self._import_usb_camera()
+        mock_plat = MagicMock()
+        mock_plat.system.return_value = "Linux"
+        mod._stdlib_platform = mock_plat
+
+        cam = mod.USBCamera(
+            name="cam0",
+            device_id=0,
+            capture_backend="opencv",
+            capture_fourcc="YUYV",
+        )
+        cam.start()
+
+        self.mock_cv2.VideoWriter_fourcc.assert_called_with(*"YUYV")
+        self.mock_cap.set.assert_any_call(self.mock_cv2.CAP_PROP_FOURCC, 1196444237)
+        cam.stop()
+
     def test_linux_auto_uses_gstreamer_when_available(self):
         mod = self._import_usb_camera()
         mock_plat = MagicMock()
         mock_plat.system.return_value = "Linux"
         mod._stdlib_platform = mock_plat
         mod._has_gstreamer = MagicMock(return_value=True)
+        native_cap = MagicMock()
+        native_cap.prime.return_value = True
 
-        cam = mod.USBCamera(
-            name="cam0",
-            device_id=0,
+        with patch.object(mod, "_GStreamerJpegCapture", return_value=native_cap) as capture_cls:
+            cam = mod.USBCamera(
+                name="cam0",
+                device_id=0,
+                width=640,
+                height=360,
+                encoding="jpg",
+                native_compressed=True,
+            )
+            cam.start()
+
+        capture_cls.assert_called_once_with(
+            device_path="/dev/video0",
             width=640,
             height=360,
-            encoding="jpg",
-            native_compressed=True,
+            fps=30.0,
         )
-        cam.start()
-
-        call_args = self.mock_cv2.VideoCapture.call_args
-        self.assertIn("v4l2src device=/dev/video0", call_args[0][0])
-        self.assertIn("image/jpeg,width=640,height=360,framerate=30/1", call_args[0][0])
-        self.assertEqual(call_args[0][1], self.mock_cv2.CAP_GSTREAMER)
         self.assertEqual(cam._capture_backend_active, "gstreamer")
         self.assertTrue(cam._native_compressed_active)
         cam.stop()
+        native_cap.release.assert_called_once()
 
     def test_linux_auto_falls_back_to_v4l2_when_gstreamer_open_fails(self):
         mod = self._import_usb_camera()
@@ -396,20 +415,165 @@ class TestUSBCameraWithMockCV2(unittest.TestCase):
         mod._stdlib_platform = mock_plat
         mod._has_gstreamer = MagicMock(return_value=True)
 
+        native_cap = MagicMock()
+        native_cap.prime.return_value = False
+        native_cap.error_detail.return_value = ""
         gst_cap = MagicMock()
         gst_cap.isOpened.return_value = False
         v4l2_cap = MagicMock()
         v4l2_cap.isOpened.return_value = True
         self.mock_cv2.VideoCapture.side_effect = [gst_cap, v4l2_cap]
 
-        cam = mod.USBCamera(name="cam0", device_id=0, encoding="jpg")
-        cam.start()
+        with patch.object(mod, "_GStreamerJpegCapture", return_value=native_cap):
+            cam = mod.USBCamera(
+                name="cam0",
+                device_id=0,
+                encoding="jpg",
+                native_compressed=True,
+            )
+            cam.start()
 
         self.assertEqual(self.mock_cv2.VideoCapture.call_args_list[0][0][1], self.mock_cv2.CAP_GSTREAMER)
         self.assertEqual(self.mock_cv2.VideoCapture.call_args_list[1][0], (0, self.mock_cv2.CAP_V4L2))
         self.assertEqual(cam._capture_backend_active, "opencv")
+        self.assertFalse(cam._native_compressed_active)
+        v4l2_cap.set.assert_any_call(self.mock_cv2.CAP_PROP_FOURCC, 1196444237)
+        self.assertNotIn(
+            call(self.mock_cv2.CAP_PROP_CONVERT_RGB, 0),
+            v4l2_cap.set.call_args_list,
+        )
+        native_cap.release.assert_called_once()
         gst_cap.release.assert_called_once()
         cam.stop()
+
+    def test_linux_auto_without_gstreamer_uses_decoded_opencv(self):
+        mod = self._import_usb_camera()
+        mock_plat = MagicMock()
+        mock_plat.system.return_value = "Linux"
+        mod._stdlib_platform = mock_plat
+        mod._has_gstreamer = MagicMock(return_value=False)
+
+        cam = mod.USBCamera(
+            name="cam0",
+            device_id=0,
+            encoding="jpg",
+            native_compressed=True,
+        )
+        cam.start()
+
+        self.assertEqual(cam._capture_backend_active, "opencv")
+        self.assertFalse(cam._native_compressed_active)
+        self.assertNotIn(
+            call(self.mock_cv2.CAP_PROP_CONVERT_RGB, 0),
+            self.mock_cap.set.call_args_list,
+        )
+        cam.stop()
+
+    def test_explicit_gstreamer_requires_linux(self):
+        mod = self._import_usb_camera()
+        mock_plat = MagicMock()
+        mock_plat.system.return_value = "Darwin"
+        mod._stdlib_platform = mock_plat
+
+        cam = mod.USBCamera(name="cam0", device_id=0, capture_backend="gstreamer")
+
+        with self.assertRaisesRegex(RuntimeError, "only supported on Linux"):
+            cam.start()
+        self.mock_cv2.VideoCapture.assert_not_called()
+
+    def test_explicit_gstreamer_requires_executable(self):
+        mod = self._import_usb_camera()
+        mock_plat = MagicMock()
+        mock_plat.system.return_value = "Linux"
+        mod._stdlib_platform = mock_plat
+        mod._has_gstreamer = MagicMock(return_value=False)
+
+        cam = mod.USBCamera(name="cam0", device_id=0, capture_backend="gstreamer")
+
+        with self.assertRaisesRegex(RuntimeError, "requires gst-launch-1.0"):
+            cam.start()
+        self.mock_cv2.VideoCapture.assert_not_called()
+
+    def test_auto_falls_back_when_gstreamer_process_cannot_launch(self):
+        mod = self._import_usb_camera()
+        mock_plat = MagicMock()
+        mock_plat.system.return_value = "Linux"
+        mod._stdlib_platform = mock_plat
+        mod._has_gstreamer = MagicMock(return_value=True)
+
+        with patch.object(mod, "_GStreamerJpegCapture", side_effect=OSError("cannot execute")):
+            cam = mod.USBCamera(
+                name="cam0",
+                device_id=0,
+                encoding="jpg",
+                native_compressed=True,
+            )
+            cam.start()
+
+        self.assertEqual(cam._capture_backend_active, "opencv")
+        self.assertFalse(cam._native_compressed_active)
+        cam.stop()
+
+    def test_incomplete_native_jpeg_is_dropped_instead_of_reencoded(self):
+        mod = self._import_usb_camera()
+        mock_plat = MagicMock()
+        mock_plat.system.return_value = "Linux"
+        mod._stdlib_platform = mock_plat
+
+        incomplete = self.np.frombuffer(b"not-a-jpeg", dtype=self.np.uint8).reshape(1, -1)
+        self.mock_cap.read.return_value = (True, incomplete)
+        cam = mod.USBCamera(
+            name="cam0",
+            device_id=0,
+            encoding="jpg",
+            native_compressed=True,
+            capture_backend="opencv",
+        )
+        cam.start()
+
+        success, width, height, encoding, image = cam.read_frame()
+
+        self.assertFalse(success)
+        self.assertEqual((width, height, encoding, image), (0, 0, "jpg", None))
+        self.mock_cv2.imencode.assert_not_called()
+        cam.stop()
+
+
+class TestGStreamerNativeHelpers(unittest.TestCase):
+    def test_native_command_uses_jpegparse_and_stdout_sink(self):
+        from rynnkit.cameras.usb_camera import _build_gstreamer_native_command
+
+        command = _build_gstreamer_native_command(
+            device_path="/dev/video3",
+            width=640,
+            height=360,
+            fps=30,
+        )
+
+        self.assertIn("jpegparse", command)
+        self.assertIn("fdsink", command)
+        self.assertIn("fd=1", command)
+        self.assertIn("image/jpeg,width=640,height=360,framerate=30/1", command)
+
+    def test_pop_complete_jpeg_discards_prefix_and_keeps_next_frame(self):
+        from rynnkit.cameras.usb_camera import _pop_complete_jpeg
+
+        buffer = bytearray(
+            b"prefix"
+            b"\xff\xd8first\xff\xd9"
+            b"\xff\xd8second\xff\xd9"
+        )
+
+        self.assertEqual(_pop_complete_jpeg(buffer), b"\xff\xd8first\xff\xd9")
+        self.assertEqual(_pop_complete_jpeg(buffer), b"\xff\xd8second\xff\xd9")
+        self.assertEqual(buffer, bytearray())
+
+    def test_extract_native_jpeg_trims_wrapping_bytes(self):
+        from rynnkit.cameras.usb_camera import _extract_native_jpeg_bytes
+
+        frame = b"wrapper\xff\xd8jpeg-data\xff\xd9trailer"
+
+        self.assertEqual(_extract_native_jpeg_bytes(frame), b"\xff\xd8jpeg-data\xff\xd9")
 
 
 if __name__ == "__main__":

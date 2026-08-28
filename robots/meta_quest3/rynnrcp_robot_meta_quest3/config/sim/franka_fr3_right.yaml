@@ -1,0 +1,18 @@
+manifest:
+  robot_name: Meta Quest 3 → Franka FR3
+components:
+  robot:
+    target_model: franka_fr3
+    target_urdf: package://rynnrcp_robot_meta_quest3/models/fr3.urdf
+    target_dof: 7
+    has_gripper: true
+    base_link: fr3_link0
+    tip_link: fr3_hand_tcp
+    gripper_mount_link: fr3_hand
+    controller_side: right
+    home_joint_positions: [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    workspace_delta_limits_m:
+      - [-0.18, 0.40]
+      - [-0.50, 0.50]
+      - [-0.50, 0.00]
+    translation_scale: 1.0

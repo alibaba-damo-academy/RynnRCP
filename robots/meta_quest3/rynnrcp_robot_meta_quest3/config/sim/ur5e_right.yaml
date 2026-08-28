@@ -1,0 +1,17 @@
+manifest:
+  robot_name: Meta Quest 3 → Universal Robots UR5e
+components:
+  robot:
+    target_model: ur5e
+    target_urdf: package://rynnrcp_robot_meta_quest3/models/ur5e.urdf
+    target_dof: 6
+    has_gripper: false
+    base_link: base_link
+    tip_link: tool0
+    controller_side: right
+    home_joint_positions: [3.1415926, -1.5708, -1.5708, 0.0, 1.5708, 0.0]
+    workspace_delta_limits_m: &workspace
+      - [-0.35, 0.35]
+      - [-0.35, 0.35]
+      - [-0.35, 0.35]
+    translation_scale: 1.0

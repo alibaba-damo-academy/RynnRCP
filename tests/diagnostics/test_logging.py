@@ -105,19 +105,13 @@ class TestConfigureLogging:
             root = logging.getLogger()
             root.info("file test message")
 
-            # Flush and check file
-            for h in root.handlers:
-                h.flush()
+            # Reconfiguration stops the async listener after draining queued records.
+            configure_logging(level=logging.INFO, sinks=[])
 
             assert os.path.exists(log_path)
             with open(log_path, "r") as f:
                 content = f.read()
             assert "file test message" in content
-
-            # Close handlers before temp dir cleanup (Windows file locking)
-            for h in root.handlers[:]:
-                h.close()
-                root.removeHandler(h)
         print("  PASS: test_file_sink")
 
     def test_multiple_sinks(self):

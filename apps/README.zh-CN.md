@@ -11,7 +11,7 @@ SDK；它们通过 RynnRCP Interface 调用 Server 暴露的协议工具。
 | --- | --- | --- |
 | Teleop | `rynnrcp-teleop-app` | 遥操、数据采集、回放、编码导出 |
 | MCP | `rynnrcp-mcp-app` | 把一个 RCP Server 暴露为 MCP 工具 |
-| RynnBot | `rynnrcp-rynnbot-app` | 接入 RynnBot 云端，处理属性上报、技能执行、数据回流 |
+| RynnBot | `rynnrcp-rynnbot-app`、`rynnrcp-model-debug` | 接入 RynnBot 云端；连接 HTTP 模型服务并调试推理和 Action 执行 |
 | Protocol Debug | `rynnrcp-protocol-debug` | 浏览器协议调试台，查看工具/观测/动作并发送原始请求 |
 | Common | 无独立命令 | App 内部共用的录制、编码、资源传输和 key 映射工具 |
 
@@ -30,6 +30,7 @@ rynnrcp-teleop-app -h
 rynnrcp-mcp-app -h
 rynnrcp-rynnbot-app -h
 rynnrcp-protocol-debug -h
+rynnrcp-model-debug -h
 ```
 
 ## 使用方式
@@ -45,4 +46,5 @@ rynnrcp-protocol-debug -h
 - Teleop：[`teleop/README.zh-CN.md`](teleop/README.zh-CN.md)
 - MCP：[`mcp/README.zh-CN.md`](mcp/README.zh-CN.md)
 - RynnBot：[`rynnbot/README.zh-CN.md`](rynnbot/README.zh-CN.md)
+- 模型调试：[`rynnbot/MODEL_DEBUG.zh-CN.md`](rynnbot/MODEL_DEBUG.zh-CN.md)
 - Protocol Debug：[`protocol_debug/README.zh-CN.md`](protocol_debug/README.zh-CN.md)

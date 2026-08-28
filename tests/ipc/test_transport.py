@@ -3,12 +3,17 @@
 
 import sys
 import os
+import logging
 import threading
 import time
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from rynnrcp.ipc.transport import (
-    TransportLevel, IntraProcessTransport, ShmTransport, _subscriber_notifier_name,
+    TransportLevel,
+    IntraProcessTransport,
+    ShmTransport,
+    _subscriber_notifier_name,
 )
 import rynnrcp.ipc.transport as transport_module
 from rynnrcp.native import NotifierUnavailable
@@ -23,6 +28,7 @@ def shm_cleanup(name):
 # IntraProcessTransport tests
 # ===========================================================================
 
+
 def test_intra_basic_pubsub():
     t = IntraProcessTransport("test_intra", buffer_size=16)
     received = []
@@ -32,6 +38,7 @@ def test_intra_basic_pubsub():
     t.publish(b"msg2")
 
     assert len(received) == 2
+    assert t._callback_error_logs == {}
     assert received[0] == b"msg1"
     assert received[1] == b"msg2"
     t.close()
@@ -101,6 +108,29 @@ def test_intra_multiple_subscribers():
     print("[PASS] test_intra_multiple_subscribers")
 
 
+def test_intra_callback_failures_are_rate_limited_and_report_recovery(caplog):
+    transport = IntraProcessTransport("test_callback_logging")
+    calls = {"count": 0}
+
+    def flaky_callback(_data):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise RuntimeError("callback failed")
+
+    transport.subscribe(flaky_callback)
+    with caplog.at_level(logging.INFO, logger="rynnrcp.ipc.transport"):
+        transport.publish(b"first")
+        assert transport._callback_error_logs
+        transport.publish(b"second")
+        transport.publish(b"recovered")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert sum("callback failed" in message for message in messages) == 1
+    assert any("recovered after" in message for message in messages)
+    assert transport._callback_error_logs == {}
+    transport.close()
+
+
 def test_intra_level():
     t = IntraProcessTransport("test_level")
     assert t.level == TransportLevel.L1_INTRA_PROCESS
@@ -112,6 +142,7 @@ def test_intra_level():
 # ShmTransport tests
 # ===========================================================================
 
+
 def test_shm_basic_pubsub():
     name = "test_shm_ps"
     shm_cleanup(name)
@@ -119,7 +150,7 @@ def test_shm_basic_pubsub():
     received = []
     t.subscribe(lambda d: received.append(d))
 
-    t.publish(b"shm_msg_1" + b'\x00' * 23)
+    t.publish(b"shm_msg_1" + b"\x00" * 23)
     assert len(received) == 1
     assert received[0][:9] == b"shm_msg_1"
     t.close()
@@ -133,7 +164,7 @@ def test_shm_poll():
     t = ShmTransport(name, msg_size=16, slot_count=8, create=True)
 
     for i in range(5):
-        t.publish(i.to_bytes(8, "little") + b'\x00' * 8)
+        t.publish(i.to_bytes(8, "little") + b"\x00" * 8)
 
     # Poll sequentially
     for i in range(5):
@@ -356,7 +387,7 @@ def test_shm_cross_thread():
 
     time.sleep(0.02)
     for i in range(num_msgs):
-        pub.publish(i.to_bytes(8, "little") + b'\x00' * 8)
+        pub.publish(i.to_bytes(8, "little") + b"\x00" * 8)
         time.sleep(0.005)
 
     rt.join(timeout=10)

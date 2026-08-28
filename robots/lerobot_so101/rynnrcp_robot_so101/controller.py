@@ -152,16 +152,17 @@ class SO101Controller(BaseRobotController):
             loading_driver = self._robot is None
             if loading_driver:
                 started = time.monotonic()
-                print(
-                    "[SO101 Controller] Loading lightweight SO101 drivers. Please WAIT.",
-                    flush=True,
+                self.logger.info(
+                    "[SO101][DRIVER_LOADING] port=%s role=%s",
+                    self.port,
+                    self.role,
                 )
             self._ensure_robot_instance()
             if loading_driver:
-                print(
-                    f"[SO101 Controller] SO101 drivers ready "
-                    f"(load took {time.monotonic() - started:.2f}s).",
-                    flush=True,
+                self.logger.info(
+                    "[SO101][DRIVER_READY] port=%s load_duration_s=%.2f",
+                    self.port,
+                    time.monotonic() - started,
                 )
             if not self._is_connected():
                 self._connect_driver()

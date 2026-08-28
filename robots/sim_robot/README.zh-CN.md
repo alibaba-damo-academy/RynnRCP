@@ -27,6 +27,7 @@ source venv/bin/activate
 bash start_rcp.sh --config so101
 bash start_rcp.sh --config lerobot_so101_dual_sim_v1
 bash start_rcp.sh --config lerobot_so101_dual_sim_v2
+bash start_rcp.sh --config aero_hand_sim_v1
 bash start_rcp.sh --config aero_hand_dual_sim_v1
 bash start_rcp.sh --config aero_hand_dual_sim_v2
 bash start_rcp.sh --config rm75_rmg24_sim_v1
@@ -35,7 +36,7 @@ bash start_rcp.sh --config franka_r3_sim_v1
 bash start_rcp.sh --config franka_r3_sim_v2
 ```
 
-仅保留以上 9 个 server 配置：8 个精确构型 + 原始 `so101` 构型。Server 启动后，可按需启动 App：
+仅保留以上 10 个 server 配置：9 个精确构型 + 原始 `so101` 构型。Server 启动后，可按需启动 App：
 
 ```bash
 rynnrcp-protocol-debug --config rynnrcp_robot_sim/config/sim_server_so101.yaml
@@ -48,6 +49,7 @@ rynnrcp-teleop-app
 
 ## 能力
 
+- `aero_hand_sim_v1`：7DoF 单手 compact 向量 + front 1 相机，action/state 字段名为 thumb/index/middle/ring/pinky compact joints
 - `aero_hand_dual_sim_v1`：14DoF compact 合并向量 + front 1 相机，action/state 字段名为 left_* + right_* tendon/actuator
 - `aero_hand_dual_sim_v2`：14DoF compact 合并向量 + front/top/left/right 4 相机，action/state 不拆左右 component
 - `rm75_rmg24_sim_v1` / `rm75_rmg24_sim_v2`：8DoF + 5 相机

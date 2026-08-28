@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-franka-fr3"
+version = "0.1.0"
+description = "Official libfranka integration for RynnRCP"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "flask>=3.0",
+    "rynnrcp>=0.1.0",
+]
+
+[project.scripts]
+rynnrcp-franka-fr3-check = "rynnrcp_robot_franka_fr3.diagnostics:main"
+rynnrcp-franka-fr3-configure = "rynnrcp_robot_franka_fr3.configure_franka_fr3_web:main"
+
+[project.entry-points."rynnrcp.robots"]
+franka_fr3 = "rynnrcp_robot_franka_fr3"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_robot_franka_fr3*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_franka_fr3" = ["config/*.yaml", "*.so"]

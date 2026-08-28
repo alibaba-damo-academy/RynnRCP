@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rynnrcp-robot-astribot-s1"
+version = "0.1.0"
+description = "Astribot S1 SDK integration for RynnRCP"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+    "pyyaml>=6.0",
+    "rynnrcp>=0.1.0",
+]
+
+[project.scripts]
+rynnrcp-astribot-s1-configure = "rynnrcp_robot_astribot_s1.configure_astribot_s1_web:main"
+
+[project.entry-points."rynnrcp.robots"]
+astribot_s1 = "rynnrcp_robot_astribot_s1"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rynnrcp_robot_astribot_s1*"]
+
+[tool.setuptools.package-data]
+"rynnrcp_robot_astribot_s1" = ["config/*.yaml"]

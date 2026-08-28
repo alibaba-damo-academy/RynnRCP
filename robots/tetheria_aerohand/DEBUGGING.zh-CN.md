@@ -151,7 +151,9 @@ rynnrcp-rynnbot-app --config rynnrcp_robot_aero_hand/config/aero_hand_dual_rynnb
 
 ## 摄像手势控制端
 
-摄像手势控制端使用 MediaPipe 完成手势检测、滤波、归一化和 16 维到 compact 7 维映射。模型文件随 Aero Hand 包安装。
+摄像手势控制端在 Rockchip 上优先使用 C++ RGA/RKNN 后端，在其他平台使用
+MediaPipe Lite；两种后端共用滤波、归一化和16维到 compact 7维映射。RK 安装与
+后端确认方法见 [RKNN 加速部署与验证](RKNN_ACCELERATION.zh-CN.md)。
 
 本地单手遥操与数采需要三个终端，依次启动：
 

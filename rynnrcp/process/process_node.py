@@ -34,8 +34,9 @@ class ProcessNode:
                            on startup (default True).
     """
 
-    def __init__(self, name: str, config: Optional[dict] = None,
-                 registry_attached: bool = True) -> None:
+    def __init__(
+        self, name: str, config: Optional[dict] = None, registry_attached: bool = True
+    ) -> None:
         self.name = name
         self.config = config or {}
         self._components: List[Callable] = []
@@ -84,7 +85,9 @@ class ProcessNode:
             if self._registry_attached:
                 from rynnrcp.ipc.channel_registry import SharedChannelRegistry
 
-                registry_name = self.config.get("channel_registry_name", "rynnrcp_channel_registry")
+                registry_name = self.config.get(
+                    "channel_registry_name", "rynnrcp_channel_registry"
+                )
                 registry = SharedChannelRegistry(create=False, name=registry_name)
                 mgr.attach_registry(registry)
 
@@ -101,7 +104,9 @@ class ProcessNode:
             _wait_for_shutdown(signal_event, shutdown_event)
         except KeyboardInterrupt:
             logger.info("Process node '%s' interrupted; shutting down", self.name)
-            _send_lifecycle(lifecycle_queue, self.name, "stopped", detail="KeyboardInterrupt")
+            _send_lifecycle(
+                lifecycle_queue, self.name, "stopped", detail="KeyboardInterrupt"
+            )
             return
         except BaseException as exc:
             logger.exception("Process node '%s' failed", self.name)
@@ -121,19 +126,30 @@ class ProcessNode:
         return self._running
 
 
-def _configure_process_logging(name: str, config: dict, configure_logging: Callable) -> None:
+def _configure_process_logging(
+    name: str, config: dict, configure_logging: Callable
+) -> None:
+    from rynnrcp.utils.logging import resolve_log_run_id, set_log_context
+
     runtime_config = config.get("runtime_config") if isinstance(config, dict) else None
     robot_id = str(getattr(runtime_config, "robot_id", "") or "")
+    session_id = str(getattr(runtime_config, "log_session_id", "") or "")
+    # Carry the parent run's correlation ids into this child process so all
+    # per-process log files can be joined on robot_id/session_id.
+    set_log_context(
+        robot_id=robot_id or None,
+        run_id=resolve_log_run_id(session_id or None),
+        session_id=session_id or None,
+        process=name,
+    )
     if not robot_id:
         configure_logging()
         return
 
     from rynnrcp.utils import safe_name
-    from rynnrcp.utils.user_paths import ensure_robot_dirs, log_session_dir, logs_dir, robot_root
+    from rynnrcp.utils.user_paths import log_session_dir, logs_dir, robot_root
 
     root = robot_root(robot_id)
-    ensure_robot_dirs(root)
-    session_id = str(getattr(runtime_config, "log_session_id", "") or "")
     log_dir = log_session_dir(root, session_id) if session_id else logs_dir(root)
     configure_logging(
         sinks=["stderr", "file"],
@@ -148,7 +164,11 @@ def _cleanup_node(
     cleanup_callbacks: List[Callable[[], None]],
 ) -> None:
     """Release component, channel, and registry resources."""
-    logger.info("[ProcessNodeShutdown] begin stop_events=%d cleanups=%d", len(stop_events), len(cleanup_callbacks))
+    logger.info(
+        "[ProcessNodeShutdown] begin stop_events=%d cleanups=%d",
+        len(stop_events),
+        len(cleanup_callbacks),
+    )
     for ev in stop_events:
         ev.set()
     for cleanup in reversed(cleanup_callbacks):
@@ -192,7 +212,9 @@ def _wait_for_shutdown(signal_event: threading.Event, shutdown_event: Any) -> No
             return
 
 
-def _start_parent_watchdog(parent_pid: int, signal_event: threading.Event, node_name: str) -> None:
+def _start_parent_watchdog(
+    parent_pid: int, signal_event: threading.Event, node_name: str
+) -> None:
     if parent_pid <= 1:
         return
 
@@ -216,13 +238,17 @@ def _start_parent_watchdog(parent_pid: int, signal_event: threading.Event, node_
     ).start()
 
 
-def _send_lifecycle(queue: Any, name: str, status: str, error: str = "", detail: str = "") -> None:
+def _send_lifecycle(
+    queue: Any, name: str, status: str, error: str = "", detail: str = ""
+) -> None:
     if queue is None:
         return
     try:
         queue.put({"name": name, "status": status, "error": error, "detail": detail})
     except Exception:
-        logger.debug("Failed to send lifecycle event for node '%s'", name, exc_info=True)
+        logger.debug(
+            "Failed to send lifecycle event for node '%s'", name, exc_info=True
+        )
 
 
 def _collect_lifecycle_result(

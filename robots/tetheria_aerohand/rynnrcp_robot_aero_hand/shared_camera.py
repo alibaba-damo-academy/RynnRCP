@@ -37,7 +37,10 @@ def try_start_frame_server(
     try:
         server = _FrameServer(("127.0.0.1", int(port)), _FrameHandler, get_frame)
     except OSError as exc:
-        if exc.errno not in {errno.EADDRINUSE, 10048}:
+        if exc.errno not in {
+            errno.EADDRINUSE,
+            getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE),
+        }:
             raise
         return None
     thread = threading.Thread(
@@ -202,13 +205,18 @@ class _FrameHandler(BaseHTTPRequestHandler):
             self.send_response(204)
             self.end_headers()
             return
-        self.send_response(200)
-        self.send_header("Content-Type", "image/jpeg")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("X-Image-Width", str(width))
-        self.send_header("X-Image-Height", str(height))
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("X-Image-Width", str(width))
+            self.send_header("X-Image-Height", str(height))
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Preview clients routinely close stale frame requests while
+            # polling. The current frame is simply discarded in that case.
+            return
 
     def log_message(self, format: str, *args: Any) -> None:
         return

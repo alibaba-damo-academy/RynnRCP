@@ -1,3 +1,6 @@
+grip_open_threshold: 0.20
+grip_close_threshold: 0.80
+
 thumb_ip: {peak: 0.78, valley: 0.0}
 thumb_mcp: {peak: 0.70, valley: 0.0}
 thumb_cmc_flex: {peak: 0.956, valley: 0.51}

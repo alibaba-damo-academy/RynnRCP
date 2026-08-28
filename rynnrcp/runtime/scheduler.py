@@ -10,6 +10,7 @@ from typing import Callable, Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+ERROR_LOG_INTERVAL_S = 5.0
 
 
 class Component:
@@ -47,6 +48,9 @@ class _ComponentRunner:
         self._comp = component
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._last_error_key: tuple[str, str] | None = None
+        self._last_error_logged_at = 0.0
+        self._suppressed_error_count = 0
 
     def start(self) -> None:
         self._stop_event.clear()
@@ -82,8 +86,9 @@ class _ComponentRunner:
             if self._comp.enabled:
                 try:
                     self._comp.callback()
+                    self._report_recovery()
                 except Exception as e:
-                    logger.warning("Component '%s' error: %s", self._comp.name, e, exc_info=True)
+                    self._report_error(e)
                 actual_end = time.monotonic()
                 if actual_end > next_time:
                     missed = int((actual_end - next_time) // period_sec)
@@ -93,6 +98,48 @@ class _ComponentRunner:
             sleep_time = next_time - time.monotonic()
             if sleep_time > 0:
                 self._stop_event.wait(timeout=sleep_time)
+
+    def _report_error(self, error: Exception) -> None:
+        now = time.monotonic()
+        error_key = (type(error).__name__, str(error))
+        if error_key != self._last_error_key:
+            self._last_error_key = error_key
+            self._last_error_logged_at = now
+            self._suppressed_error_count = 0
+            logger.warning(
+                "Component '%s' error: %s",
+                self._comp.name,
+                error,
+                exc_info=True,
+            )
+            return
+
+        self._suppressed_error_count += 1
+        if now - self._last_error_logged_at < ERROR_LOG_INTERVAL_S:
+            return
+        logger.warning(
+            "Component '%s' still failing: %s "
+            "(suppressed %d repeated errors)",
+            self._comp.name,
+            error,
+            self._suppressed_error_count,
+        )
+        self._last_error_logged_at = now
+        self._suppressed_error_count = 0
+
+    def _report_recovery(self) -> None:
+        if self._last_error_key is None:
+            return
+        error_type, error_message = self._last_error_key
+        logger.info(
+            "Component '%s' recovered after %s: %s",
+            self._comp.name,
+            error_type,
+            error_message,
+        )
+        self._last_error_key = None
+        self._last_error_logged_at = 0.0
+        self._suppressed_error_count = 0
 
 
 class Scheduler:

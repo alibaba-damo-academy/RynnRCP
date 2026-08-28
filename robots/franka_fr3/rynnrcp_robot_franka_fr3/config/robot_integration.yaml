@@ -1,0 +1,191 @@
+config_type: rynnrcp_robot_integration
+version: 1
+
+manifest:
+  robot_id: ${manifest.robot_id}
+  robot_name: ${manifest.robot_name}
+  embodiment_type: single_arm
+  capabilities:
+    observations: ${manifest.capabilities.observations}
+    actions: ${manifest.capabilities.actions}
+    health: ${manifest.capabilities.health}
+    resources: ${manifest.capabilities.resources}
+    data_collection: ${manifest.capabilities.data_collection}
+    policy_service: ${manifest.capabilities.policy_service}
+  model_refs:
+    urdf: null
+    mjcf: null
+    calibration: null
+    assets: []
+  metadata:
+    sdk: libfranka
+    libfranka_version: 0.13.3
+    control_modes:
+      - joint_position
+    coordinate_convention:
+      id: rcp_cartesian_v1
+      base_axes:
+        x: forward
+        y: left
+        z: up
+      handedness: right
+      position_unit: m
+      quaternion_order: xyzw
+
+components:
+  - name: robot
+    type: arm
+    parent_component: null
+    dof: 8
+    frame: fr3_link0
+    description: Franka Research 3 arm through the official libfranka FCI
+    enabled: ${components.robot.enabled}
+    health:
+      frame_rate: 1
+      source:
+        connector: module
+        module_name: rynnrcp_robot_franka_fr3.controller.FrankaController
+        init: &robot_init
+          robot_ip: ${components.robot.robot_ip}
+          robot_id: ${manifest.robot_id}
+          with_gripper: ${components.robot.with_gripper}
+          realtime_enforce: ${components.robot.realtime_enforce}
+          max_joint_velocity_rad_s: ${components.robot.max_joint_velocity_rad_s}
+          max_joint_acceleration_rad_s2: ${components.robot.max_joint_acceleration_rad_s2}
+          max_joint_jerk_rad_s3: ${components.robot.max_joint_jerk_rad_s3}
+          max_cartesian_velocity_m_s: ${components.robot.max_cartesian_velocity_m_s}
+          max_cartesian_rotation_rad_s: ${components.robot.max_cartesian_rotation_rad_s}
+          target_timeout_s: ${components.robot.target_timeout_s}
+          gripper_max_width_m: ${components.robot.gripper_max_width_m}
+          gripper_speed_m_s: ${components.robot.gripper_speed_m_s}
+          gripper_command_deadband: ${components.robot.gripper_command_deadband}
+          gripper_grasp_threshold: ${components.robot.gripper_grasp_threshold}
+          gripper_grasp_force_n: ${components.robot.gripper_grasp_force_n}
+          home_joint_positions: ${components.robot.home_joint_positions}
+          joint_lower_limits: ${components.robot.joint_lower_limits}
+          joint_upper_limits: ${components.robot.joint_upper_limits}
+          collision_torque_thresholds: ${components.robot.collision_torque_thresholds}
+          collision_force_thresholds: ${components.robot.collision_force_thresholds}
+        start: start
+        stop: shutdown
+        method_name: get_health
+    observations:
+      - name: joint_state
+        type: joint_state
+        description: Seven FR3 arm joints followed by normalized gripper opening
+        frame_rate: 60
+        source:
+          connector: module
+          module_name: rynnrcp_robot_franka_fr3.controller.FrankaController
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: get_control_positions
+        codec:
+          adapter: ProtocolInputAdapter
+
+    actions:
+      - name: joint_position
+        type: joint_position
+        description: Seven FR3 arm targets followed by normalized gripper target
+        frame_rate: 60
+        source: &control_action
+          connector: module
+          module_name: rynnrcp_robot_franka_fr3.controller.FrankaController
+          init: *robot_init
+          start: start
+          stop: shutdown
+          method_name: set_control_positions
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+      - name: home
+        type: prearranged
+        description: Send the configured seven-joint home target
+        frame_rate: 1
+        source:
+          <<: *control_action
+          method_name: home
+        codec:
+          adapter: ProtocolActionOutputAdapter
+
+  - name: cam_arm
+    type: camera
+    parent_component: robot
+    frame: cam_arm
+    description: RealSense camera assigned to the arm view
+    enabled: ${components.cam_arm.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Color image from cam_arm
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: cameras.realsense_camera.RealSenseCamera
+          init:
+            name: cam_arm
+            serial: ${components.cam_arm.serial}
+            width: ${components.cam_arm.width}
+            height: ${components.cam_arm.height}
+            encoding: ${components.cam_arm.encoding}
+            fps: ${components.cam_arm.fps}
+            warmup_frames: ${components.cam_arm.warmup_frames}
+            jpeg_quality: ${components.cam_arm.jpeg_quality}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: cam_main
+    type: camera
+    parent_component: robot
+    frame: cam_main
+    description: RealSense camera assigned to the main view
+    enabled: ${components.cam_main.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Color image from cam_main
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: cameras.realsense_camera.RealSenseCamera
+          init:
+            name: cam_main
+            serial: ${components.cam_main.serial}
+            width: ${components.cam_main.width}
+            height: ${components.cam_main.height}
+            encoding: ${components.cam_main.encoding}
+            fps: ${components.cam_main.fps}
+            warmup_frames: ${components.cam_main.warmup_frames}
+            jpeg_quality: ${components.cam_main.jpeg_quality}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
+
+  - name: cam_side
+    type: camera
+    parent_component: robot
+    frame: cam_side
+    description: RealSense camera assigned to the side view
+    enabled: ${components.cam_side.enabled}
+    observations:
+      - name: image
+        type: image
+        description: Color image from cam_side
+        frame_rate: 30
+        source:
+          connector: port
+          port_type: cameras.realsense_camera.RealSenseCamera
+          init:
+            name: cam_side
+            serial: ${components.cam_side.serial}
+            width: ${components.cam_side.width}
+            height: ${components.cam_side.height}
+            encoding: ${components.cam_side.encoding}
+            fps: ${components.cam_side.fps}
+            warmup_frames: ${components.cam_side.warmup_frames}
+            jpeg_quality: ${components.cam_side.jpeg_quality}
+          method_name: read
+        codec:
+          adapter: ProtocolImageInputAdapter
